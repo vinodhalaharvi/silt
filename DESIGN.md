@@ -209,28 +209,26 @@ to hold on to:
 
 # 7. The S-Expression Composition Layer
 
-This is the motivating idea, so it gets the most design attention.
+This is the motivating idea, so it gets the most design attention. The complete syntax
+is in [GRAMMAR.md](GRAMMAR.md); this section covers why it has the shape it does.
 
 Fragments are declarative, composable, and reusable:
 
 ```lisp
-(target aarch64-virt
-  (arch arm64)
-  (machine qemu-virt)
-  (bootloader none))
+(fragment target:qemu-aarch64-virt
+  (buildroot (y BR2_aarch64)
+             (y BR2_cortex_a57))
+  (provides  (capability mmu)
+             (capability virtio)))
 
-(profile minimal
-  (libc musl)
-  (init busybox)
-  (rootfs ext2))
-
-(feature networking
-  (require BR2_PACKAGE_DHCPCD)
-  (require CONFIG_NET)
-  (prefer  CONFIG_IPV6 y))
+(fragment profile:minimal
+  (buildroot (y BR2_TOOLCHAIN_BUILDROOT_MUSL)
+             (y BR2_INIT_BUSYBOX)
+             (y BR2_TARGET_ROOTFS_EXT2_4))
+  (requires  (capability mmu)))
 
 (image dev-board
-  (compose target:aarch64-virt
+  (compose target:qemu-aarch64-virt
            profile:minimal
            feature:networking))
 ```
@@ -355,7 +353,7 @@ This roughly doubles the variable count. That cost is accepted. It also means fo
 comparison against kclause is not apples-to-apples — a `y`/`m`-collapsed projection of
 Silt's model is generated specifically for that diff (§10).
 
-Three of the seven forms exist only because tristate is modelled in full. Under the
+Three of the constraint forms exist only because tristate is modelled in full. Under the
 collapse they would be indistinguishable:
 
 ```lisp
@@ -429,7 +427,7 @@ it to a total, valid one. This is the core generation problem.
 
 ```text
 hard constraints  =  Kconfig semantics (§8)
-                  +  user requirements  (require / forbid)
+                  +  user requirements  (y / n / value)
 
 soft constraints  =  Kconfig defaults
                   +  user preferences   (prefer)
@@ -474,7 +472,7 @@ The objective is declared, not inferred, and only over things knowable before a 
 ```lisp
 (repair-policy
   (minimize changed-symbols)
-  (prefer preserve-target)
+  (keep target)
   (baseline "buildroot/configs/qemu_aarch64_virt_defconfig"))
 ```
 
@@ -566,7 +564,7 @@ Retrofitting this means touching every stage, so it goes in from the first commi
 
 ```lisp
 (image dev-board
-  (compose target:aarch64-virt profile:minimal feature:camera))
+  (compose target:qemu-aarch64-virt profile:minimal feature:camera))
 ```
 
 ```text
@@ -597,8 +595,8 @@ Alternatives:
 ```lisp
 (repair-policy
   (minimize changed-symbols)
-  (prefer preserve-target)
-  (prefer preserve-toolchain))
+  (keep target)
+  (keep toolchain))
 ```
 
 ## 11.4 SAT results need explaining too
@@ -715,7 +713,7 @@ raw core.
 
 ```lisp
 ;; rung 8 is where repair-policy stops being decoration
-(repair-policy (minimize changed-symbols) (prefer preserve-target))
+(repair-policy (minimize changed-symbols) (keep target))
 ```
 
 ### Later, optional

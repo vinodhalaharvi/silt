@@ -145,7 +145,7 @@ does not), **cross-tree implications**, **negative intent**, and **capabilities*
 A linter enforces this once the constraint model exists: any line whose removal does
 not change the solved model is dead.
 
-### Seven forms. That is the whole language.
+### The forms you write most of the time
 
 | Form | Meaning | Lowers to |
 | --- | --- | --- |
@@ -156,6 +156,11 @@ not change the solved model is dead.
 | `(prefer y SYM)` | soft; yields, and says so | MaxSAT soft clause |
 | `(value SYM "str")` | string/int/hex | emptiness modeled, value passed through |
 | `(when A B)` | guarded | `A ⇒ B` |
+
+Those seven cover almost everything you type. The full language is thirty-four
+keywords — composition, escape hatches, repair policy — plus nine more the importer
+emits. All of it is specified in [GRAMMAR.md](GRAMMAR.md), written before the parser so
+there is something for the parser to be tested *against* rather than defined by.
 
 `at-least` exists only because this builds real images — module versus built-in changes
 what lands in the rootfs. `when` never executes anything; it lowers to an implication
@@ -338,6 +343,7 @@ fragments/profiles/   userspace policy
 fragments/features/   one capability, spanning both Kconfig trees
 fragments/rules/      cross-tree implications
 images/               compositions
+GRAMMAR.md            the complete syntax, in EBNF
 DESIGN.md             architecture, loss surface, the ladder
 EXAMPLES.md           the language by demonstration
 ```

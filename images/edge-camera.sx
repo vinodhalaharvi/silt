@@ -16,4 +16,4 @@
 
   (repair-policy
     (minimize changed-symbols)
-    (prefer preserve-target)))
+    (keep target)))

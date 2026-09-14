@@ -55,7 +55,7 @@ trouble. That is a weekend, and it should happen early.
 
 ## 2. The vocabulary
 
-Seven forms. That is the whole language.
+These seven are what you write most of the time. The complete language — thirty-four authored keywords plus nine the importer emits — is in [GRAMMAR.md](GRAMMAR.md).
 
 | Form | Meaning | Lowers to |
 | --- | --- | --- |

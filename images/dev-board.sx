@@ -21,5 +21,5 @@
   ;; become eligible as objectives once Rung 3 is actually producing images.
   (repair-policy
     (minimize changed-symbols)
-    (prefer preserve-target)
+    (keep target)
     (baseline "buildroot/configs/qemu_aarch64_virt_defconfig")))
