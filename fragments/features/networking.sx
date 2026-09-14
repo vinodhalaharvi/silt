@@ -1,0 +1,16 @@
+;; IPv4/IPv6 with DHCP on the primary interface.
+
+(fragment feature:networking
+
+  (buildroot
+    (y BR2_PACKAGE_DHCPCD)
+    (value BR2_SYSTEM_DHCP "eth0"))
+
+  (linux
+    (y CONFIG_INET)
+    ;; dhcpcd needs AF_PACKET to do raw DHCP. Nothing in the Linux tree knows that,
+    ;; and nothing in the Buildroot tree can say it — cross-tree, therefore stated.
+    (y CONFIG_PACKET)
+    (prefer y CONFIG_IPV6)))
+
+;; Derived, therefore absent: CONFIG_NET (depended on by INET).

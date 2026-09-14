@@ -1,0 +1,21 @@
+;; libcamera capture stack.
+;;
+;; Three lines. An earlier draft of this fragment had fourteen; the other eleven
+;; were all derivable from Buildroot's and Linux's own Kconfig, and deleting them
+;; changed nothing about the solved model. That deletion is the point of the rule
+;; in fragments/README.md.
+
+(fragment feature:camera
+  (requires  (capability csi-camera))
+  (buildroot (y BR2_PACKAGE_LIBCAMERA))
+  (linux     (at-least m CONFIG_VIDEO_DEV)))
+
+;; Derived, therefore absent. Verified against buildroot package/libcamera/Config.in:
+;;   BR2_INSTALL_LIBSTDCPP, BR2_TOOLCHAIN_HAS_THREADS,
+;;   BR2_TOOLCHAIN_GCC_AT_LEAST_10, BR2_USE_WCHAR,
+;;   BR2_TOOLCHAIN_HEADERS_AT_LEAST_5_3   (all `depends on`)
+;;   BR2_PACKAGE_GNUTLS, BR2_PACKAGE_LIBYAML                      (both `select`)
+;;   CONFIG_MEDIA_SUPPORT, CONFIG_MEDIA_CAMERA_SUPPORT  (implied by VIDEO_DEV)
+;;
+;; Note !BR2_STATIC_LIBS is also a depends-on, which is what makes
+;; images/edge-camera.sx UNSAT against profile:minimal.

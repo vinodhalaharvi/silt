@@ -1,0 +1,39 @@
+;; Smallest useful userspace: musl, BusyBox init, ext4 rootfs.
+;; Says nothing about hardware.
+
+(fragment profile:minimal
+
+  (buildroot
+    (y BR2_TOOLCHAIN_BUILDROOT_MUSL)
+    (y BR2_INIT_BUSYBOX)
+    (y BR2_TARGET_ROOTFS_EXT2_4)
+    (value BR2_TARGET_ROOTFS_EXT2_SIZE "120M")
+
+    ;; Negative intent, and the main reason this profile is a fragment rather than
+    ;; a defconfig. If any feature pulls systemd in transitively — through udev,
+    ;; say, three levels down — the composition goes UNSAT and Silt names the
+    ;; feature responsible. A defconfig cannot express "and keep it out": it can
+    ;; only fail to mention it, after which merge_config.sh quietly lets it in.
+    (n BR2_PACKAGE_SYSTEMD)
+
+    ;; Static linking is part of what "minimal" means here, and it is what
+    ;; collides with feature:camera — libcamera has `depends on !BR2_STATIC_LIBS`.
+    (y BR2_STATIC_LIBS)
+
+    ;; Soft. Yields to any hard requirement, and the solver reports that it yielded.
+    (prefer n BR2_ENABLE_DEBUG))
+
+  (linux
+    (y CONFIG_EXT4_FS)
+    (y CONFIG_DEVTMPFS_MOUNT)
+    (prefer n CONFIG_DEBUG_KERNEL))
+
+  ;; Composing this with an MMU-less target fails at merge time with one line,
+  ;; rather than three minutes into a toolchain build.
+  (requires
+    (capability mmu)))
+
+;; Derived, therefore absent: BR2_TOOLCHAIN_BUILDROOT (depended on by the musl
+;; choice), BR2_PACKAGE_BUSYBOX (implied by BR2_INIT_BUSYBOX), BR2_INIT_SYSTEMD
+;; (excluded by the init choice group), BR2_TARGET_ROOTFS_EXT2 (implied by _EXT2_4),
+;; CONFIG_DEVTMPFS (depended on by DEVTMPFS_MOUNT).

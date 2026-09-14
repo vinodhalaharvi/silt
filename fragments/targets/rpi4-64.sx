@@ -1,0 +1,26 @@
+;; Raspberry Pi 4, 64-bit.
+
+(fragment target:rpi4-64
+
+  (buildroot
+    (y BR2_aarch64)
+    (y BR2_cortex_a72)
+    (value BR2_TARGET_GENERIC_GETTY_PORT "ttyS1")
+    (y BR2_PACKAGE_RPI_FIRMWARE)
+    (value BR2_LINUX_KERNEL_INTREE_DTS_NAME "broadcom/bcm2711-rpi-4-b"))
+
+  (linux
+    (y CONFIG_ARCH_BCM2835)
+    ;; Strengthening: rootfs is on SD, so the controller cannot be a module.
+    (y CONFIG_MMC_BCM2835)
+    (y CONFIG_SERIAL_8250_CONSOLE))
+
+  (provides
+    (capability mmu)
+    (capability serial-console)
+    (capability sdcard)
+    (capability wifi-sdio)
+    (capability csi-camera)))
+
+;; Derived, therefore absent: BR2_LINUX_KERNEL_DTS_SUPPORT (implied by setting an
+;; in-tree DTS name), CONFIG_MMC (selected by MMC_BCM2835), CONFIG_SERIAL_8250.

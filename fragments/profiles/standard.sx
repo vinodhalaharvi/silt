@@ -1,0 +1,22 @@
+;; glibc, systemd, room to breathe. The repair target when profile:minimal is too
+;; tight — see images/edge-camera.sx.
+
+(fragment profile:standard
+
+  (buildroot
+    (y BR2_TOOLCHAIN_BUILDROOT_GLIBC)
+    (y BR2_INIT_SYSTEMD)
+    (y BR2_TARGET_ROOTFS_EXT2_4)
+    (value BR2_TARGET_ROOTFS_EXT2_SIZE "512M"))
+
+  (linux
+    (y CONFIG_EXT4_FS)
+    (y CONFIG_DEVTMPFS_MOUNT)
+    ;; systemd's hard requirements that live in the kernel tree, which the
+    ;; Buildroot tree cannot see. Cross-tree, therefore stated.
+    (y CONFIG_CGROUPS)
+    (y CONFIG_INOTIFY_USER)
+    (y CONFIG_FHANDLE))
+
+  (requires
+    (capability mmu)))

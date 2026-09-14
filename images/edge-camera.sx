@@ -1,0 +1,19 @@
+;; Camera image on real hardware. Checked in as a deliberately failing fixture.
+;;
+;; `silt solve` on this must produce testdata/edge-camera.expected, and that file
+;; is asserted like any other test. Explanation quality is the subjective part of
+;; this project and therefore the part most likely to rot quietly; pinning the
+;; output is the only guard against that.
+
+(image edge-camera
+
+  (compose
+    target:rpi4-64
+    profile:minimal
+    feature:networking
+    feature:wifi
+    feature:camera)
+
+  (repair-policy
+    (minimize changed-symbols)
+    (prefer preserve-target)))

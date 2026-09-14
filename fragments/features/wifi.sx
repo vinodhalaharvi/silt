@@ -1,0 +1,15 @@
+;; Wireless client via wpa_supplicant.
+
+(fragment feature:wifi
+  (requires  (capability wifi-sdio))
+  (buildroot (y BR2_PACKAGE_WPA_SUPPLICANT)
+             (y BR2_PACKAGE_IW))
+  (linux     (at-least m CONFIG_MAC80211)))
+
+;; Derived, therefore absent: CONFIG_WIRELESS and CONFIG_CFG80211 (both pulled in
+;; by MAC80211), CONFIG_CRYPTO_AES and CONFIG_CRYPTO_CCM (both selected by
+;; MAC80211), BR2_PACKAGE_WPA_SUPPLICANT_CLI (default with the package).
+;;
+;; An earlier draft wrapped the crypto symbols in a `when` guard. The guard was
+;; restating a `select`, so both the guard and its body are gone. `when` is still
+;; in the language, but it earns its keep only in rules/cross-tree.sx.

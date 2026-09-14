@@ -1,6 +1,0 @@
-{
-  "generator": "tilegen v0.3.0",
-  "instructions": "Implement each task by replacing the panic(\"tilegen:hole <id>\") at file:line with a real body that honors the contract, intent and constraints. For a task with status \"drift\", the method exists but its signature no longer matches: change it to the contract and adapt the body. Items under \"reconcile\" with kind \"orphan\" are no longer in the spec: delete them if nothing uses them. Never edit files that say \"DO NOT EDIT\": change the spec and re-run tilegen instead. Verify with: go build ./... && go vet ./...",
-  "module": "github.com/vinodhalaharvi/silt",
-  "tasks": null
-}

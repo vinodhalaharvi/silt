@@ -1,0 +1,30 @@
+;; QEMU 'virt' machine, AArch64. Boots under qemu-system-aarch64.
+
+(fragment target:qemu-aarch64-virt
+
+  (buildroot
+    ;; Choice: Kconfig offers every ARM64 core, picking one is intent.
+    (y BR2_aarch64)
+    (y BR2_cortex_a57)
+    (value BR2_TARGET_GENERIC_GETTY_PORT "ttyAMA0"))
+
+  (linux
+    ;; Strengthening. Kconfig permits =m for both of these. The rootfs is on
+    ;; virtio and the console is needed before userspace, so neither can be a
+    ;; module. Kconfig cannot express boot ordering; this is why the fragment
+    ;; exists at all.
+    ;;
+    ;; Pairs with `-drive if=virtio` on `-machine virt`, which is virtio-pci.
+    (y CONFIG_VIRTIO_BLK)
+    (y CONFIG_VIRTIO_PCI)
+    (y CONFIG_SERIAL_AMBA_PL011_CONSOLE))
+
+  (provides
+    (capability mmu)
+    (capability virtio)
+    (capability serial-console)))
+
+;; Derived, therefore absent: CONFIG_ARM64 (set by ARCH=arm64), CONFIG_VIRTIO
+;; (selected by VIRTIO_BLK), CONFIG_SERIAL_AMBA_PL011 (depended on by the console
+;; symbol). Rootfs format, kernel version and init system are left unconstrained
+;; for a profile to fill by unification — that is the whole reuse mechanism.

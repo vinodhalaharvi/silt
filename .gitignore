@@ -1,10 +1,12 @@
 # Build output
 /bin/
+/out/
 *.test
 coverage.out
 
-# tilegen pass dumps and API cache (both regenerate)
-/.tilegen/
+# Local checkouts used as corpora and oracles (never vendored)
+/buildroot/
+/linux/
 
 # Editors and OS
 .idea/

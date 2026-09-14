@@ -1,0 +1,25 @@
+;; Development image: QEMU aarch64, minimal userspace, networking.
+;;
+;; An image is a composition and almost nothing else. If images start accumulating
+;; their own symbol settings, the fragment library has the wrong boundaries, and
+;; the fix belongs in the fragments rather than here.
+
+(image dev-board
+
+  (compose
+    target:qemu-aarch64-virt
+    profile:minimal
+    feature:networking)
+
+  ;; The one place last-wins is permitted, and only when explicit. Recorded in the
+  ;; solution with provenance, so `silt why` attributes the value to this line.
+  (override
+    (value BR2_TARGET_ROOTFS_EXT2_SIZE "256M"))
+
+  ;; Ranking for the completion solver (DESIGN.md §9). Everything here is statically
+  ;; known: no image size, no boot time — those are observed outputs, and only
+  ;; become eligible as objectives once Rung 3 is actually producing images.
+  (repair-policy
+    (minimize changed-symbols)
+    (prefer preserve-target)
+    (baseline "buildroot/configs/qemu_aarch64_virt_defconfig")))

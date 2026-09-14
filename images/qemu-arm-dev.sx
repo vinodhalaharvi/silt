@@ -1,0 +1,33 @@
+;; Kernel + rootfs for QEMU aarch64. The reference image: this is the one that has
+;; to boot before anything else in the project is worth measuring.
+;;
+;; Baseline for comparison is buildroot/configs/qemu_aarch64_virt_defconfig, which
+;; is 18 lines and expands to 451 symbols set. Those numbers are the honest scale
+;; of the saving and should be re-measured, not assumed.
+
+(image qemu-arm-dev
+
+  (compose
+    target:qemu-aarch64-virt
+    profile:minimal
+    feature:networking)
+
+  (linux
+    (custom-version "6.18.7"))
+
+  ;; Not expressible as constraints (DESIGN.md §14.3, §14.4). Carried verbatim,
+  ;; counted in every report, excluded from the fixpoint diff by declaration.
+  (opaque
+    (value BR2_GLOBAL_PATCH_DIR        "board/qemu/patches")
+    (value BR2_ROOTFS_POST_IMAGE_SCRIPT "board/qemu/post-image.sh")
+    ;; make expands this after Kconfig stores the literal
+    (value BR2_ROOTFS_POST_SCRIPT_ARGS  "$(BR2_DEFCONFIG)"))
+
+  ;; Two of the ten Kconfig trees Silt does not model (DESIGN.md §14.1).
+  (unmanaged
+    BR2_TARGET_UBOOT_*
+    BR2_PACKAGE_BUSYBOX_CONFIG_*)
+
+  (repair-policy
+    (minimize changed-symbols)
+    (baseline "buildroot/configs/qemu_aarch64_virt_defconfig")))
