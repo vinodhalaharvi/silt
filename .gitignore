@@ -1,0 +1,12 @@
+# Build output
+/bin/
+*.test
+coverage.out
+
+# tilegen pass dumps and API cache (both regenerate)
+/.tilegen/
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
