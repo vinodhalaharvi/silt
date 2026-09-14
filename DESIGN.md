@@ -635,11 +635,36 @@ Merge fragments (§7), emit a flat `BR2_*=y` defconfig. No constraint model yet,
 solver — just unification and text output.
 *Done when:* `make defconfig BR2_DEFCONFIG=out/defconfig` accepts it.
 
+**Done.** Verified against a real Buildroot tree: `silt emit images/qemu-arm-dev.sx`
+produces a 15-symbol defconfig that `make defconfig` accepts (exit 0), after which
+kbuild changes one symbol — see §12.1.
+
 ```lisp
 ;; rung 2 adds compose, and nothing else
 (image dev-board
   (compose target:qemu-aarch64-virt profile:minimal))
 ```
+
+## 12.1 Two findings from running Rung 2
+
+Recorded because both were wrong in the fragment library and neither was visible by
+reading it.
+
+**`if` guards and choice parents are prerequisites, not derivations.**
+`BR2_TARGET_ROOTFS_EXT2_4` is a choice member inside `if BR2_TARGET_ROOTFS_EXT2`.
+`profiles/minimal.sx` omitted the parent, reasoning that the member implied it. The
+arrow points the other way, and kbuild silently dropped the member *and* the size
+string that depended on it. The derivation rule in `fragments/README.md` needs this
+corollary: a symbol's enclosing `if` and its choice parent are never derivable from
+the symbol itself.
+
+**Absent satisfies `n`.** `(n BR2_PACKAGE_SYSTEMD)` emits
+`# BR2_PACKAGE_SYSTEMD is not set`, and kbuild drops the line entirely because with
+musl and BusyBox init the symbol is not available at all. That is correct: a symbol
+that cannot be selected is off. The §10 fixpoint check must therefore treat ABSENT and
+`n` as equal, or every image with negative intent will report a false failure forever.
+
+---
 
 ### Rung 3 — Vertical slice: a booting image
 

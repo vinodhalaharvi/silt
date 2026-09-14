@@ -14,6 +14,12 @@ defconfig: same content, unfamiliar syntax, more characters.
 A linter enforces this once the constraint model exists (Rung 5): any line whose
 removal does not change the solved model is dead and gets deleted.
 
+**Corollary, learned the hard way.** A symbol's enclosing `if` block and its choice
+parent are *prerequisites*, not derivations. `BR2_TARGET_ROOTFS_EXT2_4` lives inside
+`if BR2_TARGET_ROOTFS_EXT2`; the member does not enable the block. Omitting the parent
+made kbuild drop both the member and the size string. When in doubt about which way an
+arrow points, emit and diff — `silt emit` plus `make defconfig` answers it in seconds.
+
 ## What is left after applying the rule
 
 Five categories, and nothing else:

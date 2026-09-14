@@ -6,6 +6,10 @@
   (buildroot
     (y BR2_TOOLCHAIN_BUILDROOT_MUSL)
     (y BR2_INIT_BUSYBOX)
+    ;; EXT2 is the parent `if` guard, not something EXT2_4 implies: a choice
+    ;; member does not enable the block it lives in. Verified — omitting this
+    ;; made kbuild drop both EXT2_4 and the size below.
+    (y BR2_TARGET_ROOTFS_EXT2)
     (y BR2_TARGET_ROOTFS_EXT2_4)
     (value BR2_TARGET_ROOTFS_EXT2_SIZE "120M")
 
@@ -35,5 +39,5 @@
 
 ;; Derived, therefore absent: BR2_TOOLCHAIN_BUILDROOT (depended on by the musl
 ;; choice), BR2_PACKAGE_BUSYBOX (implied by BR2_INIT_BUSYBOX), BR2_INIT_SYSTEMD
-;; (excluded by the init choice group), BR2_TARGET_ROOTFS_EXT2 (implied by _EXT2_4),
+;; (excluded by the init choice group),
 ;; CONFIG_DEVTMPFS (depended on by DEVTMPFS_MOUNT).

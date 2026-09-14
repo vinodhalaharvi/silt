@@ -1,0 +1,384 @@
+package lang
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/vinodhalaharvi/silt/sexpr"
+)
+
+// Error is a diagnostic carrying the position that caused it. Every error the
+// user sees must name a file and line: that is Invariant 3 applied to
+// diagnostics, not just to explanations.
+type Error struct {
+	Pos sexpr.Pos
+	Msg string
+}
+
+func (e *Error) Error() string { return e.Pos.Short() + ": " + e.Msg }
+
+func errf(n *sexpr.Node, format string, a ...any) error {
+	return &Error{Pos: n.Pos, Msg: fmt.Sprintf(format, a...)}
+}
+
+// ParseFile parses one .sx source into typed forms.
+func ParseFile(src, path string) (*File, error) {
+	nodes, err := sexpr.Parse(src, path)
+	if err != nil {
+		return nil, err
+	}
+	f := &File{Path: path}
+	for _, n := range nodes {
+		switch n.Head() {
+		case "fragment":
+			fr, err := parseFragment(n)
+			if err != nil {
+				return nil, err
+			}
+			f.Fragments = append(f.Fragments, fr)
+		case "rules":
+			r, err := parseRules(n)
+			if err != nil {
+				return nil, err
+			}
+			f.Rules = append(f.Rules, r)
+		case "image":
+			im, err := parseImage(n)
+			if err != nil {
+				return nil, err
+			}
+			f.Images = append(f.Images, im)
+		case "":
+			return nil, errf(n, "expected a list headed by a keyword")
+		default:
+			return nil, errf(n, "unknown top-level form %q; expected fragment, rules or image", n.Head())
+		}
+	}
+	return f, nil
+}
+
+func parseID(n *sexpr.Node) (ID, error) {
+	if n.Kind != sexpr.KindSymbol {
+		return ID{}, errf(n, "expected a fragment id such as target:name")
+	}
+	k, name, ok := strings.Cut(n.Text, ":")
+	if !ok {
+		return ID{}, errf(n, "fragment id %q must be kind:name", n.Text)
+	}
+	switch Kind(k) {
+	case Target, Profile, Feature:
+	default:
+		return ID{}, errf(n, "unknown fragment kind %q; expected target, profile or feature", k)
+	}
+	if name == "" {
+		return ID{}, errf(n, "fragment id %q has an empty name", n.Text)
+	}
+	return ID{Kind: Kind(k), Name: name}, nil
+}
+
+func parseFragment(n *sexpr.Node) (*Fragment, error) {
+	args := n.Args()
+	if len(args) == 0 {
+		return nil, errf(n, "fragment needs an id")
+	}
+	id, err := parseID(args[0])
+	if err != nil {
+		return nil, err
+	}
+	fr := &Fragment{ID: id, Pos: n.Pos, Constraints: map[Scope][]Constraint{}}
+	for _, cl := range args[1:] {
+		switch cl.Head() {
+		case "doc":
+			if fr.Doc, err = oneString(cl); err != nil {
+				return nil, err
+			}
+		case "provides":
+			caps, err := parseCapabilities(cl)
+			if err != nil {
+				return nil, err
+			}
+			if id.Kind != Target {
+				return nil, errf(cl, "only a target may provide capabilities (%s is a %s)", id, id.Kind)
+			}
+			fr.Provides = append(fr.Provides, caps...)
+		case "requires":
+			caps, err := parseCapabilities(cl)
+			if err != nil {
+				return nil, err
+			}
+			if id.Kind == Target {
+				return nil, errf(cl, "a target provides capabilities, it does not require them")
+			}
+			fr.Requires = append(fr.Requires, caps...)
+		case "buildroot", "linux":
+			sc := Scope(cl.Head())
+			cs, gs, version, err := parseScope(cl, sc, id.String())
+			if err != nil {
+				return nil, err
+			}
+			fr.Constraints[sc] = append(fr.Constraints[sc], cs...)
+			fr.Guards = append(fr.Guards, gs...)
+			if version != "" {
+				fr.Version = version
+			}
+		default:
+			return nil, errf(cl, "unknown clause %q in fragment", cl.Head())
+		}
+	}
+	return fr, nil
+}
+
+func parseCapabilities(n *sexpr.Node) ([]Capability, error) {
+	var out []Capability
+	for _, c := range n.Args() {
+		if c.Head() != "capability" || len(c.Args()) != 1 {
+			return nil, errf(c, "expected (capability name)")
+		}
+		a := c.Args()[0]
+		if a.Kind != sexpr.KindSymbol {
+			return nil, errf(a, "capability name must be a symbol")
+		}
+		out = append(out, Capability{Name: a.Text, Pos: c.Pos})
+	}
+	return out, nil
+}
+
+// parseScope reads a (buildroot ...) or (linux ...) block.
+func parseScope(n *sexpr.Node, sc Scope, from string) ([]Constraint, []Guarded, string, error) {
+	var cs []Constraint
+	var gs []Guarded
+	var version string
+	for _, item := range n.Args() {
+		switch item.Head() {
+		case "when":
+			g, err := parseGuarded(item, sc, from)
+			if err != nil {
+				return nil, nil, "", err
+			}
+			gs = append(gs, g)
+		case "custom-version":
+			if sc != Linux {
+				return nil, nil, "", errf(item, "custom-version is valid only in the linux scope")
+			}
+			v, err := oneString(item)
+			if err != nil {
+				return nil, nil, "", err
+			}
+			version = v
+		default:
+			c, err := parseConstraint(item, sc, from)
+			if err != nil {
+				return nil, nil, "", err
+			}
+			cs = append(cs, c)
+		}
+	}
+	return cs, gs, version, nil
+}
+
+// checkSymbolScope enforces that BR2_* appears only in buildroot and CONFIG_*
+// only in linux. A symbol in the wrong tree is always a mistake and is much
+// cheaper to catch here than as a mysterious fixpoint diff later.
+func checkSymbolScope(n *sexpr.Node, sym string, sc Scope) error {
+	switch {
+	case strings.HasPrefix(sym, "BR2_"):
+		if sc == Linux {
+			return errf(n, "%s is a Buildroot symbol but appears in a linux scope", sym)
+		}
+	case strings.HasPrefix(sym, "CONFIG_"):
+		if sc == Buildroot {
+			return errf(n, "%s is a Linux symbol but appears in a buildroot scope", sym)
+		}
+	default:
+		return errf(n, "symbol %q must start with BR2_ or CONFIG_", sym)
+	}
+	return nil
+}
+
+func parseConstraint(n *sexpr.Node, sc Scope, from string) (Constraint, error) {
+	args := n.Args()
+	sym := func(i int) (string, error) {
+		if i >= len(args) || args[i].Kind != sexpr.KindSymbol {
+			return "", errf(n, "%s: expected a symbol", n.Head())
+		}
+		s := args[i].Text
+		if sc != "" {
+			if err := checkSymbolScope(args[i], s, sc); err != nil {
+				return "", err
+			}
+		}
+		return s, nil
+	}
+
+	switch h := n.Head(); h {
+	case "y", "m", "n":
+		if len(args) != 1 {
+			return Constraint{}, errf(n, "(%s SYMBOL) takes exactly one symbol", h)
+		}
+		s, err := sym(0)
+		if err != nil {
+			return Constraint{}, err
+		}
+		return Constraint{Symbol: s, Want: tristate(h), Pos: n.Pos, From: from}, nil
+
+	case "at-least":
+		if len(args) != 2 {
+			return Constraint{}, errf(n, "(at-least TRISTATE SYMBOL) takes two arguments")
+		}
+		t, ok := parseTristate(args[0])
+		if !ok {
+			return Constraint{}, errf(args[0], "expected y, m or n")
+		}
+		s, err := sym(1)
+		if err != nil {
+			return Constraint{}, err
+		}
+		return Constraint{Symbol: s, Want: t, AtLeast: true, Pos: n.Pos, From: from}, nil
+
+	case "prefer":
+		if len(args) != 2 {
+			return Constraint{}, errf(n, "(prefer TRISTATE SYMBOL) takes two arguments; "+
+				"the repair-policy form is (keep target)")
+		}
+		t, ok := parseTristate(args[0])
+		if !ok {
+			return Constraint{}, errf(args[0], "expected y, m or n")
+		}
+		s, err := sym(1)
+		if err != nil {
+			return Constraint{}, err
+		}
+		return Constraint{Symbol: s, Want: t, Soft: true, Pos: n.Pos, From: from}, nil
+
+	case "value":
+		if len(args) != 2 || args[1].Kind != sexpr.KindString {
+			return Constraint{}, errf(n, `(value SYMBOL "string") takes a symbol and a string`)
+		}
+		s, err := sym(0)
+		if err != nil {
+			return Constraint{}, err
+		}
+		return Constraint{Symbol: s, Value: args[1].Text, IsValue: true, Pos: n.Pos, From: from}, nil
+
+	case "require", "set":
+		return Constraint{}, errf(n, "unknown form %q; see GRAMMAR.md", h)
+	case "":
+		return Constraint{}, errf(n, "expected a constraint form")
+	default:
+		return Constraint{}, errf(n, "unknown constraint form %q", h)
+	}
+}
+
+func parseGuarded(n *sexpr.Node, sc Scope, from string) (Guarded, error) {
+	args := n.Args()
+	if len(args) < 2 {
+		return Guarded{}, errf(n, "(when CONDITION CONSTRAINT...) needs a condition and at least one consequent")
+	}
+	cond, err := parseCond(args[0], sc)
+	if err != nil {
+		return Guarded{}, err
+	}
+	g := Guarded{Cond: cond, Pos: n.Pos, From: from, Scope: sc}
+	for _, c := range args[1:] {
+		cc, err := parseConstraint(c, sc, from)
+		if err != nil {
+			return Guarded{}, err
+		}
+		g.Then = append(g.Then, cc)
+	}
+	return g, nil
+}
+
+func parseCond(n *sexpr.Node, sc Scope) (*Cond, error) {
+	switch h := n.Head(); h {
+	case "set?":
+		if len(n.Args()) != 1 || n.Args()[0].Kind != sexpr.KindSymbol {
+			return nil, errf(n, "(set? SYMBOL) takes one symbol")
+		}
+		return &Cond{Op: "set?", Sym: n.Args()[0].Text, Pos: n.Pos}, nil
+	case "and", "or":
+		if len(n.Args()) < 2 {
+			return nil, errf(n, "(%s ...) needs at least two conditions", h)
+		}
+		c := &Cond{Op: h, Pos: n.Pos}
+		for _, a := range n.Args() {
+			sub, err := parseCond(a, sc)
+			if err != nil {
+				return nil, err
+			}
+			c.Args = append(c.Args, sub)
+		}
+		return c, nil
+	case "not":
+		if len(n.Args()) != 1 {
+			return nil, errf(n, "(not CONDITION) takes one condition")
+		}
+		sub, err := parseCond(n.Args()[0], sc)
+		if err != nil {
+			return nil, err
+		}
+		return &Cond{Op: "not", Args: []*Cond{sub}, Pos: n.Pos}, nil
+	default:
+		// A bare constraint is a condition. Scope is not enforced here:
+		// cross-tree rules are exactly the case where a buildroot symbol
+		// guards a linux one.
+		c, err := parseConstraint(n, "", "")
+		if err != nil {
+			return nil, err
+		}
+		if c.Soft {
+			return nil, errf(n, "a soft constraint cannot be a condition")
+		}
+		return &Cond{Op: "constraint", C: &c, Pos: n.Pos}, nil
+	}
+}
+
+func parseRules(n *sexpr.Node) (*Rules, error) {
+	args := n.Args()
+	if len(args) == 0 || args[0].Kind != sexpr.KindSymbol {
+		return nil, errf(n, "rules needs a name")
+	}
+	r := &Rules{Name: args[0].Text, Pos: n.Pos}
+	for _, item := range args[1:] {
+		if item.Head() != "when" {
+			return nil, errf(item, "a rules block holds only (when ...) forms; "+
+				"an unconditional assertion belongs in a fragment")
+		}
+		// Rules cross trees, so no scope is imposed on either side.
+		g, err := parseGuarded(item, "", "rules:"+r.Name)
+		if err != nil {
+			return nil, err
+		}
+		r.Guards = append(r.Guards, g)
+	}
+	return r, nil
+}
+
+func tristate(s string) Tristate {
+	switch s {
+	case "n":
+		return N
+	case "m":
+		return M
+	}
+	return Y
+}
+
+func parseTristate(n *sexpr.Node) (Tristate, bool) {
+	if n.Kind != sexpr.KindSymbol {
+		return N, false
+	}
+	switch n.Text {
+	case "y", "m", "n":
+		return tristate(n.Text), true
+	}
+	return N, false
+}
+
+func oneString(n *sexpr.Node) (string, error) {
+	a := n.Args()
+	if len(a) != 1 || a[0].Kind != sexpr.KindString {
+		return "", errf(n, `(%s "string") takes one string`, n.Head())
+	}
+	return a[0].Text, nil
+}
