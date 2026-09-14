@@ -45,6 +45,15 @@ Sixty seconds to reproduce. This is the defect Silt exists to catch — and the 
 Silt is held to, because *if Silt's own losses are silent, it has reproduced the bug it
 was built to fix.*
 
+Written as fragments, the same request is a conflict with two named sources rather than
+a deletion:
+
+```lisp
+(fragment profile:minimal (buildroot (y BR2_STATIC_LIBS)))
+(fragment feature:camera  (buildroot (y BR2_PACKAGE_LIBCAMERA)))
+;; libcamera has `depends on !BR2_STATIC_LIBS` → UNSAT, with both file:line cited
+```
+
 ### Buildroot expresses kernel requirements in English
 
 Nineteen package `Config.in` files reference kernel `CONFIG_*` symbols. Every single
@@ -60,6 +69,15 @@ dpdk            nine symbols under "Optional but recommended kernel configuratio
 
 Nothing enforces any of it. You read the prose, you go edit a different file in a
 different format, and if you forget, it fails at runtime on the device.
+
+One rule per help string, checked instead of read:
+
+```lisp
+(rules cross-tree
+  (when (y BR2_PACKAGE_FSCRYPTCTL)    (y CONFIG_EXT4_ENCRYPTION))
+  (when (y BR2_PACKAGE_BCC)           (y CONFIG_IKHEADERS))
+  (when (y BR2_PACKAGE_18XX_TI_UTILS) (y CONFIG_NL80211_TESTMODE)))
+```
 
 ```sh
 grep -rl 'CONFIG_[A-Z0-9_]' buildroot/package/*/Config.in | wc -l    # 19
@@ -248,6 +266,15 @@ arbitrary shell. The claim is not losslessness:
 
 > No information loss. Bounded reasoning loss. The boundary explicit and reported.
 
+```lisp
+(image qemu-arm-dev
+  (compose target:qemu-aarch64-virt profile:minimal)
+  (opaque      (value BR2_ROOTFS_POST_IMAGE_SCRIPT "board/qemu/post-image.sh"))
+  (unmanaged   BR2_TARGET_UBOOT_*)
+  (delegate    uboot (custom-config-file "board/qemu/uboot.config"))
+  (environment (value BR2_HOST_GCC_VERSION "13 2")))
+```
+
 Escape hatches are first-class — `(opaque ...)`, `(unmanaged ...)`, `(delegate ...)`,
 and a `silt shell` / `silt absorb` round trip through real `menuconfig`. You are never
 trapped. Details in [DESIGN.md §14–15](DESIGN.md).
@@ -266,6 +293,11 @@ text.
 **ARM64 only, permanently.** Kconfig symbol sets are architecture-dependent. Fixing one
 architecture removes a whole dimension from the constraint model rather than merely
 shrinking the corpus.
+
+```lisp
+(y BR2_aarch64)                      ; stated as a choice, in every target
+;; (when (= arch arm64) …)           ; never — an arch conditional means scope leaked
+```
 
 **Purpose is pedagogical.** The deliverable is a bootable image, but the point is
 understanding how a messy real language gets formalized, lowered to CNF, solved, and

@@ -22,6 +22,16 @@ into a full valid configuration, explains anything that conflicts, and emits a
 
 Then Buildroot builds it and it boots.
 
+Everything in this document is stated twice: once in prose, once as the S-expression
+that expresses it. The forms are the design — the prose only explains why they look
+the way they do.
+
+```lisp
+;; the smallest complete thing Silt accepts
+(image hello
+  (compose target:qemu-aarch64-virt profile:minimal))
+```
+
 ```text
 S-expression fragments        (target, profile, features — composable, reusable)
         ↓  merge
@@ -65,6 +75,19 @@ composition and reasoning is kept.
 Corollary: Silt is correct exactly when kbuild accepts its output without changing it.
 That gives a precise, automatable definition of correctness — see §10.
 
+Nothing in the language describes *how* to build. There is no rule, no recipe, no
+command. The most build-adjacent form Silt has names a version and hands it to
+Buildroot:
+
+```lisp
+(image qemu-arm-dev
+  (compose target:qemu-aarch64-virt profile:minimal)
+  (linux (custom-version "6.18.7")))   ; a value, not a build step
+```
+
+If a proposed form would require Silt to compile, patch or run something, it does not
+belong in the language.
+
 ---
 
 # 3. What This Project Is Not
@@ -75,6 +98,16 @@ That gives a precise, automatable definition of correctness — see §10.
 - Not a Kconfig reimplementation for its own sake. The native evaluator stays
   authoritative; Silt adds reasoning and composition on top of it.
 - Not novel. See §5.
+
+Forms that will never exist, stated as forms so the boundary is concrete:
+
+```lisp
+;; (build   (make "-j16"))              ; Silt compiles nothing
+;; (recipe  (configure "--prefix=/usr")); recipes belong to Buildroot
+;; (node    (deps toolchain) (cpu 12))  ; no DAG, no scheduler
+;; (define (arm-target name) ...)       ; no functions — see §7.3
+;; (if (> (count packages) 10) ...)     ; no evaluation, ever
+```
 
 ---
 
@@ -104,6 +137,18 @@ reason about.
 
 Nothing else. No x86 "just to check." If a design decision only makes sense across
 architectures, it is out of scope.
+
+Because the architecture is fixed, no fragment ever tests for it. There is no
+`(when (= arch arm64) ...)` anywhere in the library, and there should never be:
+
+```lisp
+;; every target states the arch as a plain choice, never as a condition
+(fragment target:qemu-aarch64-virt
+  (buildroot (y BR2_aarch64)
+             (y BR2_cortex_a57)))
+```
+
+An arch conditional appearing in a fragment is the signal that scope has leaked.
 
 ---
 
@@ -142,6 +187,23 @@ after.
    a greedy approximation of it.
 7. **Language design under constraint** — composable and reusable without becoming a
    programming language (§7).
+
+Each objective has a form attached to it, so the abstract goal has something concrete
+to hold on to:
+
+```lisp
+;; 1. canonicalization — these two must hash identically
+(fragment f (buildroot (y BR2_aarch64) (n BR2_ENABLE_DEBUG)))
+(fragment f (buildroot (n BR2_ENABLE_DEBUG) (y BR2_aarch64)))
+
+;; 3. lowering  — (at-least m X)          becomes  (x_y ∨ x_m)
+;; 4. CDCL      — (y A) (n A)             becomes  a conflict, and a learned clause
+;; 6. MaxSAT    — (y A) is hard, (prefer y A) is soft; softs are what yield
+
+;; 7. the line the language must not cross
+(when (y BR2_PACKAGE_DHCPCD) (y CONFIG_PACKET))   ; an implication: allowed
+;; (if (> (length packages) 10) ...)              ; evaluation: never
+```
 
 ---
 
@@ -257,6 +319,25 @@ that kbuild then silently rewrites, which breaks the correctness criterion in §
 The disagreements between A and B are themselves useful output — they are close to what
 `kismet` reports as unmet-dependency bugs.
 
+What this means concretely: a fragment may state a symbol that Kconfig will enable via
+`select` regardless of its own unmet dependencies, and Silt must predict that outcome
+rather than the tidier one.
+
+```lisp
+;; BR2_PACKAGE_LIBCAMERA selects BR2_PACKAGE_GNUTLS.
+;; Under B, gnutls comes on even where its own depends-on is unmet — because that is
+;; what kbuild does. Silt emits what kbuild would emit, then reports the anomaly.
+(fragment feature:camera
+  (buildroot (y BR2_PACKAGE_LIBCAMERA)))
+```
+
+```console
+$ silt solve images/edge-camera.sx --check-mode spec-faithful
+  1 select-induced anomaly (informational, not an error)
+    BR2_PACKAGE_GNUTLS on via select; its own depends-on is unmet
+    package/libcamera/Config.in:16
+```
+
 ## 8.2 Tristate — revised
 
 An earlier draft proposed collapsing `m` into `y` (one Bool per symbol), matching
@@ -273,6 +354,19 @@ with `n < m < y` ordering and min/max semantics on `depends on`.**
 This roughly doubles the variable count. That cost is accepted. It also means formula
 comparison against kclause is not apples-to-apples — a `y`/`m`-collapsed projection of
 Silt's model is generated specifically for that diff (§10).
+
+Three of the seven forms exist only because tristate is modelled in full. Under the
+collapse they would be indistinguishable:
+
+```lisp
+(y  CONFIG_VIRTIO_BLK)      ; built-in. Rootfs is on virtio; a module cannot load
+                            ; before the filesystem it lives on is mounted.
+(m  CONFIG_BRIDGE)          ; module, specifically — keep it out of the boot path
+(at-least m CONFIG_MAC80211); either; let the solver pick the cheaper one
+```
+
+The distinction is not academic: `(y ...)` versus `(at-least m ...)` on a storage
+driver is the difference between an image that boots and one that does not.
 
 ## 8.3 Out of scope
 
@@ -305,6 +399,21 @@ rule was never in the model.
    documented in §14.5.
 
 Values themselves pass through to the emitted `.config` unchanged.
+
+In the language this is one form with two behaviours, and the split is visible in the
+output rather than implied:
+
+```lisp
+;; the value passes through; its *emptiness* enters the model as a Boolean
+(value BR2_TARGET_OPENSBI_PLAT "generic")
+
+;; so this is expressible, and covers most of the 154
+(when (set? BR2_TARGET_OPENSBI_PLAT) (y BR2_TARGET_OPENSBI))
+
+;; equality against a literal is not modelled — but must be declared, never dropped
+(opaque
+  (value BR2_TOOLCHAIN_BARE_METAL_BUILDROOT_ARCH "aarch64-buildroot-elf"))
+```
 
 `range` applies only to int/hex and remains out of scope.
 
@@ -348,6 +457,27 @@ Optimize only statically known quantities: changed-symbol count, package count, 
 preferences. Image size and boot time are *observed outputs* — measurable once §12's
 vertical slice exists, and only then eligible as objectives.
 
+The hard/soft split is the difference between two forms, and it is the whole of what a
+user has to understand about MaxSAT:
+
+```lisp
+(fragment profile:minimal
+  (buildroot
+    (y BR2_STATIC_LIBS)          ; hard — UNSAT if it cannot hold
+    (prefer n BR2_ENABLE_DEBUG)) ; soft — yields, and the solver says it yielded
+  (linux
+    (prefer n CONFIG_DEBUG_KERNEL)))
+```
+
+The objective is declared, not inferred, and only over things knowable before a build:
+
+```lisp
+(repair-policy
+  (minimize changed-symbols)
+  (prefer preserve-target)
+  (baseline "buildroot/configs/qemu_aarch64_virt_defconfig"))
+```
+
 ---
 
 # 10. The Validation Loop
@@ -385,6 +515,27 @@ Three oracles in total:
 2. **kclause / klocalizer** — formula-level, on the `y`/`m`-collapsed projection.
 3. **KConfigReader** — second formula extractor; its disagreements with kclause mark
    genuinely ambiguous semantics.
+
+The loop can only reach fixpoint if the things kbuild will legitimately change are
+declared out of the diff. That declaration is a form, so the exclusion is reviewable in
+the source rather than buried in a flag:
+
+```lisp
+(image qemu-arm-dev
+  (compose target:qemu-aarch64-virt profile:minimal)
+
+  ;; carried verbatim; make expands the last one after Kconfig stores it
+  (opaque
+    (value BR2_GLOBAL_PATCH_DIR         "board/qemu/patches")
+    (value BR2_ROOTFS_POST_IMAGE_SCRIPT "board/qemu/post-image.sh")
+    (value BR2_ROOTFS_POST_SCRIPT_ARGS  "$(BR2_DEFCONFIG)"))
+
+  ;; trees Silt does not model; excluded from the diff by name
+  (unmanaged BR2_TARGET_UBOOT_* BR2_PACKAGE_BUSYBOX_CONFIG_*))
+```
+
+An undeclared exclusion is indistinguishable from a bug, which is why this is
+Invariant 6 rather than a convenience.
 
 ---
 
@@ -475,11 +626,22 @@ Parser, AST, canonical serialization, hashing. One evening.
 *Done when:* two differently-written equivalent expressions hash identically, and
 canonical round-trip is stable.
 
+```lisp
+;; the whole of rung 1's input surface
+(fragment f (buildroot (y BR2_aarch64) (n BR2_ENABLE_DEBUG)))
+```
+
 ### Rung 2 — Compose and emit
 
 Merge fragments (§7), emit a flat `BR2_*=y` defconfig. No constraint model yet, no
 solver — just unification and text output.
 *Done when:* `make defconfig BR2_DEFCONFIG=out/defconfig` accepts it.
+
+```lisp
+;; rung 2 adds compose, and nothing else
+(image dev-board
+  (compose target:qemu-aarch64-virt profile:minimal))
+```
 
 ### Rung 3 — Vertical slice: a booting image
 
@@ -504,11 +666,22 @@ Import `arch/arm64` Kconfig into canonical S-expressions with `file:line` proven
 Full tristate (§8.2), implementation-faithful `select` (§8.1).
 *Done when:* imported symbol values match the native evaluator on a generated test set.
 
+```lisp
+;; rung 4 is the first rung where this form means anything — before it, (at-least m)
+;; cannot be distinguished from (y), because nothing knows what a tristate is
+(linux (at-least m CONFIG_MAC80211))
+```
+
 ### Rung 5 — Constraint IR and CNF
 
 Lower to constraint form, Tseitin-transform to CNF by hand. Roughly 200 lines.
 *Done when:* an off-the-shelf solver accepts it, and the `y`/`m`-collapsed projection
 agrees with `klocalizer --save-dimacs` on satisfiability.
+
+```lisp
+;; rung 5 is where `when` starts doing work: it lowers to an implication clause
+(when (y BR2_PACKAGE_DHCPCD) (y CONFIG_PACKET))
+```
 
 ### Rung 6 — A toy CDCL solver
 
@@ -528,11 +701,22 @@ MaxSAT completion (§9). Silt now emits a *total* assignment.
 image from Rung 3 still boots, now built from a config Silt solved rather than one
 `olddefconfig` filled in.
 
+```lisp
+;; rung 7 is where soft constraints become meaningful — before MaxSAT there is no
+;; notion of yielding, so (prefer ...) is just ignored
+(prefer n BR2_ENABLE_DEBUG)
+```
+
 ### Rung 8 — Explanation and repair
 
 MUS, MCS via hitting sets, `why` / `why-not` / `repair`.
 *Done when:* §11.2's output is produced for a real conflict, and is more useful than a
 raw core.
+
+```lisp
+;; rung 8 is where repair-policy stops being decoration
+(repair-policy (minimize changed-symbols) (prefer preserve-target))
+```
 
 ### Later, optional
 
@@ -546,6 +730,18 @@ ASP/SMT backend comparison. None are on the critical path.
 
 Only what exists or is being built this week. Directories appear when their first real
 file is written, not in advance.
+
+Each directory is defined by the form it holds, not by a topic:
+
+```lisp
+fragments/targets/    (fragment target:… (provides (capability …)))
+fragments/profiles/   (fragment profile:… (requires (capability …)))
+fragments/features/   (fragment feature:… (buildroot …) (linux …))
+fragments/rules/      (rules cross-tree (when … …))
+images/               (image … (compose …) (opaque …) (unmanaged …))
+```
+
+If a file needs a form its directory does not own, it is in the wrong directory.
 
 ```text
 silt/
@@ -588,6 +784,12 @@ grep -rhoE 'BR2_[A-Z0-9_]*_(CUSTOM_CONFIG_FILE|CONFIG_FRAGMENT_FILES)' \
 The cross-tree rules in `fragments/rules/cross-tree.sx` cover Buildroot↔Linux. The
 other ten are carried opaquely.
 
+```lisp
+;; how an unmodelled tree is handed back to its own tooling
+(delegate uboot (custom-config-file "board/qemu/uboot.config"))
+(unmanaged BR2_TARGET_UBOOT_*)
+```
+
 ## 14.2 The model is host-dependent
 
 `option env=` gives four symbols their values from the environment at parse time.
@@ -622,6 +824,14 @@ take the environment as an explicit, recorded input rather than reading it impli
 The constraint model is consequently not a pure function of the source tree, and
 env-derived values must be recorded *in* the solution hash (Invariant 10).
 
+```lisp
+;; env-derived values are recorded as inputs, not silently read. The solution hash
+;; covers them, so a config solved on one host is not mistaken for one solved on another.
+(environment
+  (value BR2_HOST_GCC_VERSION "13 2")
+  (value BR2_HOSTARCH         "x86_64"))
+```
+
 ## 14.3 Values are not final until make runs
 
 `qemu_aarch64_virt_defconfig` contains:
@@ -633,12 +843,24 @@ BR2_ROOTFS_POST_SCRIPT_ARGS="$(BR2_DEFCONFIG)"
 Kconfig stores the literal; make expands it later. Silt cannot evaluate it and must
 not try.
 
+```lisp
+;; carried through untouched, and reported as opaque on every run
+(opaque
+  (value BR2_ROOTFS_POST_SCRIPT_ARGS "$(BR2_DEFCONFIG)"))
+```
+
 ## 14.4 Arbitrary shell is part of the configuration
 
 `BR2_GLOBAL_PATCH_DIR` and `BR2_ROOTFS_POST_IMAGE_SCRIPT` name a patch directory and a
 shell script. Patches can change a package's dependencies; the post-image script runs
 *after* Silt's model is finished and can rewrite the image. Neither is expressible as
 a constraint, and Silt's solution says nothing about what either does.
+
+```lisp
+(opaque
+  (value BR2_GLOBAL_PATCH_DIR         "board/qemu/patches")
+  (value BR2_ROOTFS_POST_IMAGE_SCRIPT "board/qemu/post-image.sh"))
+```
 
 ## 14.5 What kbuild does with an impossible request
 
@@ -675,6 +897,20 @@ dpdk            nine symbols under "Optional but recommended kernel configuratio
 Nothing enforces any of them. These help strings are the source corpus for
 `fragments/rules/cross-tree.sx`, and they are incomplete by construction — they are
 only the packages whose authors bothered to document it.
+
+Each help string becomes one rule, with the source it came from:
+
+```lisp
+(rules cross-tree
+  (when (y BR2_PACKAGE_FSCRYPTCTL)   (y CONFIG_EXT4_ENCRYPTION))
+  (when (y BR2_PACKAGE_BCC)          (y CONFIG_IKHEADERS))
+  (when (y BR2_PACKAGE_18XX_TI_UTILS) (y CONFIG_NL80211_TESTMODE)))
+```
+
+These rules have no oracle — neither Kconfig tree knows them either, so nothing can
+check them. That makes this file the project's most valuable artifact and its largest
+maintenance liability at the same time. Keep it small, cite the help string each rule
+came from, and never grow it on speculation.
 
 ---
 
@@ -726,10 +962,17 @@ Not "lossless". The accurate property is:
 # 16. Invariants
 
 1. **S-expressions are data.** No host execution, no I/O, no unbounded evaluation.
+   ```lisp
+   (when (y BR2_PACKAGE_DHCPCD) (y CONFIG_PACKET))   ; implication — fine
+   ;; (shell "grep -c . Kconfig")                    ; never
+   ```
 2. **Silt emits configuration, never artifacts.** kbuild and Buildroot build. If a
    feature requires Silt to compile something, it is out of scope.
 3. **Provenance survives every transformation.** Every constraint traces to a
    `file:line`, in Kconfig or in a fragment.
+   ```lisp
+   (y CONFIG_VIRTIO_BLK)   ; → targets/qemu-aarch64-virt.sx:18 → CNF clause 4471
+   ```
 4. **Canonical form is deterministic.** Same meaning, same bytes, same hash.
 5. **The Constraint IR is solver-independent.** Frontend syntax never leaks into a
    backend; the backend is replaceable.
@@ -743,9 +986,16 @@ Not "lossless". The accurate property is:
 9. **Lossiness is visible and counted.** Every report prints the
    managed / opaque / unmanaged / env-derived split. A loss that does not appear in
    the output is a bug, whatever else is true about it.
+   ```lisp
+   (opaque    (value BR2_GLOBAL_PATCH_DIR "board/qemu/patches"))
+   (unmanaged BR2_TARGET_UBOOT_*)
+   ```
 10. **Environment-derived inputs are recorded in the solution hash, not excluded.**
    Excluding them makes two hosts produce different configurations from the same
    source under the same hash.
+   ```lisp
+   (environment (value BR2_HOST_GCC_VERSION "13 2"))
+   ```
 
 ---
 
