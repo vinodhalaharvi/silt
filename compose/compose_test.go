@@ -136,3 +136,29 @@ func TestDuplicateFragmentRejected(t *testing.T) {
 		t.Fatal("expected a redefinition error")
 	}
 }
+
+// Profiles provide capabilities too. An earlier rule allowed only targets, and
+// two images disproved it: each profile supplies its own DHCP client, which is
+// policy rather than hardware and is exactly what a feature needs.
+func TestProfileCanProvide(t *testing.T) {
+	l := lib(t,
+		`(fragment target:t (buildroot (y BR2_aarch64)) (provides (capability mmu)))`,
+		`(fragment profile:p (requires (capability mmu)) (provides (capability dhcp-client)))`,
+		`(fragment feature:net (requires (capability dhcp-client)))`)
+	if _, err := composeSrc(t, l, `(image i (compose target:t profile:p feature:net))`); err != nil {
+		t.Fatalf("a profile must be able to satisfy a feature's requirement: %v", err)
+	}
+}
+
+// Without a profile supplying it, the feature fails at compose rather than at
+// boot, which is where it used to fail.
+func TestMissingDhcpClientFailsEarly(t *testing.T) {
+	l := lib(t,
+		`(fragment target:t (buildroot (y BR2_aarch64)) (provides (capability mmu)))`,
+		`(fragment profile:bare (requires (capability mmu)))`,
+		`(fragment feature:net (requires (capability dhcp-client)))`)
+	_, err := composeSrc(t, l, `(image i (compose target:t profile:bare feature:net))`)
+	if err == nil || !strings.Contains(err.Error(), "dhcp-client") {
+		t.Fatalf("got %v", err)
+	}
+}

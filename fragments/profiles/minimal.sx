@@ -35,7 +35,12 @@
   ;; Composing this with an MMU-less target fails at merge time with one line,
   ;; rather than three minutes into a toolchain build.
   (requires
-    (capability mmu)))
+    (capability mmu))
+
+  ;; BusyBox brings udhcpc, which BR2_SYSTEM_DHCP starts on the named interface.
+  ;; That is this profile's DHCP client, so features must not bring their own.
+  (provides
+    (capability dhcp-client)))
 
 ;; Derived, therefore absent: BR2_TOOLCHAIN_BUILDROOT (depended on by the musl
 ;; choice), BR2_PACKAGE_BUSYBOX (implied by BR2_INIT_BUSYBOX), BR2_INIT_SYSTEMD

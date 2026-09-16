@@ -1,9 +1,18 @@
 ;; IPv4/IPv6 with DHCP on the primary interface.
 
+;; Note what this does NOT state: which DHCP client to use.
+;;
+;; It named BR2_PACKAGE_DHCPCD until two images proved that wrong. Under
+;; profile:minimal, BusyBox udhcpc and dhcpcd both ran and both took the same
+;; lease. Under profile:standard, systemd-networkd won the race and dhcpcd
+;; failed at every boot. The feature was asserting a mechanism where it wanted an
+;; outcome, and each profile already supplies its own.
 (fragment feature:networking
 
+  (requires
+    (capability dhcp-client))
+
   (buildroot
-    (y BR2_PACKAGE_DHCPCD)
     (value BR2_SYSTEM_DHCP "eth0"))
 
   (linux

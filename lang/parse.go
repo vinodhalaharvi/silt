@@ -97,8 +97,19 @@ func parseFragment(n *sexpr.Node) (*Fragment, error) {
 			if err != nil {
 				return nil, err
 			}
-			if id.Kind != Target {
-				return nil, errf(cl, "only a target may provide capabilities (%s is a %s)", id, id.Kind)
+			// Targets and profiles may both provide; features may not.
+			//
+			// An earlier rule allowed only targets, on the reasoning that
+			// targets describe hardware and profiles describe policy. Two
+			// collisions disproved it: profile:minimal supplies BusyBox udhcpc
+			// and profile:standard supplies systemd-networkd, and both are
+			// things a feature needs and neither is hardware. A feature that
+			// provided capabilities could satisfy another feature's
+			// requirement, which would make composition order-dependent — so
+			// features still may not.
+			if id.Kind == Feature {
+				return nil, errf(cl, "a feature may not provide capabilities (%s); "+
+					"only targets and profiles may, or composition becomes order-dependent", id)
 			}
 			fr.Provides = append(fr.Provides, caps...)
 		case "requires":

@@ -62,10 +62,15 @@ func TestScopeEnforcement(t *testing.T) {
 	rejects(t, `(fragment target:x (buildroot (y NOT_A_SYMBOL)))`, "BR2_ or CONFIG_")
 }
 
-// Only a target may provide capabilities; only profiles and features require.
+// Targets and profiles provide; features only require.
+//
+// A feature that could provide would let one feature satisfy another's
+// requirement, making composition order-dependent — which is the property the
+// whole merge model depends on not having.
 func TestCapabilityDirection(t *testing.T) {
-	rejects(t, `(fragment feature:f (provides (capability mmu)))`, "only a target may provide")
+	rejects(t, `(fragment feature:f (provides (capability mmu)))`, "a feature may not provide")
 	rejects(t, `(fragment target:t (requires (capability mmu)))`, "does not require")
+	parse(t, `(fragment profile:p (provides (capability dhcp-client)))`)
 }
 
 // The two ambiguities GRAMMAR.md resolved must stay resolved.

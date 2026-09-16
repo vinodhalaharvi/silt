@@ -20,4 +20,10 @@
     )
 
   (requires
-    (capability mmu)))
+    (capability mmu))
+
+  ;; systemd brings systemd-networkd, which configures DHCP itself. Adding a
+  ;; second client means two daemons racing for one lease — dhcpcd lost, loudly,
+  ;; on every boot before this.
+  (provides
+    (capability dhcp-client)))
