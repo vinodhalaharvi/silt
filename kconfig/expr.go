@@ -90,6 +90,15 @@ func And(a, b *Expr) *Expr {
 	return &Expr{Op: ExprAnd, Args: []*Expr{a, b}}
 }
 
+// Or joins two conditions. Unlike And, a nil operand means "always", so it
+// absorbs the other: y || x is y.
+func Or(a, b *Expr) *Expr {
+	if a == nil || b == nil {
+		return nil
+	}
+	return &Expr{Op: ExprOr, Args: []*Expr{a, b}}
+}
+
 // parseExpr reads a Kconfig condition.
 //
 // Precedence, loosest first: || then && then ! then comparison.

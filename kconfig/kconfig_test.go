@@ -264,3 +264,51 @@ endchoice
 		t.Fatalf("comment's depends leaked onto the choice: %s", c.Depends)
 	}
 }
+
+// A symbol declared twice depends on either declaration, not both. Buildroot
+// declares BR2_PACKAGE_BUSYBOX_SHOW_OTHERS once inside `if BR2_PACKAGE_BUSYBOX`
+// and again inside `if !BR2_PACKAGE_BUSYBOX`; conjoining the two made it
+// unsatisfiable, and systemd selects it.
+func TestRepeatedDeclarationsDisjoin(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/Config.in", []byte(`
+config BR2_BB
+	bool "busybox"
+
+if BR2_BB
+config BR2_SHOW
+	bool "show others"
+	depends on BR2_X
+endif
+
+if !BR2_BB
+config BR2_SHOW
+	default y
+endif
+
+config BR2_ONCE
+	bool "declared once"
+	depends on BR2_X
+config BR2_UNGUARDED
+	string
+if BR2_BB
+config BR2_UNGUARDED
+	default "bb"
+endif
+`), 0o644)
+	tr, err := Load("Config.in", Options{Root: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tr.Symbols["BR2_SHOW"].Depends.String(); got != "((BR2_BB && BR2_X) || !BR2_BB)" {
+		t.Fatalf("repeated declarations should disjoin: %s", got)
+	}
+	if got := tr.Symbols["BR2_ONCE"].Depends.String(); got != "BR2_X" {
+		t.Fatalf("a single declaration is unchanged: %s", got)
+	}
+	// A declaration with no guard at all makes the symbol unconditional, as it
+	// does for BR2_ARCH.
+	if d := tr.Symbols["BR2_UNGUARDED"].Depends; d != nil {
+		t.Fatalf("an unguarded declaration should absorb the rest: %s", d)
+	}
+}

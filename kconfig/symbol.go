@@ -54,10 +54,16 @@ type Select struct {
 
 // Symbol is one imported Kconfig symbol.
 type Symbol struct {
-	Name     string
-	Type     Type
-	Prompt   string
-	Depends  *Expr // own depends-on, conjoined with enclosing if/menu guards
+	Name    string
+	Type    Type
+	Prompt  string
+	Depends *Expr // own depends-on, conjoined with enclosing if/menu guards
+	// decls holds one dependency per declaration. Kconfig lets a symbol be
+	// declared more than once, and each declaration carries its own guards
+	// and depends-on lines; the symbol's dependency is their disjunction, as
+	// the C implementation computes it. Depends is built from these once
+	// parsing finishes.
+	decls    []*Expr
 	Selects  []Select
 	Implies  []Select
 	Defaults []Default

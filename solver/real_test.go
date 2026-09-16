@@ -152,3 +152,65 @@ func TestRealTreeForwardPassShape(t *testing.T) {
 		fresh.Round(time.Millisecond), (fresh * time.Duration(len(order))).Round(time.Second))
 	t.Logf("incremental, whole pass: %v", incr.Round(time.Millisecond))
 }
+
+// Every solvable Buildroot symbol can be on in some configuration. Nothing
+// in Kconfig forbids a dead symbol, but Buildroot 2025.02.16 has none, so any
+// symbol the model says is impossible on its own is a lowering or importer
+// bug. Conjoining repeated declarations made 172 of them impossible, systemd
+// and all four /bin/sh choices among them, and nothing else noticed.
+func TestRealTreeNoSymbolIsDead(t *testing.T) {
+	root := os.Getenv("SILT_BUILDROOT")
+	if root == "" {
+		t.Skip("set SILT_BUILDROOT to a Buildroot checkout to run")
+	}
+	tr, err := kconfig.Load("Config.in", kconfig.Options{Root: root, Env: map[string]string{
+		"BR2_BASE_DIR": "/nonexistent", "HOSTARCH": "x86_64",
+		"HOST_GCC_VERSION": "13 2", "BR2_VERSION_FULL": "0",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := cnf.Lower(tr)
+	s := New(m.F)
+	start := time.Now()
+	var dead []string
+	n, solves := 0, 0
+	// A symbol already on in some earlier model is witnessed alive without a
+	// query of its own. Polarity true makes each model switch on as much as
+	// it can, so most symbols are witnessed by someone else's query.
+	alive := map[int]bool{}
+	pol := map[int]bool{}
+	for v := 1; v <= m.F.NumVars(); v++ {
+		pol[v] = true
+	}
+	s.SetPolarity(pol)
+	for _, name := range tr.Order {
+		if sym := tr.Symbols[name]; sym == nil || !sym.Type.Solvable() {
+			continue
+		}
+		n++
+		v := m.F.Var(name).Var()
+		if alive[v] {
+			continue
+		}
+		solves++
+		r := s.Solve(m.F.Var(name))
+		if r.Status != SAT {
+			dead = append(dead, name)
+			continue
+		}
+		for w, on := range r.Model {
+			if on {
+				alive[w] = true
+			}
+		}
+	}
+	t.Logf("%d symbols, %d queries on one solver in %v", n, solves, time.Since(start).Round(time.Millisecond))
+	if len(dead) > 0 {
+		show := dead
+		if len(show) > 20 {
+			show = show[:20]
+		}
+		t.Fatalf("%d symbols can never be on: %v", len(dead), show)
+	}
+}

@@ -28,6 +28,23 @@ func Load(file string, opts Options) (*Tree, error) {
 	if err := p.file(file, nil); err != nil {
 		return nil, err
 	}
+	// A symbol declared twice depends on either declaration's conditions,
+	// not both. Conjoining them turned Buildroot's
+	//
+	//	if BR2_PACKAGE_BUSYBOX / config BR2_PACKAGE_BUSYBOX_SHOW_OTHERS
+	//	if !BR2_PACKAGE_BUSYBOX / config BR2_PACKAGE_BUSYBOX_SHOW_OTHERS
+	//
+	// into BUSYBOX && !BUSYBOX, which is unsatisfiable; systemd selects the
+	// symbol, so every systemd image came back UNSAT from solve and complete.
+	for _, s := range t.Symbols {
+		for i, d := range s.decls {
+			if i == 0 {
+				s.Depends = d
+				continue
+			}
+			s.Depends = Or(s.Depends, d)
+		}
+	}
 	return t, nil
 }
 
@@ -97,7 +114,7 @@ func (p *parser) lines(file string, lines []string, outer *Expr) error {
 			name := firstField(rest)
 			cur = p.tree.Get(name)
 			cur.File, cur.Line = file, i+1
-			cur.Depends = And(cur.Depends, guard())
+			cur.decls = append(cur.decls, guard())
 			if choice != nil {
 				cur.Choice = choice.Name
 				choice.Members = append(choice.Members, name)
@@ -135,7 +152,8 @@ func (p *parser) lines(file string, lines []string, outer *Expr) error {
 			}
 			switch {
 			case cur != nil:
-				cur.Depends = And(cur.Depends, e)
+				last := len(cur.decls) - 1
+				cur.decls[last] = And(cur.decls[last], e)
 			case choice != nil:
 				choice.Depends = And(choice.Depends, e)
 			}
