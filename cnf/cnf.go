@@ -86,6 +86,28 @@ func (f *Formula) Add(origin string, lits ...Lit) {
 // Origin returns what produced clause i.
 func (f *Formula) Origin(i int) string { return f.origin[i] }
 
+// FindOrigin returns the origin of the first clause matching lits exactly.
+// Used to turn a solver-level conflict back into the Kconfig line that caused
+// it, which is the whole reason clauses carry provenance.
+func (f *Formula) FindOrigin(lits []Lit) string {
+	for i, c := range f.Clauses {
+		if len(c) != len(lits) {
+			continue
+		}
+		same := true
+		for j := range c {
+			if c[j] != lits[j] {
+				same = false
+				break
+			}
+		}
+		if same {
+			return f.origin[i]
+		}
+	}
+	return "(not found)"
+}
+
 // Implies adds a => b.
 func (f *Formula) Implies(origin string, a, b Lit) { f.Add(origin, a.Neg(), b) }
 

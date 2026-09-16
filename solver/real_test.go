@@ -28,20 +28,9 @@ func realModel(t *testing.T) *cnf.Model {
 // These four answers were established independently by running kbuild itself
 // (DESIGN.md §14.5), so they are a real oracle rather than a restatement of
 // what the solver happens to do.
-// KNOWN BUG, in the lowering rather than the search: assuming any single
-// symbol propagates to a conflict. The conflict clause seen so far is
-// (BR2_TOOLCHAIN_USES_GLIBC | !aux), an implication whose antecedent is forced
-// true and whose consequent is forced false during assumption propagation.
-//
-// Not the choice encoding — removing the at-least-one clauses changed nothing.
-// Next step is to dump the implication chain from the assumed literal to the
-// conflict and find which lowered clause is wrong; the origin string on every
-// clause exists for exactly this.
-//
-// The search itself is fine: pigeonhole passes, and the unassumed tree solves
-// in 100ms with zero conflicts.
+// Answers established independently by running kbuild itself (DESIGN.md
+// §14.5), so this is a real oracle rather than a restatement of the solver.
 func TestRealTreeQueries(t *testing.T) {
-	t.Skip("known bug in cnf lowering: any single assumption conflicts; see comment")
 	m := realModel(t)
 	t.Logf("%d vars, %d clauses", m.F.NumVars(), len(m.F.Clauses))
 

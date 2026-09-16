@@ -70,6 +70,10 @@ func (p *parser) lines(file string, lines []string, outer *Expr) error {
 	scopes := []scope{{cond: outer}}
 	var cur *Symbol
 	var choice *ChoiceGroup
+	// A comment block takes its own depends-on lines. They belong to the
+	// comment's visibility and to nothing else, so they must not land on the
+	// preceding symbol or the enclosing choice.
+	inComment := false
 
 	guard := func() *Expr {
 		var e *Expr
@@ -89,6 +93,7 @@ func (p *parser) lines(file string, lines []string, outer *Expr) error {
 
 		switch kw {
 		case "config", "menuconfig":
+			inComment = false
 			name := firstField(rest)
 			cur = p.tree.Get(name)
 			cur.File, cur.Line = file, i+1
@@ -120,6 +125,9 @@ func (p *parser) lines(file string, lines []string, outer *Expr) error {
 			}
 
 		case "depends":
+			if inComment {
+				continue
+			}
 			rest = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(rest), "on"))
 			e, err := parseExpr(rest)
 			if err != nil {
@@ -191,6 +199,7 @@ func (p *parser) lines(file string, lines []string, outer *Expr) error {
 			i = skipHelp(lines, i)
 
 		case "if":
+			inComment = false
 			e, err := parseExpr(rest)
 			if err != nil {
 				return posErr(file, i, err)
@@ -199,12 +208,14 @@ func (p *parser) lines(file string, lines []string, outer *Expr) error {
 			cur = nil
 
 		case "endif", "endmenu":
+			inComment = false
 			if len(scopes) > 0 {
 				scopes = scopes[:len(scopes)-1]
 			}
 			cur = nil
 
 		case "menu":
+			inComment = false
 			// A menu's own visibility does not gate its contents the way "if"
 			// does; only "visible if" and "depends on" inside it do. Push an
 			// empty scope so endmenu stays balanced.
@@ -222,6 +233,7 @@ func (p *parser) lines(file string, lines []string, outer *Expr) error {
 			}
 
 		case "choice":
+			inComment = false
 			choice = &ChoiceGroup{
 				Name:    fmt.Sprintf("choice@%s:%d", file, i+1),
 				Depends: guard(),
@@ -232,6 +244,7 @@ func (p *parser) lines(file string, lines []string, outer *Expr) error {
 			cur = nil
 
 		case "endchoice":
+			inComment = false
 			choice = nil
 			cur = nil
 
@@ -257,7 +270,17 @@ func (p *parser) lines(file string, lines []string, outer *Expr) error {
 				return err
 			}
 
-		case "comment", "mainmenu", "endchoice ":
+		case "comment":
+			// A comment contributes no symbol, but it may carry depends-on
+			// lines of its own. Leaving cur and choice alone made those lines
+			// attach to whatever came before: BR2_STATIC_LIBS picked up
+			// "depends on BR2_TOOLCHAIN_USES_GLIBC" from the comment after it,
+			// giving it !GLIBC && GLIBC — a contradiction that made assuming
+			// that symbol instantly unsatisfiable.
+			inComment = true
+			cur = nil
+
+		case "mainmenu":
 			// no constraint content
 		}
 	}

@@ -202,3 +202,65 @@ func TestRealTree(t *testing.T) {
 		}
 	}
 }
+
+// A comment block carries its own depends-on lines, which belong to the
+// comment's visibility and to nothing else.
+//
+// Buildroot's Config.in has, right after BR2_STATIC_LIBS:
+//
+//	comment "static only needs a toolchain w/ uclibc or musl"
+//		depends on BR2_TOOLCHAIN_USES_GLIBC
+//
+// Treating comment as contentless left cur pointing at BR2_STATIC_LIBS, so that
+// line landed on it — giving the symbol !GLIBC && GLIBC. A contradiction, which
+// made assuming BR2_STATIC_LIBS instantly unsatisfiable and, through it, every
+// solver query that touched the libc choice.
+func TestCommentDependsDoNotLeak(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/Config.in", []byte(`
+config BR2_A
+	bool "a"
+	depends on !BR2_G
+
+comment "a needs something else"
+	depends on BR2_G
+
+config BR2_B
+	bool "b"
+`), 0o644)
+	tr, err := Load("Config.in", Options{Root: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tr.Symbols["BR2_A"].Depends.String(); got != "!BR2_G" {
+		t.Fatalf("comment's depends leaked onto the symbol: %s", got)
+	}
+	if tr.Symbols["BR2_B"] == nil {
+		t.Fatal("parsing did not continue past the comment")
+	}
+}
+
+// Inside a choice, a comment's depends must not land on the choice either.
+func TestCommentDependsDoNotLeakIntoChoice(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/Config.in", []byte(`
+choice
+	prompt "pick"
+config BR2_X
+	bool "x"
+
+comment "note"
+	depends on BR2_G
+
+config BR2_Y
+	bool "y"
+endchoice
+`), 0o644)
+	tr, err := Load("Config.in", Options{Root: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := tr.Choices[0]; c.Depends != nil {
+		t.Fatalf("comment's depends leaked onto the choice: %s", c.Depends)
+	}
+}
