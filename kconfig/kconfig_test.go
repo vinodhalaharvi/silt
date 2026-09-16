@@ -2,6 +2,7 @@ package kconfig
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -129,6 +130,11 @@ func TestChoiceMembersAndDefaults(t *testing.T) {
 
 // The whole Buildroot tree, when one is available. This is the only test that
 // exercises the real corpus, and it is where every parser bug so far was found.
+//
+// It asserts structural properties, never a symbol count. Buildroot gains and
+// loses hundreds of symbols between releases, so a hardcoded total pins the
+// test to one checkout and fails for the wrong reason on every other — which
+// teaches people to ignore it.
 func TestRealTree(t *testing.T) {
 	root := os.Getenv("SILT_BUILDROOT")
 	if root == "" {
@@ -141,17 +147,58 @@ func TestRealTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tr.Symbols) < 9000 {
-		t.Errorf("only %d symbols; expected ~9250", len(tr.Symbols))
+
+	// A floor, not a target: anything this low means the parse died early
+	// rather than that the tree changed.
+	if len(tr.Symbols) < 5000 {
+		t.Fatalf("only %d symbols — the parse stopped early", len(tr.Symbols))
 	}
+	t.Logf("%d symbols, %d choices", len(tr.Symbols), len(tr.Choices))
+
+	// Every symbol must be typed. An untyped symbol means a declaration the
+	// tokenizer failed to recognise, which is how bool"selftests" was found.
+	untyped := 0
 	for name, s := range tr.Symbols {
 		if s.Type == Unknown {
-			t.Errorf("%s has no type (%s:%d)", name, s.File, s.Line)
+			if untyped < 5 {
+				t.Errorf("%s has no type (%s:%d)", name, s.File, s.Line)
+			}
+			untyped++
 		}
 	}
+	if untyped > 5 {
+		t.Errorf("... and %d more untyped symbols", untyped-5)
+	}
+
+	// Symbols that have been in Buildroot for years and anchor the arch and
+	// toolchain trees. Their absence means whole files were skipped.
+	for _, want := range []string{"BR2_aarch64", "BR2_USE_MMU", "BR2_STATIC_LIBS"} {
+		if tr.Symbols[want] == nil {
+			t.Errorf("%s missing — a source file was likely skipped", want)
+		}
+	}
+
+	// Guards must cross file boundaries. Most symbols sit inside some `if` or
+	// under a package menu, so a tree where almost nothing has a dependency
+	// means the scope threading regressed.
+	withDeps := 0
+	for _, s := range tr.Symbols {
+		if s.Depends != nil {
+			withDeps++
+		}
+	}
+	if ratio := float64(withDeps) / float64(len(tr.Symbols)); ratio < 0.5 {
+		t.Errorf("only %.0f%% of symbols have dependencies; guards are being lost across source",
+			ratio*100)
+	}
+
+	// select must stay out of depends, or both readings of §8.1 collapse.
 	if s := tr.Symbols["BR2_PACKAGE_LIBCAMERA"]; s != nil {
-		if len(s.Selects) != 3 {
-			t.Errorf("libcamera selects: %+v", s.Selects)
+		if len(s.Selects) == 0 {
+			t.Error("libcamera has no selects recorded")
+		}
+		if s.Depends != nil && strings.Contains(s.Depends.String(), "BR2_PACKAGE_GNUTLS") {
+			t.Error("a select leaked into depends")
 		}
 	}
 }
