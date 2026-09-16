@@ -154,3 +154,23 @@ func TestErrorsCarryPosition(t *testing.T) {
 		t.Errorf("error lacks position: %v", err)
 	}
 }
+
+func TestCapabilityDeclarations(t *testing.T) {
+	f := parse(t, `
+(capabilities
+  (capability mmu (doc "has an MMU") (symbol BR2_USE_MMU))
+  (capability dhcp-client (doc "something does DHCP")))`)
+	d := f.Capabilities[0].Decls
+	if len(d) != 2 {
+		t.Fatalf("got %d decls", len(d))
+	}
+	if d[0].Symbol != "BR2_USE_MMU" || d[0].Doc != "has an MMU" {
+		t.Errorf("mmu: %+v", d[0])
+	}
+	// A capability need not correspond to any symbol. dhcp-client is an
+	// outcome two profiles satisfy by different means.
+	if d[1].Symbol != "" {
+		t.Errorf("dhcp-client should have no symbol: %+v", d[1])
+	}
+	rejects(t, `(capabilities (capability x (nonsense "y")))`, "unknown capability clause")
+}

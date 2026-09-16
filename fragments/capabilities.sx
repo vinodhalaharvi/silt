@@ -1,0 +1,37 @@
+;; The capability vocabulary.
+;;
+;; Before this file existed, `provides` and `requires` were matched by string
+;; alone: the same typo on both sides composed cleanly and meant nothing, and
+;; `mmu` had no connection to BR2_USE_MMU, which is a real symbol Buildroot
+;; already maintains. Declaring each name once makes a typo an error and gives
+;; every capability somewhere to say what it means.
+;;
+;; `symbol` is optional. Some capabilities correspond to a Kconfig symbol and
+;; some — an outcome rather than a setting — do not. Saying so is the point.
+
+(capabilities
+
+  (capability mmu
+    (doc "The target has a memory management unit.")
+    (symbol BR2_USE_MMU))
+
+  (capability virtio
+    (doc "The target exposes virtio devices for storage and network."))
+
+  (capability serial-console
+    (doc "The target has a serial console usable before userspace starts."))
+
+  (capability sdcard
+    (doc "The target boots from and mounts an SD card."))
+
+  (capability wifi-sdio
+    (doc "The target has an SDIO-attached wireless chipset."))
+
+  (capability csi-camera
+    (doc "The target has a CSI camera interface."))
+
+  ;; An outcome, not a setting. No single symbol expresses it: profile:minimal
+  ;; satisfies it with BusyBox udhcpc and profile:standard with
+  ;; systemd-networkd. A feature that named either one broke on the other.
+  (capability dhcp-client
+    (doc "Something in the image configures the primary interface over DHCP.")))

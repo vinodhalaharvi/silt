@@ -19,6 +19,10 @@ import (
 type Library struct {
 	Fragments map[string]*lang.Fragment
 	Rules     []*lang.Rules
+	// Declared is the capability vocabulary. Empty means undeclared, in which
+	// case provides and requires are matched by string alone as before — a
+	// library that has not adopted the declaration file still works.
+	Declared map[string]lang.CapabilityDecl
 	// Tree, when set, lets rule conditions see symbols that Kconfig's own
 	// select machinery will enable. Optional: without it, rules fire only on
 	// what fragments state, which is correct but misses select-implied
@@ -27,7 +31,10 @@ type Library struct {
 }
 
 func NewLibrary() *Library {
-	return &Library{Fragments: map[string]*lang.Fragment{}}
+	return &Library{
+		Fragments: map[string]*lang.Fragment{},
+		Declared:  map[string]lang.CapabilityDecl{},
+	}
 }
 
 // Add indexes everything in a parsed file.
@@ -39,8 +46,38 @@ func (l *Library) Add(f *lang.File) error {
 		}
 		l.Fragments[fr.ID.String()] = fr
 	}
+	for _, cs := range f.Capabilities {
+		for _, d := range cs.Decls {
+			if prev, ok := l.Declared[d.Name]; ok {
+				return fmt.Errorf("%s: capability %q redeclared (first at %s)",
+					d.Pos.Short(), d.Name, prev.Pos.Short())
+			}
+			l.Declared[d.Name] = d
+		}
+	}
 	l.Rules = append(l.Rules, f.Rules...)
 	return nil
+}
+
+// checkDeclared reports a capability name that is not in the vocabulary.
+//
+// This is the whole point of declaring them: provides and requires used to be
+// matched by string alone, so the same typo on both sides composed cleanly and
+// meant nothing.
+func (l *Library) checkDeclared(c lang.Capability, from lang.ID, verb string) error {
+	if len(l.Declared) == 0 {
+		return nil // no vocabulary declared; keep the old behaviour
+	}
+	if _, ok := l.Declared[c.Name]; ok {
+		return nil
+	}
+	known := make([]string, 0, len(l.Declared))
+	for n := range l.Declared {
+		known = append(known, n)
+	}
+	sort.Strings(known)
+	return fmt.Errorf("%s: %s %s capability %q, which is not declared\n  declared: %s",
+		c.Pos.Short(), from, verb, c.Name, strings.Join(known, ", "))
 }
 
 // Conflict is two fragments wanting different things from one symbol.
@@ -106,6 +143,9 @@ func (l *Library) Compose(im *lang.Image) (*Result, error) {
 		}
 		r.Fragments = append(r.Fragments, fr)
 		for _, c := range fr.Provides {
+			if err := l.checkDeclared(c, fr.ID, "provides"); err != nil {
+				return nil, err
+			}
 			r.Capabilities[c.Name] = fr.ID.String()
 		}
 	}
@@ -114,6 +154,9 @@ func (l *Library) Compose(im *lang.Image) (*Result, error) {
 	// provides fails here, in milliseconds, rather than partway into a build.
 	for _, fr := range r.Fragments {
 		for _, want := range fr.Requires {
+			if err := l.checkDeclared(want, fr.ID, "requires"); err != nil {
+				return nil, err
+			}
 			if _, ok := r.Capabilities[want.Name]; !ok {
 				return nil, fmt.Errorf("%s: capability %q required by %s is not provided by %s\n  %s provides: %s",
 					want.Pos.Short(), want.Name, fr.ID, targetOf(r.Fragments),

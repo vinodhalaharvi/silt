@@ -162,3 +162,41 @@ func TestMissingDhcpClientFailsEarly(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+// Once a vocabulary is declared, an undeclared name is an error. Before this,
+// the same typo on both sides composed cleanly and meant nothing.
+func TestUndeclaredCapabilityRejected(t *testing.T) {
+	l := lib(t,
+		`(capabilities (capability mmu))`,
+		`(fragment target:t (buildroot (y BR2_aarch64)) (provides (capability mmu)))`,
+		`(fragment profile:p (requires (capability mmuu)))`)
+	_, err := composeSrc(t, l, `(image i (compose target:t profile:p))`)
+	if err == nil || !strings.Contains(err.Error(), "not declared") {
+		t.Fatalf("got %v", err)
+	}
+	if !strings.Contains(err.Error(), "declared: mmu") {
+		t.Errorf("the error should list the vocabulary: %v", err)
+	}
+}
+
+// A library that has not adopted the declaration file keeps working.
+func TestUndeclaredVocabularyIsOptional(t *testing.T) {
+	l := lib(t,
+		`(fragment target:t (buildroot (y BR2_aarch64)) (provides (capability anything)))`,
+		`(fragment profile:p (requires (capability anything)))`)
+	if _, err := composeSrc(t, l, `(image i (compose target:t profile:p))`); err != nil {
+		t.Fatalf("no vocabulary declared, so names should not be checked: %v", err)
+	}
+}
+
+func TestCapabilityRedeclarationRejected(t *testing.T) {
+	l := NewLibrary()
+	f, _ := lang.ParseFile(`(capabilities (capability mmu))`, "a.sx")
+	if err := l.Add(f); err != nil {
+		t.Fatal(err)
+	}
+	g, _ := lang.ParseFile(`(capabilities (capability mmu))`, "b.sx")
+	if err := l.Add(g); err == nil {
+		t.Fatal("expected a redeclaration error")
+	}
+}

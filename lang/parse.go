@@ -42,6 +42,12 @@ func ParseFile(src, path string) (*File, error) {
 				return nil, err
 			}
 			f.Rules = append(f.Rules, r)
+		case "capabilities":
+			c, err := parseCapabilityDecls(n)
+			if err != nil {
+				return nil, err
+			}
+			f.Capabilities = append(f.Capabilities, c)
 		case "image":
 			im, err := parseImage(n)
 			if err != nil {
@@ -51,7 +57,7 @@ func ParseFile(src, path string) (*File, error) {
 		case "":
 			return nil, errf(n, "expected a list headed by a keyword")
 		default:
-			return nil, errf(n, "unknown top-level form %q; expected fragment, rules or image", n.Head())
+			return nil, errf(n, "unknown top-level form %q; expected fragment, rules, image or capabilities", n.Head())
 		}
 	}
 	return f, nil
@@ -392,4 +398,37 @@ func oneString(n *sexpr.Node) (string, error) {
 		return "", errf(n, `(%s "string") takes one string`, n.Head())
 	}
 	return a[0].Text, nil
+}
+
+func parseCapabilityDecls(n *sexpr.Node) (*Capabilities, error) {
+	c := &Capabilities{Pos: n.Pos}
+	for _, item := range n.Args() {
+		if item.Head() != "capability" || len(item.Args()) == 0 {
+			return nil, errf(item, "expected (capability NAME ...)")
+		}
+		a := item.Args()
+		if a[0].Kind != sexpr.KindSymbol {
+			return nil, errf(a[0], "capability name must be a symbol")
+		}
+		d := CapabilityDecl{Name: a[0].Text, Pos: item.Pos}
+		for _, opt := range a[1:] {
+			switch opt.Head() {
+			case "doc":
+				s, err := oneString(opt)
+				if err != nil {
+					return nil, err
+				}
+				d.Doc = s
+			case "symbol":
+				if len(opt.Args()) != 1 || opt.Args()[0].Kind != sexpr.KindSymbol {
+					return nil, errf(opt, "(symbol SYMBOL) takes one symbol")
+				}
+				d.Symbol = opt.Args()[0].Text
+			default:
+				return nil, errf(opt, "unknown capability clause %q", opt.Head())
+			}
+		}
+		c.Decls = append(c.Decls, d)
+	}
+	return c, nil
 }

@@ -41,7 +41,7 @@ expansion (DESIGN.md §14.3) and is carried verbatim.
 
 ```ebnf
 file     = { toplevel } ;
-toplevel = fragment | rules | image ;
+toplevel = fragment | rules | image | capabilities ;
 ```
 
 Exactly three things can appear at the top of a file. A file holding more than one
@@ -66,6 +66,23 @@ capability      = "(" "capability" name ")" ;
 `feature:`. This is a static check, not a grammatical one.
 
 ---
+
+## Capabilities
+
+```ebnf
+capabilities = "(" "capabilities" { capability-decl } ")" ;
+capability-decl = "(" "capability" name { cap-clause } ")" ;
+cap-clause   = "(" "doc" string ")"
+             | "(" "symbol" symbol ")" ;
+```
+
+One declaration per capability across the whole library. `symbol` is optional:
+some capabilities correspond to a Kconfig symbol, and some are outcomes that no
+single symbol expresses — `dhcp-client` is satisfied by BusyBox udhcpc under one
+profile and systemd-networkd under another.
+
+A library with no declarations keeps the older behaviour, where `provides` and
+`requires` match by string alone.
 
 ## Scopes and constraints
 
@@ -204,13 +221,14 @@ implementation-faithful and spec-faithful — expressible over the same imported
 
 ## The complete keyword set
 
-Thirty-five authored, plus nine that only the importer emits. The documentation
+Thirty-seven authored, plus nine that only the importer emits. The documentation
 previously claimed seven, which counted only the constraint forms and was wrong.
 
 | group | keywords |
 | --- | --- |
-| top level | `fragment` `rules` `image` |
+| top level | `fragment` `rules` `image` `capabilities` |
 | fragment | `doc` `provides` `requires` `capability` |
+| capability decl | `symbol` |
 | scope | `buildroot` `linux` |
 | constraint | `y` `m` `n` `at-least` `prefer` `value` `when` |
 | condition | `set?` `and` `or` `not` |

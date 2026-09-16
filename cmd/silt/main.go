@@ -179,6 +179,7 @@ func cmdCheck(args []string) error {
 			bad++
 		}
 		rep := verify.Check(res, tree)
+		verify.CheckCapabilities(lib.Declared, tree, rep)
 		if rep.OK() {
 			fmt.Printf("ok  %-18s %d symbols checked against buildroot %s\n",
 				im.Name, rep.Checked, treeVer)

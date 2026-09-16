@@ -134,6 +134,30 @@ func Check(res *compose.Result, tree *kconfig.Tree) *Report {
 	return rep
 }
 
+// CheckCapabilities verifies that every capability bound to a symbol names one
+// the tree actually has. A binding that points at nothing is worse than no
+// binding: it reads as verified and is not.
+func CheckCapabilities(decls map[string]lang.CapabilityDecl, tree *kconfig.Tree, rep *Report) {
+	names := make([]string, 0, len(decls))
+	for n := range decls {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		d := decls[n]
+		if d.Symbol == "" || strings.HasPrefix(d.Symbol, "CONFIG_") {
+			continue // unbound, or a Linux symbol from a tree not loaded here
+		}
+		if _, ok := tree.Symbols[d.Symbol]; !ok {
+			rep.add(Finding{
+				Pos: d.Pos.Short(), Symbol: d.Symbol,
+				Message: fmt.Sprintf("capability %q is bound to %s, which does not exist in this tree",
+					d.Name, d.Symbol),
+			})
+		}
+	}
+}
+
 func describe(c lang.Constraint) string {
 	if c.IsValue {
 		return `"` + c.Value + `"`

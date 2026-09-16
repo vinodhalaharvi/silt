@@ -91,6 +91,25 @@ type Capability struct {
 	Pos  sexpr.Pos
 }
 
+// CapabilityDecl is a capability's one authoritative declaration.
+//
+// Without a declared vocabulary, provides and requires are matched by string
+// alone: a name typed the same way on both sides passes and means nothing.
+// Declaring them once turns a typo into an error and gives each capability a
+// place to record what it means and, where one exists, the symbol that backs it.
+type CapabilityDecl struct {
+	Name   string
+	Doc    string
+	Symbol string // optional BR2_/CONFIG_ symbol this capability corresponds to
+	Pos    sexpr.Pos
+}
+
+// Capabilities is a declaration block, one per library.
+type Capabilities struct {
+	Decls []CapabilityDecl
+	Pos   sexpr.Pos
+}
+
 // Fragment is a target, profile or feature.
 type Fragment struct {
 	ID          ID
@@ -150,8 +169,9 @@ type Image struct {
 
 // File is everything parsed out of one .sx file.
 type File struct {
-	Path      string
-	Fragments []*Fragment
-	Rules     []*Rules
-	Images    []*Image
+	Path         string
+	Fragments    []*Fragment
+	Rules        []*Rules
+	Images       []*Image
+	Capabilities []*Capabilities
 }
