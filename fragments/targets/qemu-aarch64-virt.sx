@@ -13,6 +13,9 @@
     ;; on. Omitting it produced a rootfs and no Image, and nothing warned —
     ;; qemu simply refused to load a kernel that was never built.
     (y BR2_LINUX_KERNEL)
+    ;; Track the release's own kernel. This also makes the Kernel Headers
+    ;; choice follow automatically, so no header series has to be stated.
+    (y BR2_LINUX_KERNEL_LATEST_VERSION)
     ;; arm64 boots a flat "Image"; the symbol depends on BR2_aarch64, which is
     ;; why this belongs to the target rather than a profile.
     (y BR2_LINUX_KERNEL_IMAGE)
