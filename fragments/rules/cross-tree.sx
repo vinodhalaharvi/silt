@@ -24,10 +24,24 @@
     (y CONFIG_PACKET))
 
   ;; Userspace policy constrains the kernel.
+  ;; systemd's mandatory kernel options, quoted from its own README under
+  ;; "Kernel Config Options" — github.com/systemd/systemd, README lines 93-103.
+  ;; Ten, not the three an earlier draft listed from memory.
   (when (y BR2_INIT_SYSTEMD)
+    (y CONFIG_DEVTMPFS)
     (y CONFIG_CGROUPS)
     (y CONFIG_INOTIFY_USER)
+    (y CONFIG_SIGNALFD)
+    (y CONFIG_TIMERFD)
+    (y CONFIG_EPOLL)
+    (y CONFIG_UNIX)
+    (y CONFIG_SYSFS)
+    (y CONFIG_PROC_FS)
     (y CONFIG_FHANDLE))
+
+  ;; Same README: udev will not work with the legacy sysfs layout.
+  (when (y BR2_PACKAGE_SYSTEMD)
+    (n CONFIG_SYSFS_DEPRECATED))
 
   ;; Rootfs format chosen in Buildroot must be mountable by the kernel it builds.
   (when (y BR2_TARGET_ROOTFS_EXT2_4)

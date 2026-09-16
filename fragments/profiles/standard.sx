@@ -13,11 +13,11 @@
   (linux
     (y CONFIG_EXT4_FS)
     (y CONFIG_DEVTMPFS_MOUNT)
-    ;; systemd's hard requirements that live in the kernel tree, which the
-    ;; Buildroot tree cannot see. Cross-tree, therefore stated.
-    (y CONFIG_CGROUPS)
-    (y CONFIG_INOTIFY_USER)
-    (y CONFIG_FHANDLE))
+    ;; systemd's kernel requirements are NOT stated here. They belong to
+    ;; BR2_INIT_SYSTEMD wherever it is chosen, not to this profile, so they live
+    ;; in rules/cross-tree.sx sourced from systemd's own README. Stating them
+    ;; here would be a second copy to drift.
+    )
 
   (requires
     (capability mmu)))
