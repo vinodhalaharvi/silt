@@ -1,0 +1,8 @@
+;; Imported by silt import from configs/odroidc2_defconfig.
+;; silt import --kbuild checks this composes back to the source exactly.
+
+(image odroidc2
+  (compose
+    target:odroidc2
+    profile:odroidc2)
+  (verified-against (buildroot "2025.02.16")))

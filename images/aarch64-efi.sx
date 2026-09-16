@@ -1,0 +1,8 @@
+;; Imported by silt import from configs/aarch64_efi_defconfig.
+;; silt import --kbuild checks this composes back to the source exactly.
+
+(image aarch64-efi
+  (compose
+    target:aarch64-efi
+    profile:aarch64-efi)
+  (verified-against (buildroot "2025.02.16")))

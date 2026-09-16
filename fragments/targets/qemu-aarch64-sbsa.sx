@@ -1,0 +1,39 @@
+;; Imported by silt import from configs/qemu_aarch64_sbsa_defconfig, buildroot 2025.02.16.
+;; The target/profile split is a first cut by rule; the rule is noted on
+;; every line. Move lines between the two fragments freely.
+
+(fragment target:qemu-aarch64-sbsa
+  (doc "target part of qemu_aarch64_sbsa_defconfig")
+
+  ;; Derived from kbuild's .config of the source, not asserted.
+  (provides
+    (capability mmu))
+
+  (buildroot
+    (y BR2_aarch64)                                            ; :1 defined under arch/
+    (y BR2_neoverse_n1)                                        ; :2 defined under arch/
+    (y BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_12)             ; :3 kernel headers follow the kernel
+    (value BR2_GLOBAL_PATCH_DIR "board/qemu/patches")          ; :4 board integration hook
+    (value BR2_TARGET_GENERIC_GETTY_PORT "ttyAMA0")            ; :6 serial console is hardware
+    (value BR2_ROOTFS_POST_IMAGE_SCRIPT "board/qemu/post-image.sh board/qemu/aarch64-sbsa/assemble-flash-images support/scripts/genimage.sh") ; :8 board integration hook
+    (value BR2_ROOTFS_POST_SCRIPT_ARGS "$(BR2_DEFCONFIG) -c board/qemu/aarch64-sbsa/genimage.cfg") ; :9 board integration hook
+    (y BR2_LINUX_KERNEL)                                       ; :10 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_CUSTOM_VERSION)                        ; :11 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE "6.12.27")    ; :12 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG)               ; :13 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL)                    ; :14 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_NEEDS_HOST_PYTHON3)                    ; :15 defined under linux/ (kernel)
+    (y BR2_TARGET_ARM_TRUSTED_FIRMWARE)                        ; :20 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_ARM_TRUSTED_FIRMWARE_CUSTOM_VERSION)         ; :21 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_ARM_TRUSTED_FIRMWARE_CUSTOM_VERSION_VALUE "v2.12") ; :22 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_ARM_TRUSTED_FIRMWARE_PLATFORM "qemu_sbsa") ; :23 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_ARM_TRUSTED_FIRMWARE_FIP)                    ; :24 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_EDK2)                                        ; :25 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_EDK2_PLATFORM_QEMU_SBSA)                     ; :26 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_GRUB2)                                       ; :27 defined under boot/ (bootloader or firmware)
+    (y BR2_PACKAGE_HOST_DOSFSTOOLS)                            ; :28 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_GENIMAGE)                              ; :29 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_MTOOLS)                                ; :30 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_QEMU)                                  ; :31 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_QEMU_SYSTEM_MODE)                      ; :32 host tool, typically for boot media
+  ))

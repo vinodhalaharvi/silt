@@ -1,0 +1,7 @@
+(fragment feature:ssh
+  (requires (capability mmu))
+  (buildroot
+    (y BR2_PACKAGE_DROPBEAR)
+    ;; Dropbear rejects an empty password, so an SSH server with no root
+    ;; password is unreachable and, on a network-facing image, wrong either way.
+    (value BR2_TARGET_GENERIC_ROOT_PASSWD "silt")))

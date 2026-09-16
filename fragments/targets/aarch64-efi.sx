@@ -1,0 +1,27 @@
+;; Imported by silt import from configs/aarch64_efi_defconfig, buildroot 2025.02.16.
+;; The target/profile split is a first cut by rule; the rule is noted on
+;; every line. Move lines between the two fragments freely.
+
+(fragment target:aarch64-efi
+  (doc "target part of aarch64_efi_defconfig")
+
+  ;; Derived from kbuild's .config of the source, not asserted.
+  (provides
+    (capability mmu))
+
+  (buildroot
+    (y BR2_aarch64)                                            ; :1 defined under arch/
+    (value BR2_GLOBAL_PATCH_DIR "board/aarch64-efi/patches")   ; :5 board integration hook
+    (value BR2_ROOTFS_POST_IMAGE_SCRIPT "board/aarch64-efi/post-image.sh support/scripts/genimage.sh") ; :8 board integration hook
+    (value BR2_ROOTFS_POST_SCRIPT_ARGS "-c board/aarch64-efi/genimage-efi.cfg") ; :9 board integration hook
+    (y BR2_LINUX_KERNEL)                                       ; :10 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_CUSTOM_VERSION)                        ; :11 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE "6.11.11")    ; :12 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG)               ; :13 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL)                    ; :14 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_NEEDS_HOST_PYTHON3)                    ; :15 defined under linux/ (kernel)
+    (y BR2_TARGET_GRUB2)                                       ; :20 defined under boot/ (bootloader or firmware)
+    (y BR2_PACKAGE_HOST_DOSFSTOOLS)                            ; :21 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_GENIMAGE)                              ; :22 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_MTOOLS)                                ; :23 host tool, typically for boot media
+  ))

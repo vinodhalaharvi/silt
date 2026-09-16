@@ -1,0 +1,12 @@
+;; Raspberry Pi 4 with the standard userspace.
+;;
+;; target:raspberrypi4-64 was imported from Buildroot's own defconfig and
+;; round-trips through savedefconfig. profile:standard and feature:networking
+;; are unchanged from the QEMU and Odroid images — third board, same userspace.
+
+(image rpi4-standard
+  (compose
+    target:raspberrypi4-64
+    profile:standard
+    feature:networking)
+  (verified-against (buildroot "2025.02.16")))

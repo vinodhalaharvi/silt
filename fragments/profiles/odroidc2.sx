@@ -1,0 +1,11 @@
+;; Imported by silt import from configs/odroidc2_defconfig, buildroot 2025.02.16.
+;; The target/profile split is a first cut by rule; the rule is noted on
+;; every line. Move lines between the two fragments freely.
+
+(fragment profile:odroidc2
+  (doc "profile part of odroidc2_defconfig")
+
+  (buildroot
+    (y BR2_TARGET_ROOTFS_EXT2)                                 ; :15 not hardware by any rule above
+    (y BR2_TARGET_ROOTFS_EXT2_4)                               ; :16 not hardware by any rule above
+  ))

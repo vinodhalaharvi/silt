@@ -1,0 +1,18 @@
+;; Imported by silt import from configs/aarch64_efi_defconfig, buildroot 2025.02.16.
+;; The target/profile split is a first cut by rule; the rule is noted on
+;; every line. Move lines between the two fragments freely.
+
+(fragment profile:aarch64-efi
+  (doc "profile part of aarch64_efi_defconfig")
+
+  (buildroot
+    (y BR2_TOOLCHAIN_EXTERNAL)                                 ; :2 not hardware by any rule above
+    (y BR2_TOOLCHAIN_EXTERNAL_BOOTLIN)                         ; :3 not hardware by any rule above
+    (y BR2_TOOLCHAIN_EXTERNAL_BOOTLIN_AARCH64_GLIBC_STABLE)    ; :4 not hardware by any rule above
+    (y BR2_DOWNLOAD_FORCE_CHECK_HASHES)                        ; :6 not hardware by any rule above
+    (y BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV)               ; :7 not hardware by any rule above
+    (y BR2_TARGET_ROOTFS_EXT2)                                 ; :16 not hardware by any rule above
+    (y BR2_TARGET_ROOTFS_EXT2_4)                               ; :17 not hardware by any rule above
+    (value BR2_TARGET_ROOTFS_EXT2_SIZE "200M")                 ; :18 not hardware by any rule above
+    (n BR2_TARGET_ROOTFS_TAR)                                  ; :19 not hardware by any rule above
+  ))

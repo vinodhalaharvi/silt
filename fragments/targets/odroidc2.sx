@@ -1,0 +1,39 @@
+;; Imported by silt import from configs/odroidc2_defconfig, buildroot 2025.02.16.
+;; The target/profile split is a first cut by rule; the rule is noted on
+;; every line. Move lines between the two fragments freely.
+
+(fragment target:odroidc2
+  (doc "target part of odroidc2_defconfig")
+
+  ;; Derived from kbuild's .config of the source, not asserted.
+  (provides
+    (capability mmu))
+
+  (buildroot
+    (y BR2_aarch64)                                            ; :1 defined under arch/
+    (y BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_5_7)              ; :2 kernel headers follow the kernel
+    (value BR2_TARGET_GENERIC_HOSTNAME "odroidc2")             ; :3 names the board
+    (value BR2_TARGET_GENERIC_GETTY_PORT "ttyAML0")            ; :4 serial console is hardware
+    (y BR2_TARGET_GENERIC_GETTY_BAUDRATE_115200)               ; :5 serial console is hardware
+    (value BR2_ROOTFS_OVERLAY "board/hardkernel/odroidc2/rootfs_overlay") ; :6 board integration hook
+    (value BR2_ROOTFS_POST_IMAGE_SCRIPT "board/hardkernel/odroidc2/post-image.sh") ; :7 board integration hook
+    (y BR2_LINUX_KERNEL)                                       ; :8 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_CUSTOM_VERSION)                        ; :9 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE "5.7")        ; :10 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG)               ; :11 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_DTS_SUPPORT)                           ; :12 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_INTREE_DTS_NAME "amlogic/meson-gxbb-odroidc2") ; :13 defined under linux/ (kernel)
+    (y BR2_PACKAGE_ODROIDC2_FIRMWARE)                          ; :14 firmware package
+    (y BR2_TARGET_UBOOT)                                       ; :17 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_UBOOT_BOARDNAME "odroid-c2")             ; :18 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_CUSTOM_VERSION)                        ; :19 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_UBOOT_CUSTOM_VERSION_VALUE "2020.07")    ; :20 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_DTC)                             ; :21 defined under boot/ (bootloader or firmware)
+    (y BR2_PACKAGE_HOST_DOSFSTOOLS)                            ; :22 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_GENIMAGE)                              ; :23 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_MESON_TOOLS)                           ; :24 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_MTOOLS)                                ; :25 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_UBOOT_TOOLS)                           ; :26 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_UBOOT_TOOLS_BOOT_SCRIPT)               ; :27 host tool, typically for boot media
+    (value BR2_PACKAGE_HOST_UBOOT_TOOLS_BOOT_SCRIPT_SOURCE "board/hardkernel/odroidc2/boot.cmd") ; :28 host tool, typically for boot media
+  ))

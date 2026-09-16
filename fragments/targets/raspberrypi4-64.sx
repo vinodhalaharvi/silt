@@ -1,0 +1,34 @@
+;; Imported by silt import from configs/raspberrypi4_64_defconfig, buildroot 2025.02.16.
+;; The target/profile split is a first cut by rule; the rule is noted on
+;; every line. Move lines between the two fragments freely.
+
+(fragment target:raspberrypi4-64
+  (doc "target part of raspberrypi4_64_defconfig")
+
+  ;; Derived from kbuild's .config of the source, not asserted.
+  (provides
+    (capability mmu))
+
+  (buildroot
+    (y BR2_aarch64)                                            ; :1 defined under arch/
+    (y BR2_cortex_a72)                                         ; :2 defined under arch/
+    (y BR2_ARM_FPU_VFPV4)                                      ; :3 defined under arch/
+    (y BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_6)              ; :4 kernel headers follow the kernel
+    (value BR2_GLOBAL_PATCH_DIR "board/raspberrypi/patches")   ; :6 board integration hook
+    (value BR2_ROOTFS_POST_BUILD_SCRIPT "board/raspberrypi4-64/post-build.sh") ; :9 board integration hook
+    (value BR2_ROOTFS_POST_IMAGE_SCRIPT "board/raspberrypi4-64/post-image.sh") ; :10 board integration hook
+    (y BR2_LINUX_KERNEL)                                       ; :11 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_CUSTOM_TARBALL)                        ; :12 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION "$(call github,raspberrypi,linux,576cc10e1ed50a9eacffc7a05c796051d7343ea4)/linux-576cc10e1ed50a9eacffc7a05c796051d7343ea4.tar.gz") ; :13 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_DEFCONFIG "bcm2711")               ; :14 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_DTS_SUPPORT)                           ; :15 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_INTREE_DTS_NAME "broadcom/bcm2711-rpi-4-b broadcom/bcm2711-rpi-400 broadcom/bcm2711-rpi-cm4 broadcom/bcm2711-rpi-cm4s") ; :16 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL)                    ; :17 defined under linux/ (kernel)
+    (y BR2_PACKAGE_RPI_FIRMWARE)                               ; :20 firmware package
+    (y BR2_PACKAGE_RPI_FIRMWARE_VARIANT_PI4)                   ; :21 firmware package
+    (value BR2_PACKAGE_RPI_FIRMWARE_CONFIG_FILE "board/raspberrypi4-64/config_4_64bit.txt") ; :22 firmware package
+    (y BR2_PACKAGE_HOST_DOSFSTOOLS)                            ; :29 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_GENIMAGE)                              ; :30 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_KMOD_XZ)                               ; :31 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_MTOOLS)                                ; :32 host tool, typically for boot media
+  ))

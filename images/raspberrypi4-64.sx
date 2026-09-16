@@ -1,0 +1,8 @@
+;; Imported by silt import from configs/raspberrypi4_64_defconfig.
+;; silt import --kbuild checks this composes back to the source exactly.
+
+(image raspberrypi4-64
+  (compose
+    target:raspberrypi4-64
+    profile:raspberrypi4-64)
+  (verified-against (buildroot "2025.02.16")))
