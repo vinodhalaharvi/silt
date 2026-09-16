@@ -110,28 +110,30 @@ func Solve(res *compose.Result, tree *kconfig.Tree) *Result {
 				continue
 			}
 			v := m.F.Var(name).Var()
-			if r.Model[v] {
+			if r.Value(v) {
 				out.Implied = append(out.Implied, name)
 			}
 		}
 		sort.Strings(out.Implied)
 
 	case solver.UNSAT:
-		out.Culprits = narrow(m.F, out.Assumptions)
+		out.Culprits = narrow(m.F, out.Assumptions, r.Core)
 	}
 	return out
 }
 
-// narrow finds a minimal-ish subset of assumptions that is still unsatisfiable,
+// narrow finds a minimal subset of assumptions that is still unsatisfiable,
 // by dropping each in turn and keeping it only when its removal makes the rest
 // satisfiable.
 //
 // This is deletion-based minimisation, the simplest MUS algorithm there is. It
-// is not the full rung 8 story — no MCS, no ranked repairs — but it turns "these
-// forty assumptions conflict" into the two or three that actually do, which is
-// the difference between a core and an explanation.
-func narrow(f *cnf.Formula, all []Assumption) []Assumption {
-	keep := append([]Assumption(nil), all...)
+// starts from the solver's core rather than every assumption — the core is
+// already unsatisfiable and usually a handful of literals, so most deletions
+// never need a solve — and runs every query on one solver, so what the first
+// query learns about the tree is not rediscovered by the next.
+func narrow(f *cnf.Formula, all []Assumption, core []cnf.Lit) []Assumption {
+	keep := coreAssumptions(all, core)
+	s := solver.New(f)
 	for i := 0; i < len(keep); {
 		trial := make([]cnf.Lit, 0, len(keep)-1)
 		for j, a := range keep {
@@ -139,7 +141,7 @@ func narrow(f *cnf.Formula, all []Assumption) []Assumption {
 				trial = append(trial, a.Lit)
 			}
 		}
-		if solver.New(f).Solve(trial...).Status == solver.UNSAT {
+		if r := s.Solve(trial...); r.Status == solver.UNSAT {
 			// Still unsatisfiable without it, so it was not to blame.
 			keep = append(keep[:i], keep[i+1:]...)
 			continue
@@ -147,6 +149,28 @@ func narrow(f *cnf.Formula, all []Assumption) []Assumption {
 		i++
 	}
 	return keep
+}
+
+// coreAssumptions maps a solver core back to the assumptions that supplied it,
+// in their original order. An empty core means the tree is unsatisfiable on
+// its own, which no subset of assumptions explains, so every assumption is
+// returned and deletion finds that out honestly.
+func coreAssumptions(all []Assumption, core []cnf.Lit) []Assumption {
+	if len(core) == 0 {
+		return append([]Assumption(nil), all...)
+	}
+	in := map[cnf.Lit]bool{}
+	for _, l := range core {
+		in[l] = true
+	}
+	var out []Assumption
+	for _, a := range all {
+		if in[a.Lit] {
+			out = append(out, a)
+			delete(in, a.Lit)
+		}
+	}
+	return out
 }
 
 // Explain renders the outcome.

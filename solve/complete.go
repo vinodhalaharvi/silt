@@ -66,15 +66,18 @@ func Complete(res *compose.Result, tree *kconfig.Tree) *Completion {
 	// Preferences are added one at a time and kept only while the result stays
 	// satisfiable. That is a greedy approximation of MaxSAT, not the optimum:
 	// with few soft constraints the difference is nil, and it keeps the cost at
-	// one solve per preference rather than one per symbol.
+	// one solve per preference rather than one per symbol. The probes share one
+	// solver; the final solve below gets its own, so the model it lands on does
+	// not depend on which preferences happened to be probed first.
 	assumed := append([]cnf.Lit(nil), hard...)
+	probe := solver.New(m.F)
 	for _, s := range softs {
 		lit := m.F.Var(s.Symbol)
 		if s.Want == lang.N {
 			lit = lit.Neg()
 		}
 		trial := append(append([]cnf.Lit(nil), assumed...), lit)
-		if solver.New(m.F).Solve(trial...).Status == solver.SAT {
+		if probe.Solve(trial...).Status == solver.SAT {
 			assumed = trial
 			continue
 		}
@@ -98,9 +101,9 @@ func Complete(res *compose.Result, tree *kconfig.Tree) *Completion {
 			continue
 		}
 		v := m.F.Var(name).Var()
-		c.Values[name] = r.Model[v]
+		c.Values[name] = r.Value(v)
 		if want, ok := pol[v]; ok {
-			if want == r.Model[v] {
+			if want == r.Value(v) {
 				c.DefaultsHonored++
 			} else {
 				c.DefaultsOverridden = append(c.DefaultsOverridden, name)
