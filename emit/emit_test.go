@@ -110,3 +110,46 @@ func TestExt2ParentIsStated(t *testing.T) {
 		t.Errorf("parent guard symbol must be emitted:\n%s", out)
 	}
 }
+
+// A kernel is only built when BR2_LINUX_KERNEL is set. Stating CONFIG_*
+// symbols does not imply it: they describe a kernel's content, while this
+// switches the kernel package on. Omitting it produced a rootfs and no Image,
+// and nothing warned — qemu just refused to load a kernel never built.
+func TestKernelIsActuallyRequested(t *testing.T) {
+	r := build(t, []string{
+		`(fragment target:t (buildroot (y BR2_aarch64) (y BR2_LINUX_KERNEL)
+		    (y BR2_LINUX_KERNEL_IMAGE)) (provides (capability mmu)))`,
+		`(fragment profile:p (requires (capability mmu)))`,
+	}, `(image i (compose target:t profile:p) (linux (custom-version "6.18.7")))`)
+
+	out := DefconfigWithKernel(r, lang.Buildroot, "/abs/out/linux.config")
+	for _, want := range []string{
+		"BR2_LINUX_KERNEL=y",
+		"BR2_LINUX_KERNEL_IMAGE=y",
+		`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.7"`,
+		`BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="/abs/out/linux.config"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// The emitted linux.config must be handed to Buildroot, or the Linux half of
+// every fragment is produced and then ignored — Silt committing the very
+// two-halves-disagree failure it exists to remove.
+func TestLinuxHalfIsWiredIn(t *testing.T) {
+	r := build(t, []string{
+		`(fragment target:t (buildroot (y BR2_aarch64)) (linux (y CONFIG_VIRTIO_BLK))
+		   (provides (capability mmu)))`,
+		`(fragment profile:p (requires (capability mmu)))`,
+	}, `(image i (compose target:t profile:p))`)
+
+	if !strings.Contains(DefconfigWithKernel(r, lang.Buildroot, "/x/linux.config"),
+		"BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES") {
+		t.Error("linux.config is emitted but never referenced from the defconfig")
+	}
+	if !strings.Contains(Defconfig(r, lang.Linux), "CONFIG_VIRTIO_BLK=y") {
+		t.Error("linux scope did not reach linux.config")
+	}
+}

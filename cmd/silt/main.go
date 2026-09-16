@@ -195,7 +195,11 @@ func cmdEmit(args []string) error {
 	}
 	br := filepath.Join(outDir, "defconfig")
 	lx := filepath.Join(outDir, "linux.config")
-	if err := os.WriteFile(br, []byte(emit.Defconfig(r, lang.Buildroot)), 0o644); err != nil {
+	lxAbs, err := filepath.Abs(lx)
+	if err != nil {
+		lxAbs = lx
+	}
+	if err := os.WriteFile(br, []byte(emit.DefconfigWithKernel(r, lang.Buildroot, lxAbs)), 0o644); err != nil {
 		return err
 	}
 	if err := os.WriteFile(lx, []byte(emit.Defconfig(r, lang.Linux)), 0o644); err != nil {

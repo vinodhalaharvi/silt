@@ -6,7 +6,20 @@
     ;; Choice: Kconfig offers every ARM64 core, picking one is intent.
     (y BR2_aarch64)
     (y BR2_cortex_a57)
-    (value BR2_TARGET_GENERIC_GETTY_PORT "ttyAMA0"))
+    (value BR2_TARGET_GENERIC_GETTY_PORT "ttyAMA0")
+
+    ;; Build a kernel at all. Stating CONFIG_* symbols does not imply this:
+    ;; they describe a kernel's content, while this switches the kernel package
+    ;; on. Omitting it produced a rootfs and no Image, and nothing warned —
+    ;; qemu simply refused to load a kernel that was never built.
+    (y BR2_LINUX_KERNEL)
+    ;; arm64 boots a flat "Image"; the symbol depends on BR2_aarch64, which is
+    ;; why this belongs to the target rather than a profile.
+    (y BR2_LINUX_KERNEL_IMAGE)
+    ;; Base config is the kernel's own arm64 defconfig. Silt's linux.config is
+    ;; layered on top as a fragment — see emit/defconfig.go.
+    (y BR2_LINUX_KERNEL_USE_DEFCONFIG)
+    (value BR2_LINUX_KERNEL_DEFCONFIG "defconfig"))
 
   (linux
     ;; Strengthening. Kconfig permits =m for both of these. The rootfs is on
