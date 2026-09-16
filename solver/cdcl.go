@@ -344,6 +344,12 @@ func (s *Solver) Solve(assumptions ...cnf.Lit) Result {
 				back = assumpLevel
 			}
 			s.backtrack(back)
+			// head must be taken BEFORE asserting the learned literal.
+			// Taking it after left the newly asserted literal behind the
+			// propagation frontier, so the consequence of every learned
+			// clause was silently skipped and the search could walk to a
+			// total assignment that satisfied nothing.
+			head = len(s.trail)
 			if len(learnt) == 1 {
 				s.enqueue(learnt[0], nil)
 			} else {
@@ -353,7 +359,6 @@ func (s *Solver) Solve(assumptions ...cnf.Lit) Result {
 				s.watches[learnt[1].Neg()] = append(s.watches[learnt[1].Neg()], lc)
 				s.enqueue(learnt[0], lc)
 			}
-			head = len(s.trail)
 			continue
 		}
 		head = len(s.trail)

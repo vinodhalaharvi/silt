@@ -45,14 +45,9 @@ func TestAtMostOne(t *testing.T) {
 
 // Pigeonhole is small but needs real clause learning: without it, search
 // blows up. Three pigeons in two holes is unsatisfiable.
-// KNOWN BUG, rung 6 incomplete. The search reaches a total assignment that
-// does not satisfy the formula, which means propagation is missing conflicts.
-// Solve now returns Unknown with an error rather than a wrong SAT, so nothing
-// downstream can consume a bogus model — but the solver is not finished.
-//
-// Reproduce with: go test ./solver/ -run Pigeonhole -known-bug
+// Pigeonhole needs real clause learning: without it the search blows up.
+// Three pigeons in two holes is unsatisfiable.
 func TestPigeonhole(t *testing.T) {
-	t.Skip("known bug: search returns an unverifiable model; see comment above")
 	f := cnf.New()
 	p := func(i, j int) cnf.Lit { return f.Var(string(rune('a'+i)) + string(rune('0'+j))) }
 	for i := 0; i < 3; i++ {

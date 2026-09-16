@@ -97,18 +97,20 @@ func Lower(t *kconfig.Tree) *Model {
 		}
 		origin := fmt.Sprintf("%s:%d choice", c.File, c.Line)
 		f.AtMostOne(origin, lits)
-		if !c.Optional {
-			// A non-optional choice needs at least one member, but only when
-			// the choice itself is reachable. Without its guard this would
-			// force a member on in configurations where the whole block is
-			// switched off.
-			if c.Depends == nil {
-				f.Add(origin+" at-least-one", lits...)
-			} else {
-				g := m.lowerExpr(c.Depends, origin)
-				f.Add(origin+" at-least-one", append([]Lit{g.Neg()}, lits...)...)
-			}
-		}
+		// Deliberately NOT emitting an at-least-one clause.
+		//
+		// Kconfig does not force a member on when none is visible: a choice
+		// whose members all have unmet dependencies is simply left unset.
+		// Encoding "some member must be true" makes assuming an unrelated
+		// symbol activate a choice guard and then contradict, which is exactly
+		// what it did — assuming BR2_STATIC_LIBS alone came back UNSAT.
+		//
+		// This under-approximates: the model admits configurations where a
+		// non-optional choice has no member selected, which kbuild would fill
+		// in from defaults. That is the safe direction — it never rejects a
+		// configuration kbuild accepts — and completing a choice from its
+		// defaults is the completion problem, which is rung 7.
+		m.Skipped[origin] = "choice at-least-one not modelled; see cnf/lower.go"
 	}
 	return m
 }
