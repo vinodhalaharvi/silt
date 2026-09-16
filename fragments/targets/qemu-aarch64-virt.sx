@@ -19,10 +19,20 @@
     ;; arm64 boots a flat "Image"; the symbol depends on BR2_aarch64, which is
     ;; why this belongs to the target rather than a profile.
     (y BR2_LINUX_KERNEL_IMAGE)
-    ;; Base config is the kernel's own arm64 defconfig. Silt's linux.config is
-    ;; layered on top as a fragment — see emit/defconfig.go.
-    (y BR2_LINUX_KERNEL_USE_DEFCONFIG)
-    (value BR2_LINUX_KERNEL_DEFCONFIG "defconfig"))
+    ;; arm64 has no *named* defconfig. Buildroot builds the filename as
+    ;; $(BR2_LINUX_KERNEL_DEFCONFIG)_defconfig, and the kernel ships
+    ;; arch/arm64/configs/defconfig with no prefix — so "defconfig" becomes
+    ;; defconfig_defconfig and leaving it empty is an explicit error. The name
+    ;; is simply not expressible.
+    ;;
+    ;; Upstream qemu_aarch64_virt_defconfig solves this by shipping a full
+    ;; kernel config for the board, which is what USE_CUSTOM_CONFIG takes.
+    ;; Silt's own linux.config layers on top of it as a fragment, so the base
+    ;; comes from Buildroot and the constraints come from the fragments.
+    (y BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG)
+    (value BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE "board/qemu/aarch64-virt/linux.config")
+    ;; The kernel signs modules with openssl during its build.
+    (y BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL))
 
   (linux
     ;; Strengthening. Kconfig permits =m for both of these. The rootfs is on
