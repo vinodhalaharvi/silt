@@ -15,13 +15,16 @@ import (
 
 	"github.com/vinodhalaharvi/silt/compose"
 	"github.com/vinodhalaharvi/silt/emit"
+	"github.com/vinodhalaharvi/silt/kconfig"
 	"github.com/vinodhalaharvi/silt/lang"
 	"github.com/vinodhalaharvi/silt/sexpr"
+	"github.com/vinodhalaharvi/silt/verify"
 )
 
 const usage = `silt — composable S-expressions over Kconfig
 
   silt check [PATH...]              parse and validate; report problems
+  silt check --buildroot DIR        also verify every claim against that tree
   silt emit IMAGE.sx [-o DIR]       compose and write defconfig + linux.config
   silt fmt [-w] [PATH...]           canonical form
   silt hash [PATH...]               content address of each file
@@ -112,6 +115,38 @@ func loadAll(paths []string) ([]*lang.File, error) {
 }
 
 func cmdCheck(args []string) error {
+	var brDir string
+	var rest []string
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--buildroot" {
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("--buildroot needs a directory")
+			}
+			brDir = args[i]
+			continue
+		}
+		rest = append(rest, args[i])
+	}
+	args = rest
+
+	var tree *kconfig.Tree
+	var treeVer string
+	if brDir != "" {
+		var err error
+		treeVer, err = kconfig.TreeVersion(brDir)
+		if err != nil {
+			return fmt.Errorf("%s does not look like a Buildroot tree: %w", brDir, err)
+		}
+		tree, err = kconfig.Load("Config.in", kconfig.Options{Root: brDir, Env: map[string]string{
+			"BR2_BASE_DIR": filepath.Join(brDir, "output"), "HOSTARCH": "x86_64",
+			"HOST_GCC_VERSION": "13 2", "BR2_VERSION_FULL": treeVer,
+		}})
+		if err != nil {
+			return fmt.Errorf("importing %s: %w", brDir, err)
+		}
+	}
+
 	files, err := loadAll(args)
 	if err != nil {
 		return err
@@ -127,10 +162,37 @@ func cmdCheck(args []string) error {
 		nr += len(f.Rules)
 		images = append(images, f.Images...)
 	}
+	bad := 0
 	for _, im := range images {
-		if _, err := lib.Compose(im); err != nil {
+		res, err := lib.Compose(im)
+		if err != nil {
 			return fmt.Errorf("image %s: %w", im.Name, err)
 		}
+		if tree == nil {
+			continue
+		}
+		// A pin that disagrees with the tree is reported before anything else:
+		// every finding below is only meaningful for the release it was
+		// checked against.
+		if want, ok := im.VerifiedAgainst["buildroot"]; ok && want != treeVer {
+			fmt.Printf("%s: pinned to buildroot %s, checking against %s\n",
+				im.Name, want, treeVer)
+			bad++
+		}
+		rep := verify.Check(res, tree)
+		if rep.OK() {
+			fmt.Printf("ok  %-18s %d symbols checked against buildroot %s\n",
+				im.Name, rep.Checked, treeVer)
+			continue
+		}
+		bad++
+		fmt.Printf("\n%s — %d problem(s), buildroot %s\n", im.Name, len(rep.Findings), treeVer)
+		for _, f := range rep.Findings {
+			fmt.Printf("  %s\n", f)
+		}
+	}
+	if bad > 0 {
+		return fmt.Errorf("%d image(s) do not match the tree", bad)
 	}
 	fmt.Printf("ok  %d files, %d fragments, %d rule blocks, %d images\n",
 		len(files), nf, nr, len(images))

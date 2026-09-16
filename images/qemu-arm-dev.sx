@@ -55,4 +55,9 @@
 
   (repair-policy
     (minimize changed-symbols)
-    (baseline "buildroot/configs/qemu_aarch64_virt_defconfig")))
+    (baseline "buildroot/configs/qemu_aarch64_virt_defconfig"))
+
+  ;; The release these claims were checked against. A fragment asserts things
+  ;; that are true of a Buildroot release, not of Buildroot in general — every
+  ;; failure `silt check --buildroot` exists to catch was release-specific.
+  (verified-against (buildroot "2025.02.16")))

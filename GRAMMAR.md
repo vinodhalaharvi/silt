@@ -135,7 +135,7 @@ image         = "(" "image" name { image-clause } ")" ;
 
 image-clause  = doc | compose | scope | override
               | opaque | unmanaged | delegate | environment
-              | repair-policy ;
+              | verified-against | repair-policy ;
 
 compose       = "(" "compose" { fragment-id } ")" ;
 override      = "(" "override" { constraint } ")" ;
@@ -144,6 +144,9 @@ opaque        = "(" "opaque" { value } ")" ;
 unmanaged     = "(" "unmanaged" { symbol-pattern } ")" ;
 delegate      = "(" "delegate" tree-name delegation ")" ;
 environment   = "(" "environment" { value } ")" ;
+
+verified-against = "(" "verified-against" { tree-version } ")" ;
+tree-version     = "(" tree-name string ")" ;
 
 tree-name     = "linux" | "uboot" | "barebox" | "busybox" | "uclibc" | name ;
 delegation    = "(" "custom-config-file" string ")"
@@ -201,7 +204,7 @@ implementation-faithful and spec-faithful — expressible over the same imported
 
 ## The complete keyword set
 
-Thirty-four authored, plus nine that only the importer emits. The documentation
+Thirty-five authored, plus nine that only the importer emits. The documentation
 previously claimed seven, which counted only the constraint forms and was wrong.
 
 | group | keywords |
@@ -212,7 +215,7 @@ previously claimed seven, which counted only the constraint forms and was wrong.
 | constraint | `y` `m` `n` `at-least` `prefer` `value` `when` |
 | condition | `set?` `and` `or` `not` |
 | tree option | `custom-version` |
-| image | `compose` `override` `opaque` `unmanaged` `delegate` `environment` |
+| image | `compose` `override` `opaque` `unmanaged` `delegate` `environment` `verified-against` |
 | delegation | `custom-config-file` `config-fragment-files` |
 | policy | `repair-policy` `minimize` `keep` `baseline` |
 | imported (generated) | `symbol` `type` `depends` `selects` `implies` `default` `choice` `source` |

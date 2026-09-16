@@ -87,6 +87,18 @@ func parseImage(n *sexpr.Node) (*Image, error) {
 			}
 			im.Delegate = append(im.Delegate, d)
 
+		case "verified-against":
+			if im.VerifiedAgainst == nil {
+				im.VerifiedAgainst = map[string]string{}
+			}
+			for _, a := range cl.Args() {
+				h := a.Head()
+				if h == "" || len(a.Args()) != 1 || a.Args()[0].Kind != sexpr.KindString {
+					return nil, errf(a, `expected (TREE "version"), e.g. (buildroot "2025.02.16")`)
+				}
+				im.VerifiedAgainst[h] = a.Args()[0].Text
+			}
+
 		case "repair-policy":
 			if err := parsePolicy(cl, &im.Policy); err != nil {
 				return nil, err

@@ -262,6 +262,29 @@ CONFIG_VIDEO_DEV = m
 
 ---
 
+## Checking against the tree
+
+A fragment asserts things that are true of a Buildroot *release*, not of
+Buildroot in general. `silt check --buildroot` imports the release's 9,000-odd
+symbols and verifies every claim against them:
+
+```console
+$ silt check --buildroot ~/buildroot
+
+ok  dev-board          18 symbols checked against buildroot 2025.02.16
+
+edge-camera — 1 problem(s), buildroot 2025.02.16
+  fragments/features/camera.sx:10: BR2_PACKAGE_LIBCAMERA requires !BR2_STATIC_LIBS
+                                   (package/libcamera/Config.in:7)
+  but BR2_STATIC_LIBS is stated y by profile:minimal at fragments/profiles/minimal.sx:25
+```
+
+It catches symbols absent from that release, type mismatches, and dependencies
+the composition contradicts. Images record the release they were checked against
+with `(verified-against (buildroot "2025.02.16"))`, and a mismatch is reported
+before anything else — the findings only mean something for the tree they were
+checked on.
+
 ## Honest scope
 
 **Silt is lossy, and says so on every run.** It models 2 of the 12 Kconfig trees

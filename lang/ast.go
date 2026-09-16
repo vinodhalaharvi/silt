@@ -141,7 +141,11 @@ type Image struct {
 	Environment []Constraint
 	Policy      Policy
 	Version     string
-	Pos         sexpr.Pos
+	// VerifiedAgainst pins the tree release this image's claims were checked
+	// against. A fragment asserts things that are true of a release, not of
+	// Buildroot in general.
+	VerifiedAgainst map[string]string
+	Pos             sexpr.Pos
 }
 
 // File is everything parsed out of one .sx file.
