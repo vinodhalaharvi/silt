@@ -15,6 +15,19 @@
   (linux
     (custom-version "6.18.7"))
 
+  ;; Pinning a kernel version obliges you to declare its header series too.
+  ;; Buildroot cannot infer 6.18.x from the string "6.18.7": the headers choice
+  ;; falls back to BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_REALLY_OLD, the build
+  ;; gets 2.6 headers against a 6.18 kernel, and check-kernel-headers.sh stops
+  ;; it with "expected 2.6.x, got 6.18.x".
+  ;;
+  ;; This belongs in the image rather than the target because it tracks
+  ;; custom-version above, and the two must be changed together. That coupling
+  ;; is exactly what a cross-tree rule should enforce once version literals are
+  ;; modelled — today nothing checks it.
+  (buildroot
+    (y BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_18))
+
   ;; Not expressible as constraints (DESIGN.md §14.3, §14.4). Carried verbatim,
   ;; counted in every report, excluded from the fixpoint diff by declaration.
   ;; BR2_GLOBAL_PATCH_DIR is deliberately absent. Upstream
