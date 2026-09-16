@@ -72,6 +72,29 @@ func (r *Result) applyRules() error {
 		index[key(c.Symbol)] = c
 	}
 
+	// Add what Kconfig's select machinery will turn on. These are real facts
+	// about the built image, so a rule may fire on them — but they are not
+	// emitted, because kbuild derives them itself and restating a select is
+	// exactly what fragments/README.md forbids.
+	if r.tree != nil {
+		on := map[string]bool{}
+		for _, c := range index {
+			if !c.IsValue {
+				on[c.Symbol] = c.Want != lang.N
+			}
+		}
+		r.Selected = selectClosure(r.tree, on)
+		for sym, by := range r.Selected {
+			if _, ok := index[key(sym)]; ok {
+				continue
+			}
+			index[key(sym)] = lang.Constraint{
+				Symbol: sym, Want: lang.Y,
+				From: "selected by " + by,
+			}
+		}
+	}
+
 	for round := 1; round <= maxRounds; round++ {
 		changed := false
 		for _, g := range r.Guards {
@@ -106,8 +129,13 @@ func (r *Result) applyRules() error {
 		}
 	}
 
-	// Fold the derived constraints back into the emitted set.
+	// Fold the derived constraints back into the emitted set. A symbol that
+	// only exists in the index because select will enable it is not folded in:
+	// kbuild produces it, and emitting it would restate a select.
 	for _, d := range r.Derived {
+		if _, viaSelect := r.Selected[d.Constraint.Symbol]; viaSelect {
+			continue
+		}
 		sc := scopeFor(d.Constraint.Symbol)
 		replaced := false
 		for i, c := range r.Constraints[sc] {

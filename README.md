@@ -280,7 +280,10 @@ edge-camera — 1 problem(s), buildroot 2025.02.16
 ```
 
 It catches symbols absent from that release, type mismatches, and dependencies
-the composition contradicts. Images record the release they were checked against
+the composition contradicts. Passing `--buildroot` to `emit` as well lets rules
+fire on symbols Kconfig's own `select` machinery will enable — a rule on
+`BR2_PACKAGE_SYSTEMD` is true of any image choosing `BR2_INIT_SYSTEMD`, which
+selects it, even though nothing states it. Images record the release they were checked against
 with `(verified-against (buildroot "2025.02.16"))`, and a mismatch is reported
 before anything else — the findings only mean something for the tree they were
 checked on.

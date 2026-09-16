@@ -26,6 +26,7 @@ const usage = `silt — composable S-expressions over Kconfig
   silt check [PATH...]              parse and validate; report problems
   silt check --buildroot DIR        also verify every claim against that tree
   silt emit IMAGE.sx [-o DIR]       compose and write defconfig + linux.config
+        [--buildroot DIR]           let rules see select-implied symbols
   silt fmt [-w] [PATH...]           canonical form
   silt hash [PATH...]               content address of each file
   silt why SYMBOL IMAGE.sx          why a symbol has the value it has
@@ -138,12 +139,9 @@ func cmdCheck(args []string) error {
 		if err != nil {
 			return fmt.Errorf("%s does not look like a Buildroot tree: %w", brDir, err)
 		}
-		tree, err = kconfig.Load("Config.in", kconfig.Options{Root: brDir, Env: map[string]string{
-			"BR2_BASE_DIR": filepath.Join(brDir, "output"), "HOSTARCH": "x86_64",
-			"HOST_GCC_VERSION": "13 2", "BR2_VERSION_FULL": treeVer,
-		}})
+		tree, err = loadTree(brDir)
 		if err != nil {
-			return fmt.Errorf("importing %s: %w", brDir, err)
+			return err
 		}
 	}
 
@@ -152,6 +150,7 @@ func cmdCheck(args []string) error {
 		return err
 	}
 	lib := compose.NewLibrary()
+	lib.Tree = tree
 	var images []*lang.Image
 	nf, nr := 0, 0
 	for _, f := range files {
@@ -200,11 +199,17 @@ func cmdCheck(args []string) error {
 }
 
 func cmdEmit(args []string) error {
-	var target, outDir, libDir string
+	var target, outDir, libDir, brDir string
 	outDir = "out"
 	libDir = "fragments"
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "--buildroot":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("--buildroot needs a directory")
+			}
+			brDir = args[i]
 		case "-o":
 			i++
 			if i >= len(args) {
@@ -230,6 +235,20 @@ func cmdEmit(args []string) error {
 		return err
 	}
 	lib := compose.NewLibrary()
+	if brDir != "" {
+		tree, err := loadTree(brDir)
+		if err != nil {
+			return err
+		}
+		lib.Tree = tree
+	}
+	if brDir != "" {
+		tree, err := loadTree(brDir)
+		if err != nil {
+			return err
+		}
+		lib.Tree = tree
+	}
 	for _, f := range files {
 		if err := lib.Add(f); err != nil {
 			return err
@@ -458,4 +477,22 @@ func valueOf(c lang.Constraint) string {
 		return "at-least " + c.Want.String()
 	}
 	return c.Want.String()
+}
+
+// loadTree imports a Buildroot tree, with the environment supplied explicitly.
+// The shape of the Kconfig tree depends on it (DESIGN.md §14.2), so reading it
+// implicitly would make the import depend on invisible state.
+func loadTree(dir string) (*kconfig.Tree, error) {
+	ver, err := kconfig.TreeVersion(dir)
+	if err != nil {
+		return nil, fmt.Errorf("%s does not look like a Buildroot tree: %w", dir, err)
+	}
+	tree, err := kconfig.Load("Config.in", kconfig.Options{Root: dir, Env: map[string]string{
+		"BR2_BASE_DIR": filepath.Join(dir, "output"), "HOSTARCH": "x86_64",
+		"HOST_GCC_VERSION": "13 2", "BR2_VERSION_FULL": ver,
+	}})
+	if err != nil {
+		return nil, fmt.Errorf("importing %s: %w", dir, err)
+	}
+	return tree, nil
 }

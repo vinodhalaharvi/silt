@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/vinodhalaharvi/silt/kconfig"
 	"github.com/vinodhalaharvi/silt/lang"
 )
 
@@ -18,6 +19,11 @@ import (
 type Library struct {
 	Fragments map[string]*lang.Fragment
 	Rules     []*lang.Rules
+	// Tree, when set, lets rule conditions see symbols that Kconfig's own
+	// select machinery will enable. Optional: without it, rules fire only on
+	// what fragments state, which is correct but misses select-implied
+	// antecedents.
+	Tree *kconfig.Tree
 }
 
 func NewLibrary() *Library {
@@ -74,6 +80,10 @@ type Result struct {
 	Overridden   []lang.Constraint
 	Derived      []Derived
 	Capabilities map[string]string // capability -> providing fragment
+	// Selected maps a symbol Kconfig will enable via select to the symbol that
+	// selects it. Populated only when the library carries a tree.
+	Selected map[string]string
+	tree     *kconfig.Tree
 }
 
 // Compose merges an image's fragments, applies overrides, and checks
@@ -187,6 +197,7 @@ func (l *Library) Compose(im *lang.Image) (*Result, error) {
 
 	// Forward-chain the guards. This is what enforces the cross-tree
 	// requirements that Buildroot documents in help text and checks nowhere.
+	r.tree = l.Tree
 	if err := r.applyRules(); err != nil {
 		return nil, err
 	}
