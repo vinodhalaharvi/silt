@@ -123,6 +123,9 @@ type Result struct {
 	tree     *kconfig.Tree
 }
 
+// Tree is the Kconfig tree the library was composed against, or nil.
+func (r *Result) Tree() *kconfig.Tree { return r.tree }
+
 // Compose merges an image's fragments, applies overrides, and checks
 // capabilities.
 func (l *Library) Compose(im *lang.Image) (*Result, error) {

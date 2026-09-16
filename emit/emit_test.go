@@ -1,10 +1,12 @@
 package emit
 
 import (
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/vinodhalaharvi/silt/compose"
+	"github.com/vinodhalaharvi/silt/kconfig"
 	"github.com/vinodhalaharvi/silt/lang"
 )
 
@@ -127,7 +129,6 @@ func TestKernelIsActuallyRequested(t *testing.T) {
 		"BR2_LINUX_KERNEL=y",
 		"BR2_LINUX_KERNEL_IMAGE=y",
 		`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.18.7"`,
-		`BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="/abs/out/linux.config"`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q:\n%s", want, out)
@@ -151,5 +152,67 @@ func TestLinuxHalfIsWiredIn(t *testing.T) {
 	}
 	if !strings.Contains(Defconfig(r, lang.Linux), "CONFIG_VIRTIO_BLK=y") {
 		t.Error("linux scope did not reach linux.config")
+	}
+}
+
+// With no Linux half there is nothing to layer, and the line must not appear:
+// an imported defconfig would otherwise never round-trip through emit.
+func TestNoLinuxHalfNoFragmentLine(t *testing.T) {
+	r := build(t, []string{
+		`(fragment target:t (buildroot (y BR2_aarch64) (y BR2_LINUX_KERNEL)) (provides (capability mmu)))`,
+		`(fragment profile:p (requires (capability mmu)))`,
+	}, `(image i (compose target:t profile:p))`)
+	if strings.Contains(DefconfigWithKernel(r, lang.Buildroot, "/x/linux.config"),
+		"BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES") {
+		t.Error("an empty linux.config was wired in")
+	}
+}
+
+// A fragment's (value X "2048") is a string, but kbuild discards
+// X="2048" when X is an int. With a tree, int and hex go out bare.
+func TestIntAndHexAreWrittenBare(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/Config.in", []byte(`
+config BR2_UBI_SUBSIZE
+	int "subsize"
+config BR2_LEBSIZE
+	hex "leb"
+config BR2_NAME
+	string "name"
+`), 0o644)
+	tree, err := kconfig.Load("Config.in", kconfig.Options{Root: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := compose.NewLibrary()
+	l.Tree = tree
+	for _, s := range []string{
+		`(fragment target:t (buildroot (value BR2_UBI_SUBSIZE "2048") (value BR2_LEBSIZE "0x1f000") (value BR2_NAME "2048")))`,
+		`(fragment profile:p)`,
+		`(image i (compose target:t profile:p))`,
+	} {
+		f, err := lang.ParseFile(s, "x.sx")
+		if err != nil {
+			t.Fatal(err)
+		}
+		l.Add(f)
+	}
+	f, _ := lang.ParseFile(`(image i (compose target:t profile:p))`, "i.sx")
+	r, err := l.Compose(f.Images[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := Defconfig(r, lang.Buildroot)
+	for _, want := range []string{"BR2_UBI_SUBSIZE=2048\n", "BR2_LEBSIZE=0x1f000\n", `BR2_NAME="2048"` + "\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q:\n%s", want, out)
+		}
+	}
+
+	// Without a tree the type is unknown; the output must say so.
+	l.Tree = nil
+	r, _ = l.Compose(f.Images[0])
+	if !strings.Contains(Defconfig(r, lang.Buildroot), "WARNING") {
+		t.Error("numeric values emitted untyped without a warning")
 	}
 }
