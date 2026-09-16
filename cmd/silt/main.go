@@ -34,6 +34,8 @@ const usage = `silt — composable S-expressions over Kconfig
   silt why SYMBOL IMAGE.sx          why a symbol has the value it has
   silt solve IMAGE.sx --buildroot DIR
                                     ask the Kconfig model whether it can exist
+  silt complete IMAGE.sx --buildroot DIR
+                                    solve for a total assignment (partial: see below)
 
 Fragments are loaded from ./fragments by default; override with -L DIR.
 `
@@ -57,6 +59,8 @@ func main() {
 		err = cmdWhy(os.Args[2:])
 	case "solve":
 		err = cmdSolve(os.Args[2:])
+	case "complete":
+		err = cmdComplete(os.Args[2:])
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 		return
@@ -504,12 +508,48 @@ func loadTree(dir string) (*kconfig.Tree, error) {
 	return tree, nil
 }
 
+// cmdComplete solves for a total assignment.
+//
+// It does not yet replace olddefconfig. Conditional defaults are treated as
+// decision hints rather than evaluated, so the result decides every symbol but
+// turns fewer on than kbuild would. Reporting that honestly is more useful than
+// emitting a config that silently differs.
+func cmdComplete(args []string) error {
+	res, tree, name, err := composeWithTree(args)
+	if err != nil {
+		return err
+	}
+	c := solve.Complete(res, tree)
+	fmt.Printf("%s\n", name)
+	fmt.Print(c.Report())
+	fmt.Printf("\nnot a replacement for olddefconfig yet: conditional defaults are\n")
+	fmt.Printf("hints here, not evaluated, so fewer symbols come on than kbuild sets.\n")
+	return nil
+}
+
 // cmdSolve asks the real Kconfig model whether a composition can exist.
 //
 // verify answers a narrower question conservatively; this one sees the whole
 // formula and catches compositions that are over-constrained in combination
 // rather than in any single pair.
 func cmdSolve(args []string) error {
+	res, tree, name, err := composeWithTree(args)
+	if err != nil {
+		return err
+	}
+	out := solve.Solve(res, tree)
+	fmt.Print(out.Explain(name))
+	if out.Status == solver.UNSAT {
+		fmt.Print(solve.ExplainRepairs(
+			solve.Repairs(out, out.Formula(), out.Owners(), res.Image.Policy)))
+	}
+	if out.Status != solver.SAT {
+		return fmt.Errorf("%s cannot be realized", name)
+	}
+	return nil
+}
+
+func composeWithTree(args []string) (*compose.Result, *kconfig.Tree, string, error) {
 	var target, brDir, libDir string
 	libDir = "fragments"
 	for i := 0; i < len(args); i++ {
@@ -517,13 +557,13 @@ func cmdSolve(args []string) error {
 		case "--buildroot":
 			i++
 			if i >= len(args) {
-				return fmt.Errorf("--buildroot needs a directory")
+				return nil, nil, "", fmt.Errorf("--buildroot needs a directory")
 			}
 			brDir = args[i]
 		case "-L":
 			i++
 			if i >= len(args) {
-				return fmt.Errorf("-L needs a directory")
+				return nil, nil, "", fmt.Errorf("-L needs a directory")
 			}
 			libDir = args[i]
 		default:
@@ -531,48 +571,37 @@ func cmdSolve(args []string) error {
 		}
 	}
 	if target == "" || brDir == "" {
-		return fmt.Errorf("usage: silt solve IMAGE.sx --buildroot DIR")
+		return nil, nil, "", fmt.Errorf("usage: IMAGE.sx --buildroot DIR")
 	}
-
 	tree, err := loadTree(brDir)
 	if err != nil {
-		return err
+		return nil, nil, "", err
 	}
 	files, err := loadAll([]string{libDir})
 	if err != nil {
-		return err
+		return nil, nil, "", err
 	}
 	lib := compose.NewLibrary()
 	lib.Tree = tree
 	for _, f := range files {
 		if err := lib.Add(f); err != nil {
-			return err
+			return nil, nil, "", err
 		}
 	}
 	src, err := os.ReadFile(target)
 	if err != nil {
-		return err
+		return nil, nil, "", err
 	}
 	imf, err := lang.ParseFile(string(src), target)
 	if err != nil {
-		return err
+		return nil, nil, "", err
 	}
 	if len(imf.Images) != 1 {
-		return fmt.Errorf("%s: expected exactly one image", target)
+		return nil, nil, "", fmt.Errorf("%s: expected exactly one image", target)
 	}
 	res, err := lib.Compose(imf.Images[0])
 	if err != nil {
-		return err
+		return nil, nil, "", err
 	}
-
-	out := solve.Solve(res, tree)
-	fmt.Print(out.Explain(imf.Images[0].Name))
-	if out.Status == solver.UNSAT {
-		fmt.Print(solve.ExplainRepairs(
-			solve.Repairs(out, out.Formula(), out.Owners(), imf.Images[0].Policy)))
-	}
-	if out.Status != solver.SAT {
-		return fmt.Errorf("%s cannot be realized", imf.Images[0].Name)
-	}
-	return nil
+	return res, tree, imf.Images[0].Name, nil
 }

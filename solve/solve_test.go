@@ -60,6 +60,34 @@ config BR2_OTHER
 
 const tgt = `(fragment target:t (buildroot (y BR2_ARCH)) (provides (capability mmu)))`
 
+func completeFor(t *testing.T, kcfg string, frags []string, image string) *Completion {
+	t.Helper()
+	dir := t.TempDir()
+	os.WriteFile(dir+"/Config.in", []byte(kcfg), 0o644)
+	tree, err := kconfig.Load("Config.in", kconfig.Options{Root: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := compose.NewLibrary()
+	l.Tree = tree
+	for i, s := range frags {
+		f, err := lang.ParseFile(s, "f"+string(rune('0'+i))+".sx")
+		if err != nil {
+			t.Fatal(err)
+		}
+		l.Add(f)
+	}
+	f, err := lang.ParseFile(image, "img.sx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := l.Compose(f.Images[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Complete(res, tree)
+}
+
 func TestSatisfiable(t *testing.T) {
 	r := setup(t, kcfg, []string{tgt,
 		`(fragment profile:p (requires (capability mmu)) (buildroot (y BR2_PKG)))`,
@@ -132,5 +160,50 @@ func TestUnknownSymbolsAreSkipped(t *testing.T) {
 		if a.Symbol == "BR2_NOT_REAL" {
 			t.Error("unknown symbol should not have been assumed")
 		}
+	}
+}
+
+// Completion decides every solvable symbol, not just the stated ones.
+func TestCompleteIsTotal(t *testing.T) {
+	c := completeFor(t, kcfg, []string{tgt,
+		`(fragment profile:p (requires (capability mmu)) (buildroot (y BR2_PKG)))`,
+	}, `(image i (compose target:t profile:p))`)
+	if c.Status != solver.SAT {
+		t.Fatalf("got %v", c.Status)
+	}
+	for _, want := range []string{"BR2_ARCH", "BR2_PKG", "BR2_DEP", "BR2_STATIC", "BR2_OTHER"} {
+		if _, ok := c.Values[want]; !ok {
+			t.Errorf("%s left undecided", want)
+		}
+	}
+	if !c.Values["BR2_PKG"] || c.Values["BR2_STATIC"] {
+		t.Errorf("constraints not respected: %+v", c.Values)
+	}
+}
+
+// A preference that cannot hold must be reported, never silently dropped —
+// that is the defect this project exists to catch.
+func TestYieldedPreferencesAreReported(t *testing.T) {
+	c := completeFor(t, kcfg, []string{tgt,
+		`(fragment profile:p (requires (capability mmu)) (buildroot (y BR2_PKG) (prefer y BR2_STATIC)))`,
+	}, `(image i (compose target:t profile:p))`)
+	if len(c.Yielded) != 1 || c.Yielded[0].Symbol != "BR2_STATIC" {
+		t.Fatalf("yielded preference not reported: %+v", c.Yielded)
+	}
+	if !strings.Contains(c.Report(), "BR2_STATIC") {
+		t.Errorf("report omits it:\n%s", c.Report())
+	}
+}
+
+// A preference that can hold is kept.
+func TestSatisfiablePreferenceIsKept(t *testing.T) {
+	c := completeFor(t, kcfg, []string{tgt,
+		`(fragment profile:p (requires (capability mmu)) (buildroot (prefer y BR2_OTHER)))`,
+	}, `(image i (compose target:t profile:p))`)
+	if len(c.Yielded) != 0 {
+		t.Fatalf("should not have yielded: %+v", c.Yielded)
+	}
+	if !c.Values["BR2_OTHER"] {
+		t.Error("satisfiable preference was not honored")
 	}
 }

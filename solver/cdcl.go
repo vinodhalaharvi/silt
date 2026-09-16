@@ -73,12 +73,21 @@ type Solver struct {
 
 	activity []float64
 	bump     float64
+	// polarity biases the value tried first for a variable. Kconfig defaults
+	// are supplied here rather than as assumptions: asserting nine thousand
+	// defaults and minimising the conflicting subset would need a solve per
+	// symbol, while a decision heuristic gets a model close to the defaults in
+	// one. Where a default cannot hold, the solver simply decides otherwise.
+	polarity map[int]bool
 
 	nvars     int
 	conflicts int
 	broken    bool         // a unit clause contradicted another at construction
 	assumps   map[int]bool // variable -> assumed sign, for core extraction
 }
+
+// SetPolarity biases which value each variable is tried at first.
+func (s *Solver) SetPolarity(p map[int]bool) { s.polarity = p }
 
 // New builds a solver over a formula.
 func New(f *cnf.Formula) *Solver {
@@ -297,7 +306,13 @@ func (s *Solver) pick() cnf.Lit {
 		return 0
 	}
 	// Default polarity false: most Kconfig symbols are off, so guessing off
-	// converges far faster on this shape of problem.
+	// converges far faster on this shape of problem. A caller-supplied
+	// preference overrides it.
+	if s.polarity != nil {
+		if want, ok := s.polarity[best]; ok && want {
+			return cnf.Lit(best)
+		}
+	}
 	return cnf.Lit(-best)
 }
 
