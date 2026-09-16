@@ -1,0 +1,20 @@
+;; Same hardware, same feature, different userspace.
+;;
+;; The only line that differs from qemu-arm-dev.sx is the profile. That is the
+;; reuse claim as a file rather than an argument: musl with BusyBox init on one
+;; side, glibc with systemd on the other, target and feature untouched.
+
+(image qemu-arm-standard
+
+  (compose
+    target:qemu-aarch64-virt
+    profile:standard
+    feature:networking)
+
+  (opaque
+    (value BR2_ROOTFS_POST_IMAGE_SCRIPT "board/qemu/post-image.sh")
+    (value BR2_ROOTFS_POST_SCRIPT_ARGS  "$(BR2_DEFCONFIG)"))
+
+  (unmanaged BR2_TARGET_UBOOT_*)
+
+  (verified-against (buildroot "2025.02.16")))
