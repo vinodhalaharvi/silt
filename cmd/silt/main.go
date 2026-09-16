@@ -567,6 +567,10 @@ func cmdSolve(args []string) error {
 
 	out := solve.Solve(res, tree)
 	fmt.Print(out.Explain(imf.Images[0].Name))
+	if out.Status == solver.UNSAT {
+		fmt.Print(solve.ExplainRepairs(
+			solve.Repairs(out, out.Formula(), out.Owners(), imf.Images[0].Policy)))
+	}
 	if out.Status != solver.SAT {
 		return fmt.Errorf("%s cannot be realized", imf.Images[0].Name)
 	}

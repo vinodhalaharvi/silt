@@ -41,12 +41,37 @@ type Result struct {
 	// satisfiable but which cannot hold together.
 	Culprits []Assumption
 	Err      error
+
+	f     *cnf.Formula
+	owner []fragmentOf
 }
+
+// Formula exposes the lowered model, for repair search.
+func (r *Result) Formula() *cnf.Formula { return r.f }
+
+// Owners maps each stated symbol to the fragment that stated it.
+func (r *Result) Owners() []fragmentOf { return r.owner }
 
 // Solve assumes every stated Buildroot constraint and asks the model.
 func Solve(res *compose.Result, tree *kconfig.Tree) *Result {
 	m := cnf.Lower(tree)
-	out := &Result{}
+	out := &Result{f: m.F}
+
+	// Which fragment stated each symbol, so a repair can name a fragment
+	// rather than a symbol.
+	byFragment := map[string]lang.ID{}
+	for _, fr := range res.Fragments {
+		for _, cs := range fr.Constraints {
+			for _, c := range cs {
+				if !c.Soft {
+					byFragment[c.Symbol] = fr.ID
+				}
+			}
+		}
+	}
+	for sym, id := range byFragment {
+		out.owner = append(out.owner, fragmentOf{Symbol: sym, ID: id})
+	}
 
 	for _, c := range res.Constraints[lang.Buildroot] {
 		if c.Soft || c.IsValue {

@@ -310,7 +310,17 @@ UNSAT  edge-camera — these cannot hold together:
 
 The narrowing is deletion-based minimisation: each assumption is dropped in turn
 and kept only if the rest become satisfiable without it. That is the difference
-between a core and an explanation.
+between a core and an explanation. Each culprit then becomes a candidate repair,
+verified rather than assumed, and ranked by the image's `repair-policy`:
+
+```
+Repairs, ranked:
+  1. drop feature:camera                1 change(s)
+  2. drop profile:minimal               6 change(s)
+```
+
+Repairs name fragments, not symbols. "Drop feature:camera" is actionable; "set
+BR2_PACKAGE_LIBCAMERA=n" leaves you to work out which fragment said it and why.
 
 ## Honest scope
 
