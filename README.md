@@ -288,6 +288,30 @@ with `(verified-against (buildroot "2025.02.16"))`, and a mismatch is reported
 before anything else — the findings only mean something for the tree they were
 checked on.
 
+## Asking the model
+
+`silt check` answers conservatively — it reports only explicit contradictions,
+because a false positive would block a configuration kbuild accepts. `silt solve`
+sees the whole formula at once and catches compositions that are
+over-constrained in combination rather than in any single pair:
+
+```console
+$ silt solve images/edge-camera.sx --buildroot ~/buildroot
+
+UNSAT  edge-camera — these cannot hold together:
+
+  BR2_PACKAGE_LIBCAMERA = y
+      stated by feature:camera at fragments/features/camera.sx:10
+  BR2_STATIC_LIBS = y
+      stated by profile:minimal at fragments/profiles/minimal.sx:25
+
+  2 of 12 assumptions; the rest are satisfiable without them
+```
+
+The narrowing is deletion-based minimisation: each assumption is dropped in turn
+and kept only if the rest become satisfiable without it. That is the difference
+between a core and an explanation.
+
 ## Honest scope
 
 **Silt is lossy, and says so on every run.** It models 2 of the 12 Kconfig trees

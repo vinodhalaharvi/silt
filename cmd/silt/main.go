@@ -18,6 +18,8 @@ import (
 	"github.com/vinodhalaharvi/silt/kconfig"
 	"github.com/vinodhalaharvi/silt/lang"
 	"github.com/vinodhalaharvi/silt/sexpr"
+	"github.com/vinodhalaharvi/silt/solve"
+	"github.com/vinodhalaharvi/silt/solver"
 	"github.com/vinodhalaharvi/silt/verify"
 )
 
@@ -30,6 +32,8 @@ const usage = `silt — composable S-expressions over Kconfig
   silt fmt [-w] [PATH...]           canonical form
   silt hash [PATH...]               content address of each file
   silt why SYMBOL IMAGE.sx          why a symbol has the value it has
+  silt solve IMAGE.sx --buildroot DIR
+                                    ask the Kconfig model whether it can exist
 
 Fragments are loaded from ./fragments by default; override with -L DIR.
 `
@@ -51,6 +55,8 @@ func main() {
 		err = cmdHash(os.Args[2:])
 	case "why":
 		err = cmdWhy(os.Args[2:])
+	case "solve":
+		err = cmdSolve(os.Args[2:])
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 		return
@@ -496,4 +502,73 @@ func loadTree(dir string) (*kconfig.Tree, error) {
 		return nil, fmt.Errorf("importing %s: %w", dir, err)
 	}
 	return tree, nil
+}
+
+// cmdSolve asks the real Kconfig model whether a composition can exist.
+//
+// verify answers a narrower question conservatively; this one sees the whole
+// formula and catches compositions that are over-constrained in combination
+// rather than in any single pair.
+func cmdSolve(args []string) error {
+	var target, brDir, libDir string
+	libDir = "fragments"
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--buildroot":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("--buildroot needs a directory")
+			}
+			brDir = args[i]
+		case "-L":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("-L needs a directory")
+			}
+			libDir = args[i]
+		default:
+			target = args[i]
+		}
+	}
+	if target == "" || brDir == "" {
+		return fmt.Errorf("usage: silt solve IMAGE.sx --buildroot DIR")
+	}
+
+	tree, err := loadTree(brDir)
+	if err != nil {
+		return err
+	}
+	files, err := loadAll([]string{libDir})
+	if err != nil {
+		return err
+	}
+	lib := compose.NewLibrary()
+	lib.Tree = tree
+	for _, f := range files {
+		if err := lib.Add(f); err != nil {
+			return err
+		}
+	}
+	src, err := os.ReadFile(target)
+	if err != nil {
+		return err
+	}
+	imf, err := lang.ParseFile(string(src), target)
+	if err != nil {
+		return err
+	}
+	if len(imf.Images) != 1 {
+		return fmt.Errorf("%s: expected exactly one image", target)
+	}
+	res, err := lib.Compose(imf.Images[0])
+	if err != nil {
+		return err
+	}
+
+	out := solve.Solve(res, tree)
+	fmt.Print(out.Explain(imf.Images[0].Name))
+	if out.Status != solver.SAT {
+		return fmt.Errorf("%s cannot be realized", imf.Images[0].Name)
+	}
+	return nil
 }
