@@ -1,0 +1,56 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+env:
+  # Every fragment claim is only meaningful for the release it was checked
+  # against. This must match the (verified-against ...) pins in images/.
+  BUILDROOT_VERSION: "2025.02.16"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "unformatted files:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: vet
+        run: go vet ./...
+
+      - name: unit tests
+        run: go test ./...
+
+      - name: cache buildroot
+        id: br-cache
+        uses: actions/cache@v4
+        with:
+          path: buildroot
+          key: buildroot-${{ env.BUILDROOT_VERSION }}
+
+      - name: fetch buildroot
+        if: steps.br-cache.outputs.cache-hit != 'true'
+        run: >
+          git clone --depth 1 --branch "$BUILDROOT_VERSION"
+          https://github.com/buildroot/buildroot.git buildroot
+
+      # The real-tree tests are where every importer bug so far was found.
+      - name: real-tree tests
+        run: SILT_BUILDROOT="$PWD/buildroot" go test ./...
+
+      - name: build silt
+        run: go build -o bin/silt ./cmd/silt
+
+      - name: check images against buildroot
+        run: ci/check-images.sh "$PWD/buildroot" bin/silt
