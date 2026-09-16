@@ -666,6 +666,37 @@ that cannot be selected is off. The §10 fixpoint check must therefore treat ABS
 
 ---
 
+## 12.2 Rules are enforced without a solver
+
+A cross-tree rule is an implication. If its antecedent is known true from what has been
+stated, its consequent follows — no SAT required. Forward chaining to a fixed point is
+enough to enforce every requirement in §14.6, and it runs in microseconds.
+
+```lisp
+(when (y BR2_PACKAGE_FSCRYPTCTL) (y CONFIG_EXT4_ENCRYPTION))
+```
+
+Three things make this honest rather than a shortcut:
+
+**Conditions are three-valued.** A symbol nobody stated is *unknown*, never false. So
+`(not (y BR2_STATIC_LIBS))` does not fire merely because static libs went unmentioned —
+deciding that needs the completed model, which is Rung 7. Firing only on *known* truth
+is sound for the implication use case and unsound for nothing.
+
+**Rules cascade, and cannot hang.** One rule satisfying another's condition is normal
+and expected. Iteration is bounded, and a cycle is reported rather than spun on.
+
+**A rule contradicting stated intent is an error.** If a rule would flip a symbol a
+fragment deliberately set, that is reported with both positions. A rule that silently
+won would be `merge_config.sh` wearing different syntax, which is the thing this
+project exists to replace.
+
+What this does *not* give you is the completion problem: which symbols Kconfig's own
+defaults would set, and how to choose among satisfying assignments. That is genuinely
+Rungs 4 through 7, and no amount of chaining substitutes for it.
+
+---
+
 ### Rung 3 — Vertical slice: a booting image
 
 ```bash

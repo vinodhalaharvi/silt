@@ -72,6 +72,7 @@ type Result struct {
 	Environment  []lang.Constraint
 	Unmanaged    []string
 	Overridden   []lang.Constraint
+	Derived      []Derived
 	Capabilities map[string]string // capability -> providing fragment
 }
 
@@ -182,6 +183,12 @@ func (l *Library) Compose(im *lang.Image) (*Result, error) {
 	// Rule blocks apply to every image in the library.
 	for _, rs := range l.Rules {
 		r.Guards = append(r.Guards, rs.Guards...)
+	}
+
+	// Forward-chain the guards. This is what enforces the cross-tree
+	// requirements that Buildroot documents in help text and checks nowhere.
+	if err := r.applyRules(); err != nil {
+		return nil, err
 	}
 	return r, nil
 }

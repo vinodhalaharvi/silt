@@ -25,6 +25,7 @@ const usage = `silt — composable S-expressions over Kconfig
   silt emit IMAGE.sx [-o DIR]       compose and write defconfig + linux.config
   silt fmt [-w] [PATH...]           canonical form
   silt hash [PATH...]               content address of each file
+  silt why SYMBOL IMAGE.sx          why a symbol has the value it has
 
 Fragments are loaded from ./fragments by default; override with -L DIR.
 `
@@ -44,6 +45,8 @@ func main() {
 		err = cmdFmt(os.Args[2:])
 	case "hash":
 		err = cmdHash(os.Args[2:])
+	case "why":
+		err = cmdWhy(os.Args[2:])
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 		return
@@ -223,6 +226,13 @@ func report(r *compose.Result, br, lx string) {
 		fmt.Printf("soft          %d  not emitted; needs MaxSAT (Rung 7)\n", softBR+softLX)
 	}
 	fmt.Printf("guards        %d\n", len(r.Guards))
+	if n := len(r.Derived); n > 0 {
+		fmt.Printf("derived       %d  by cross-tree rules:\n", n)
+		for _, d := range r.Derived {
+			fmt.Printf("                %s=%s  %s\n",
+				d.Constraint.Symbol, d.Constraint.Want, d.Rule.Pos.Short())
+		}
+	}
 	if n := len(r.Opaque); n > 0 {
 		fmt.Printf("opaque        %d  carried verbatim, not solved\n", n)
 	}
@@ -313,4 +323,73 @@ func cmdHash(args []string) error {
 		}
 	}
 	return nil
+}
+
+// cmdWhy explains one symbol. At Rung 2 it can answer for stated and
+// rule-derived symbols; symbols that only a solved model would settle are
+// reported as such rather than guessed at.
+func cmdWhy(args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: silt why SYMBOL IMAGE.sx")
+	}
+	sym, target := args[0], args[1]
+
+	files, err := loadAll([]string{"fragments"})
+	if err != nil {
+		return err
+	}
+	lib := compose.NewLibrary()
+	for _, f := range files {
+		if err := lib.Add(f); err != nil {
+			return err
+		}
+	}
+	src, err := os.ReadFile(target)
+	if err != nil {
+		return err
+	}
+	imf, err := lang.ParseFile(string(src), target)
+	if err != nil {
+		return err
+	}
+	if len(imf.Images) != 1 {
+		return fmt.Errorf("%s: expected exactly one image", target)
+	}
+	r, err := lib.Compose(imf.Images[0])
+	if err != nil {
+		return err
+	}
+
+	if s, ok := r.ExplainDerived(sym); ok {
+		fmt.Print(s)
+		return nil
+	}
+	for _, sc := range []lang.Scope{lang.Buildroot, lang.Linux} {
+		for _, c := range r.Constraints[sc] {
+			if c.Symbol != sym {
+				continue
+			}
+			kind := "stated"
+			if c.Soft {
+				kind = "preferred (soft; not emitted before Rung 7)"
+			}
+			fmt.Printf("%s = %s\n  %s by %s at %s\n",
+				sym, valueOf(c), kind, c.From, c.Pos.Short())
+			return nil
+		}
+	}
+	fmt.Printf("%s is not stated by any composed fragment and no rule derives it.\n", sym)
+	fmt.Printf("Its value would be decided by Kconfig defaults, which needs the\n")
+	fmt.Printf("importer and the solver (Rungs 4-7).\n")
+	return nil
+}
+
+func valueOf(c lang.Constraint) string {
+	if c.IsValue {
+		return "\"" + c.Value + "\""
+	}
+	if c.AtLeast {
+		return "at-least " + c.Want.String()
+	}
+	return c.Want.String()
 }

@@ -36,7 +36,16 @@
   ;; A module-only filesystem cannot hold the root filesystem: nothing can load it
   ;; before it is mounted. Neither Kconfig tree can express boot ordering.
   (when (y BR2_TARGET_ROOTFS_EXT2)
-    (n CONFIG_EXT4_FS_MODULE)))
+    (n CONFIG_EXT4_FS_MODULE))
+
+  ;; The three requirements Buildroot states in help text and enforces nowhere.
+  ;; Each cites the Config.in it was read from; see DESIGN.md §14.6.
+  (when (y BR2_PACKAGE_FSCRYPTCTL)      ; package/fscryptctl/Config.in
+    (y CONFIG_EXT4_ENCRYPTION))
+  (when (y BR2_PACKAGE_BCC)             ; package/bcc/Config.in
+    (y CONFIG_IKHEADERS))
+  (when (y BR2_PACKAGE_18XX_TI_UTILS)   ; package/18xx-ti-utils/Config.in
+    (y CONFIG_NL80211_TESTMODE)))
 
 ;; Note the redundancy this introduces with the fragments: feature:networking also
 ;; states (y CONFIG_PACKET). Once the constraint model exists, the linter should
