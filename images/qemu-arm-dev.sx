@@ -17,8 +17,17 @@
 
   ;; Not expressible as constraints (DESIGN.md §14.3, §14.4). Carried verbatim,
   ;; counted in every report, excluded from the fixpoint diff by declaration.
+  ;; BR2_GLOBAL_PATCH_DIR is deliberately absent. Upstream
+  ;; qemu_aarch64_virt_defconfig sets it to "board/qemu/patches", and copying
+  ;; that verbatim broke the build on Buildroot 2025.02.16: the directory holds
+  ;; a MIPS vdso patch that apply-patches.sh applies twice for linux-headers,
+  ;; failing before anything is compiled. Upstream sets it because the same
+  ;; board directory serves every qemu target, the MIPS ones included.
+  ;;
+  ;; This is what opaque costs. Silt carried the value correctly and could not
+  ;; know it was harmful, because a patch directory is exactly the kind of thing
+  ;; the constraint model does not model. Opaque values a human still owns.
   (opaque
-    (value BR2_GLOBAL_PATCH_DIR        "board/qemu/patches")
     (value BR2_ROOTFS_POST_IMAGE_SCRIPT "board/qemu/post-image.sh")
     ;; make expands this after Kconfig stores the literal
     (value BR2_ROOTFS_POST_SCRIPT_ARGS  "$(BR2_DEFCONFIG)"))
