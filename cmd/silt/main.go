@@ -36,6 +36,9 @@ const usage = `silt — composable S-expressions over Kconfig
                                     ask the Kconfig model whether it can exist
   silt complete IMAGE.sx --buildroot DIR
                                     solve for a total assignment (partial: see below)
+  silt import DEFCONFIG --buildroot DIR [--kbuild] [--name NAME] [-n] [-f]
+                                    split a real defconfig into target, profile, image;
+                                    --kbuild also proves it round-trips via savedefconfig
 
 Fragments are loaded from ./fragments by default; override with -L DIR.
 `
@@ -49,6 +52,8 @@ func main() {
 	switch os.Args[1] {
 	case "check":
 		err = cmdCheck(os.Args[2:])
+	case "import":
+		err = cmdImport(os.Args[2:])
 	case "emit":
 		err = cmdEmit(os.Args[2:])
 	case "fmt":

@@ -393,6 +393,24 @@ The first real test of the whole thesis is cheap and should happen early: factor
 real Buildroot defconfigs into fragments and check they recompose byte-identically
 after `savedefconfig`. If they do not, the premise is wrong and a weekend found out.
 
+**Run, against Buildroot 2025.02.16** (`importer/experiment_test.go`, with
+`SILT_BUILDROOT` and `SILT_KBUILD=1`):
+
+- All 290 shipped defconfigs import, compose and emit back to a `.config` identical to
+  the one kbuild makes from the source. The model accepts all 290.
+- qemu_aarch64_virt, odroidc2, raspberrypi4_64, orangepi_pc2 and pine64, split into
+  target and profile and crossed 5×5: kbuild keeps every stated line in all 25.
+- The same five imported targets with the hand-written `profile:minimal` and
+  `profile:standard`: every line kept, and a deliberately impossible control profile
+  fails on every target, in kbuild and in the model.
+
+What this does not show: vendor defconfigs carry almost no userspace policy (imported
+profiles are 2–11 lines), so the 5×5 matrix is weaker evidence than it looks, and
+"kbuild keeps every line" is not "it builds and boots". It also found that
+minimising a fragment with the model is wrong: 1,325 of 6,778 lines in the shipped
+defconfigs are forced by the others in the model, and `savedefconfig` keeps every one,
+because the model does not distinguish `select` from `depends on`.
+
 ---
 
 ## Repository

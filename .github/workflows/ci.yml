@@ -3,6 +3,11 @@ name: ci
 on:
   push:
   pull_request:
+  # The full sweep imports and round-trips every defconfig Buildroot ships.
+  # Too slow for every push; weekly and on demand.
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
 
 env:
   # Every fragment claim is only meaningful for the release it was checked
@@ -49,8 +54,36 @@ jobs:
       - name: real-tree tests
         run: SILT_BUILDROOT="$PWD/buildroot" go test ./...
 
+      # Buildroot's own kconfig is the oracle for import: these compose
+      # imported boards with each other and with the library's profiles and
+      # check kbuild keeps every stated line. Needs make and a C compiler,
+      # both present on the runner.
+      - name: kbuild experiments
+        run: >
+          SILT_BUILDROOT="$PWD/buildroot" SILT_KBUILD=1
+          go test ./importer -v -timeout 30m
+          -run 'TestFactoring|TestImportedTargetsTakeLibraryProfiles|TestModelAcceptsEveryDefconfig'
+
       - name: build silt
         run: go build -o bin/silt ./cmd/silt
 
       - name: check images against buildroot
         run: ci/check-images.sh "$PWD/buildroot" bin/silt
+
+  every-defconfig:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: fetch buildroot
+        run: >
+          git clone --depth 1 --branch "$BUILDROOT_VERSION"
+          https://github.com/buildroot/buildroot.git buildroot
+      - name: round-trip every shipped defconfig
+        run: >
+          SILT_BUILDROOT="$PWD/buildroot" SILT_KBUILD=1
+          go test ./importer -v -timeout 110m -run TestEveryDefconfigRoundTrips
