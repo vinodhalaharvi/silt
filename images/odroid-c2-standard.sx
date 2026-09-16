@@ -1,0 +1,30 @@
+;; Odroid-C2 with the standard userspace: glibc, systemd, networking.
+;;
+;; No libc choice, no init choice, no systemd kernel options here. Those come
+;; from profile:standard and rules/cross-tree.sx, unchanged from the two QEMU
+;; images — the third target, and neither the profile nor the feature needed
+;; editing to reach it.
+
+(image odroid-c2-standard
+
+  (compose
+    target:odroid-c2
+    profile:standard
+    feature:networking)
+
+  ;; Board scripts and overlays: arbitrary shell and file trees, carried
+  ;; verbatim and reported as opaque on every run.
+  (opaque
+    (value BR2_ROOTFS_OVERLAY           "board/hardkernel/odroidc2/rootfs_overlay")
+    (value BR2_ROOTFS_POST_IMAGE_SCRIPT "board/hardkernel/odroidc2/post-image.sh")
+    (value BR2_PACKAGE_HOST_UBOOT_TOOLS_BOOT_SCRIPT_SOURCE
+           "board/hardkernel/odroidc2/boot.cmd"))
+
+  ;; U-Boot is one of the ten Kconfig trees Silt does not model.
+  (unmanaged BR2_TARGET_UBOOT_CUSTOM_*)
+
+  (repair-policy
+    (minimize changed-symbols)
+    (keep target))
+
+  (verified-against (buildroot "2025.02.16")))

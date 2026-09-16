@@ -1,0 +1,49 @@
+;; Hardkernel Odroid-C2 — Amlogic S905, Cortex-A53, 64-bit.
+;; Every symbol read from configs/odroidc2_defconfig in Buildroot 2025.02.16.
+
+(fragment target:odroid-c2
+
+  (buildroot
+    (y BR2_aarch64)
+    (value BR2_TARGET_GENERIC_HOSTNAME "odroidc2")
+    ;; Amlogic's own UART, not the PL011 the qemu target uses.
+    (value BR2_TARGET_GENERIC_GETTY_PORT "ttyAML0")
+    (y BR2_TARGET_GENERIC_GETTY_BAUDRATE_115200)
+
+    (y BR2_LINUX_KERNEL)
+    ;; The clean answer to "arm64 has no named defconfig": ask for the
+    ;; architecture's own. The qemu target works around the same problem by
+    ;; pointing at a board config file and should probably move to this.
+    (y BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG)
+    (y BR2_LINUX_KERNEL_DTS_SUPPORT)
+    (value BR2_LINUX_KERNEL_INTREE_DTS_NAME "amlogic/meson-gxbb-odroidc2")
+
+    (y BR2_PACKAGE_ODROIDC2_FIRMWARE)
+    (y BR2_TARGET_UBOOT)
+    ;; NOT BR2_TARGET_UBOOT_BOARDNAME. That symbol exists in the tree and
+    ;; passes silt check, but belongs to U-Boot's legacy build system and is
+    ;; inert under BUILD_SYSTEM_KCONFIG, which is what this release uses. A
+    ;; symbol can be real, correctly spelled, and do nothing — and no
+    ;; constraint model can catch that.
+    (y BR2_TARGET_UBOOT_USE_DEFCONFIG)
+    (value BR2_TARGET_UBOOT_BOARD_DEFCONFIG "odroid-c2")
+    (y BR2_TARGET_UBOOT_NEEDS_DTC)
+    (y BR2_PACKAGE_HOST_DOSFSTOOLS)
+    (y BR2_PACKAGE_HOST_GENIMAGE)
+    (y BR2_PACKAGE_HOST_MESON_TOOLS)
+    (y BR2_PACKAGE_HOST_MTOOLS)
+    (y BR2_PACKAGE_HOST_UBOOT_TOOLS)
+    (y BR2_PACKAGE_HOST_UBOOT_TOOLS_BOOT_SCRIPT))
+
+  (linux
+    (y CONFIG_ARCH_MESON)
+    ;; Root is on the SD card, so the controller cannot be a module.
+    (y CONFIG_MMC)
+    (y CONFIG_MMC_MESON_GX)
+    (y CONFIG_SERIAL_MESON)
+    (y CONFIG_SERIAL_MESON_CONSOLE))
+
+  (provides
+    (capability mmu)
+    (capability serial-console)
+    (capability sdcard)))
