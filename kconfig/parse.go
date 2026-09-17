@@ -24,6 +24,7 @@ func Load(file string, opts Options) (*Tree, error) {
 		opts.Env = map[string]string{}
 	}
 	t := newTree(opts.Root)
+	t.Env = opts.Env
 	p := &parser{tree: t, opts: opts, seen: map[string]bool{}}
 	if err := p.file(file, nil); err != nil {
 		return nil, err

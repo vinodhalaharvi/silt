@@ -78,11 +78,12 @@ type Guarded struct {
 
 // Cond is a condition inside a when.
 type Cond struct {
-	Op   string // "constraint", "set?", "and", "or", "not"
-	C    *Constraint
-	Sym  SymbolID
-	Args []*Cond
-	Pos  sexpr.Pos
+	Op    string // "constraint", "set?", "equal?", "and", "or", "not"
+	C     *Constraint
+	Sym   SymbolID
+	Value string // for equal?
+	Args  []*Cond
+	Pos   sexpr.Pos
 }
 
 // Capability is the abstraction that makes a feature portable across targets.

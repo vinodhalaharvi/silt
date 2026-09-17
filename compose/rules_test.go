@@ -207,3 +207,24 @@ func TestExplainDerived(t *testing.T) {
 		}
 	}
 }
+
+// equal? fires on a stated value, is refuted by a different one, and is
+// unknown when nothing states the symbol.
+func TestEqualCondition(t *testing.T) {
+	rule := `(rules r (when (equal? buildroot:BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE "6.12.27")
+	  (y buildroot:BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_12)))`
+	for value, fires := range map[string]bool{`"6.12.27"`: true, `"6.18.7"`: false, "": false} {
+		frag := prof
+		if value != "" {
+			frag = `(fragment profile:p (requires (capability mmu))
+			  (buildroot (value BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE ` + value + `)))`
+		}
+		r, err := run(t, []string{tgt, frag, rule}, `(image i (compose target:t profile:p))`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := find(r, lang.Buildroot, "BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_12"); ok != fires {
+			t.Errorf("value %s: fired=%v, want %v", value, ok, fires)
+		}
+	}
+}

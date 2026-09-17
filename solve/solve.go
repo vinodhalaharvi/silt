@@ -25,15 +25,26 @@ type Assumption struct {
 	Lit    cnf.Lit
 	Symbol string
 	Want   lang.Tristate
-	From   string
-	Pos    string
+	// Value is set for a stated string, int or hex value.
+	Value   string
+	IsValue bool
+	From    string
+	Pos     string
+}
+
+// Shown renders the stated value.
+func (a Assumption) Shown() string {
+	if a.IsValue {
+		return fmt.Sprintf("%q", a.Value)
+	}
+	return a.Want.String()
 }
 
 // Result is the outcome of solving an image.
 type Result struct {
 	Status      solver.Status
 	Assumptions []Assumption
-	// Implied lists symbols the model forces on that no fragment stated.
+	// Implied lists symbols every model turns on that no fragment stated.
 	// These are what the composition costs beyond what it says.
 	Implied   []string
 	Conflicts int
@@ -73,11 +84,22 @@ func Solve(res *compose.Result, tree *kconfig.Tree) *Result {
 	}
 
 	for _, c := range res.Constraints[lang.Buildroot] {
-		if c.Soft || c.IsValue {
-			continue // soft needs MaxSAT; values are not in the model
+		if c.Soft {
+			continue // soft constraints are preferences, not assumptions
 		}
 		if _, ok := tree.Symbols[c.Sym.Name]; !ok {
 			continue // verify reports unknown symbols; do not guess here
+		}
+		if c.IsValue {
+			// A stated value is an assumption like any other: a depends
+			// on X = "lit" elsewhere can now contradict it.
+			if lit, ok := m.ValueLit(c.Sym.Name, c.Value); ok {
+				out.Assumptions = append(out.Assumptions, Assumption{
+					Lit: lit, Symbol: c.Sym.Name, Value: c.Value, IsValue: true,
+					From: c.From, Pos: c.Pos.Short(),
+				})
+			}
+			continue
 		}
 		lit := m.F.Var(c.Sym.Name)
 		if c.Want == lang.N {
@@ -92,7 +114,8 @@ func Solve(res *compose.Result, tree *kconfig.Tree) *Result {
 	for i, a := range out.Assumptions {
 		lits[i] = a.Lit
 	}
-	r := solver.New(m.F).Solve(lits...)
+	sv := solver.New(m.F)
+	r := sv.Solve(lits...)
 	out.Status, out.Conflicts, out.Err = r.Status, r.Conflicts, r.Err
 	if r.Err != nil {
 		return out
@@ -104,12 +127,21 @@ func Solve(res *compose.Result, tree *kconfig.Tree) *Result {
 		for _, a := range out.Assumptions {
 			stated[a.Symbol] = true
 		}
-		for name := range tree.Symbols {
-			if stated[name] {
+		// Implied means forced: on in every model, not merely in the one
+		// the search happened to find. Reading it off a single model made
+		// the count depend on decision order, and once value domains added
+		// auxiliary variables the same image reported 22 and then 238, with
+		// ffmpeg and exim among them. A symbol off in this model is not
+		// forced, so only the ones on need a query.
+		for name, sym := range tree.Symbols {
+			if stated[name] || !sym.Type.Solvable() {
 				continue
 			}
-			v := m.F.Var(name).Var()
-			if r.Value(v) {
+			l := m.F.Var(name)
+			if !r.Value(l.Var()) {
+				continue
+			}
+			if sv.Solve(append(lits, l.Neg())...).Status == solver.UNSAT {
 				out.Implied = append(out.Implied, name)
 			}
 		}
@@ -186,7 +218,7 @@ func (r *Result) Explain(name string) string {
 		fmt.Fprintf(&b, "UNSAT  %s — these cannot hold together:\n\n", name)
 		for _, a := range r.Culprits {
 			fmt.Fprintf(&b, "  %s = %s\n      stated by %s at %s\n",
-				a.Symbol, a.Want, a.From, a.Pos)
+				a.Symbol, a.Shown(), a.From, a.Pos)
 		}
 		fmt.Fprintf(&b, "\n  %d of %d assumptions; the rest are satisfiable without them\n",
 			len(r.Culprits), len(r.Assumptions))

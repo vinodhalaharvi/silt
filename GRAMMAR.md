@@ -151,14 +151,17 @@ names the Buildroot symbol that receives the tree's emitted config file; `silt c
 ```ebnf
 condition = hard
           | "(" "set?" symbol ")"
+          | "(" "equal?" symbol string ")"
           | "(" "and" condition { condition } ")"
           | "(" "or"  condition { condition } ")"
           | "(" "not" condition ")" ;
 ```
 
-`set?` is the string-emptiness test from DESIGN.md §8.3 — it models `!= ""`, which is
-what the great majority of Buildroot's 154 string comparisons actually use. Equality
-against a literal is deliberately absent: it stays opaque and must be declared.
+`set?` is the string-emptiness test from DESIGN.md §8.3. `equal?` compares a stated
+value with a literal. Both are three-valued over what the composition states: a string
+nobody stated is unknown, never unequal, because kbuild may give it that value by
+default. Rules fire only on known conditions. (In the Kconfig model, comparisons against
+literals are exact: see `cnf/values.go`.)
 
 A condition may cross scopes. That is the entire point of `rules`.
 
@@ -251,7 +254,7 @@ implementation-faithful and spec-faithful — expressible over the same imported
 
 ## The complete keyword set
 
-Forty-two authored, plus nine that only the importer emits. The documentation
+Forty-three authored, plus nine that only the importer emits. The documentation
 previously claimed seven, which counted only the constraint forms and was wrong.
 
 | group | keywords |
@@ -262,7 +265,7 @@ previously claimed seven, which counted only the constraint forms and was wrong.
 | scope | `buildroot` `linux` |
 | constraint | `y` `m` `n` `at-least` `prefer` `value` `when` |
 | tree | `tree` `scope` `kind` `prefix` `consumed-by` `source` |
-| condition | `set?` `and` `or` `not` |
+| condition | `set?` `equal?` `and` `or` `not` |
 | tree option | `custom-version` |
 | image | `compose` `override` `opaque` `unmanaged` `delegate` `environment` `verified-against` |
 | delegation | `custom-config-file` `config-fragment-files` |

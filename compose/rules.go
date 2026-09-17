@@ -190,6 +190,18 @@ func holds(c *lang.Cond, index map[lang.SymbolID]lang.Constraint) truth {
 		}
 		return known
 
+	case "equal?":
+		// Known only from a stated value. An unstated string is unknown,
+		// never unequal: kbuild may give it exactly this value by default.
+		have, ok := index[c.Sym]
+		if !ok || !have.IsValue {
+			return unknown
+		}
+		if have.Value == c.Value {
+			return known
+		}
+		return refuted
+
 	case "set?":
 		have, ok := index[c.Sym]
 		if !ok {
@@ -263,6 +275,8 @@ func condString(c *lang.Cond) string {
 		return "(" + describe(*c.C) + " " + c.C.Sym.String() + ")"
 	case "set?":
 		return "(set? " + c.Sym.String() + ")"
+	case "equal?":
+		return "(equal? " + c.Sym.String() + " " + fmt.Sprintf("%q", c.Value) + ")"
 	case "not":
 		return "(not " + condString(c.Args[0]) + ")"
 	default:

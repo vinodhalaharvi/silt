@@ -109,7 +109,7 @@ func (l *Library) checkCond(c *lang.Cond) error {
 	switch c.Op {
 	case "constraint":
 		return l.checkSymbol(c.C.Sym, c.Pos.Short())
-	case "set?":
+	case "set?", "equal?":
 		return l.checkSymbol(c.Sym, c.Pos.Short())
 	}
 	for _, a := range c.Args {

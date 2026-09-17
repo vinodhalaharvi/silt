@@ -207,3 +207,40 @@ func TestSatisfiablePreferenceIsKept(t *testing.T) {
 		t.Error("satisfiable preference was not honored")
 	}
 }
+
+// A stated string value is an assumption. Before values were in the model,
+// this composition solved SAT and the build dropped the feature.
+func TestStatedValuesCanConflict(t *testing.T) {
+	const k = `
+config BR2_BOOT_NAME
+	string "bootloader name"
+config BR2_UBOOT_ENV
+	bool "u-boot environment"
+	depends on BR2_BOOT_NAME = "uboot"
+config BR2_UNRELATED
+	string "unrelated"
+`
+	frags := []string{
+		`(fragment target:t (buildroot (value BR2_BOOT_NAME "barebox")))`,
+		`(fragment profile:p (buildroot (y BR2_UBOOT_ENV) (value BR2_UNRELATED "x")))`,
+	}
+	r := setup(t, k, frags, `(image i (compose target:t profile:p))`)
+	if r.Status != solver.UNSAT {
+		t.Fatalf("got %v", r.Status)
+	}
+	got := map[string]bool{}
+	for _, c := range r.Culprits {
+		got[c.Symbol] = true
+	}
+	if len(r.Culprits) != 2 || !got["BR2_BOOT_NAME"] || !got["BR2_UBOOT_ENV"] {
+		t.Fatalf("culprits should be the value and the feature: %+v", r.Culprits)
+	}
+	if !strings.Contains(r.Explain("i"), `BR2_BOOT_NAME = "barebox"`) {
+		t.Errorf("explanation should show the stated value:\n%s", r.Explain("i"))
+	}
+
+	frags[0] = `(fragment target:t (buildroot (value BR2_BOOT_NAME "uboot")))`
+	if r := setup(t, k, frags, `(image i (compose target:t profile:p))`); r.Status != solver.SAT {
+		t.Fatalf("with the matching value: %v", r.Status)
+	}
+}

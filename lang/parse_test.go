@@ -212,3 +212,16 @@ func TestCapabilityDeclarations(t *testing.T) {
 	}
 	rejects(t, `(capabilities (capability x (nonsense "y")))`, "unknown capability clause")
 }
+
+func TestEqualConditionForm(t *testing.T) {
+	f, err := ParseFile(`(rules r (when (equal? buildroot:BR2_X "a b") (y linux:CONFIG_Y)))`, "t.sx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := f.Rules[0].Guards[0].Cond
+	if c.Op != "equal?" || c.Sym != (SymbolID{"buildroot", "BR2_X"}) || c.Value != "a b" {
+		t.Errorf("%+v", c)
+	}
+	rejects(t, `(rules r (when (equal? buildroot:BR2_X) (y linux:CONFIG_Y)))`, "takes a symbol and a string")
+	rejects(t, `(rules r (when (equal? BR2_X "a") (y linux:CONFIG_Y)))`, "needs a tree")
+}

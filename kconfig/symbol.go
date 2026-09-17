@@ -81,6 +81,10 @@ type Tree struct {
 	Symbols map[string]*Symbol
 	Order   []string // source order, which matters for first-match defaults
 	Choices []*ChoiceGroup
+	// Env is the environment the tree was imported with. option env symbols
+	// take their value from it, and a model that ignores it would accept
+	// configurations kbuild on this host rejects (DESIGN.md §14.2).
+	Env map[string]string
 }
 
 // ChoiceGroup is a choice block: at most one member may be y.
@@ -93,6 +97,9 @@ type ChoiceGroup struct {
 	File     string
 	Line     int
 }
+
+// Declarations is how many times the symbol was declared.
+func (s *Symbol) Declarations() int { return len(s.decls) }
 
 func newTree(root string) *Tree {
 	return &Tree{Root: root, Symbols: map[string]*Symbol{}}

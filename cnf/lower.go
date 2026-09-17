@@ -13,6 +13,11 @@ type Model struct {
 	// Skipped records symbols excluded from the model and why, because an
 	// undeclared exclusion is indistinguishable from a bug (Invariant 9).
 	Skipped map[string]string
+	// Derived counts hidden string symbols whose value is encoded as a
+	// function of their defaults.
+	Derived int
+
+	domains map[string]*domain
 }
 
 // varFor names the Boolean for a symbol being enabled.
@@ -36,6 +41,8 @@ func varSet(f *Formula, sym string) Lit { return f.Var(sym + "!set") }
 func Lower(t *kconfig.Tree) *Model {
 	m := &Model{F: New(), Tree: t, Skipped: map[string]string{}}
 	f := m.F
+	m.buildDomains()
+	m.pinEnv()
 
 	for _, name := range t.Order {
 		s := t.Symbols[name]
@@ -48,8 +55,7 @@ func Lower(t *kconfig.Tree) *Model {
 			// n < m < y as two Booleans with at-most-one.
 			f.Add(where+" tristate", varFor(f, name).Neg(), varForM(f, name).Neg())
 		case kconfig.String, kconfig.Int, kconfig.Hex:
-			// Value is not modelled; only emptiness is.
-			m.Skipped[name] = string(s.Type.String()) + ": value not modelled, emptiness is"
+			// Values are a finite domain; see values.go.
 		default:
 			m.Skipped[name] = "untyped"
 			continue
@@ -86,6 +92,8 @@ func Lower(t *kconfig.Tree) *Model {
 		}
 	}
 
+	m.deriveHidden()
+
 	// choice groups: at most one member enabled.
 	for _, c := range t.Choices {
 		if len(c.Members) < 2 {
@@ -119,6 +127,12 @@ func Lower(t *kconfig.Tree) *Model {
 // true exactly when the expression is.
 func (m *Model) lowerExpr(e *kconfig.Expr, origin string) Lit {
 	f := m.F
+	if e == nil {
+		// No condition: always true, as in kbuild.
+		t := f.Var("!true")
+		f.Add("constant", t)
+		return t
+	}
 	switch e.Op {
 	case kconfig.ExprSym:
 		switch e.Sym {
@@ -155,31 +169,18 @@ func (m *Model) lowerExpr(e *kconfig.Expr, origin string) Lit {
 		return aux
 
 	case kconfig.ExprEq, kconfig.ExprNeq:
-		// Only emptiness is modelled. X != "" is "X is set"; every other
-		// comparison against a literal is unmodelled and declared as such.
-		if e.IsLit && e.Lit == "" {
-			l := varSet(f, e.Sym)
-			if e.Op == kconfig.ExprNeq {
-				return l
-			}
+		l, ok := m.compare(e)
+		if !ok {
+			m.Skipped[e.Sym] = "comparison between two non-bool symbols not modelled: " + e.String()
+			// Unconstrained: a fresh variable with no clauses, so the solver
+			// may choose either way. Pretending to know would be worse than
+			// admitting the gap.
+			return f.Fresh("cmp")
+		}
+		if e.Op == kconfig.ExprNeq {
 			return l.Neg()
 		}
-		if e.Sym == "y" || e.Lit == "y" {
-			sym := e.Sym
-			if sym == "y" {
-				sym = e.Lit
-			}
-			l := varFor(f, sym)
-			if e.Op == kconfig.ExprNeq {
-				return l.Neg()
-			}
-			return l
-		}
-		m.Skipped[e.Sym] = "literal comparison not modelled: " + e.String()
-		// Unconstrained: a fresh variable with no clauses, so the solver may
-		// choose either way. Pretending to know would be worse than admitting
-		// the gap.
-		return f.Fresh("cmp")
+		return l
 	}
 	return f.Fresh("unknown")
 }

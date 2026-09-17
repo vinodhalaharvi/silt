@@ -328,6 +328,16 @@ func parseCond(n *sexpr.Node, sc Scope) (*Cond, error) {
 			return nil, err
 		}
 		return &Cond{Op: "set?", Sym: id, Pos: n.Pos}, nil
+	case "equal?":
+		a := n.Args()
+		if len(a) != 2 || a[0].Kind != sexpr.KindSymbol || a[1].Kind != sexpr.KindString {
+			return nil, errf(n, `(equal? SYMBOL "string") takes a symbol and a string`)
+		}
+		id, err := parseSymbolRef(a[0], sc)
+		if err != nil {
+			return nil, err
+		}
+		return &Cond{Op: "equal?", Sym: id, Value: a[1].Text, Pos: n.Pos}, nil
 	case "and", "or":
 		if len(n.Args()) < 2 {
 			return nil, errf(n, "(%s ...) needs at least two conditions", h)
