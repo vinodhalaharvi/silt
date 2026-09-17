@@ -54,12 +54,50 @@ func TestFragmentRoundTrip(t *testing.T) {
 	}
 }
 
-// Symbols must live in the right tree. A BR2_ symbol in a linux scope is
-// always a mistake and is far cheaper to catch here than as a fixpoint diff.
+// A symbol's tree comes from where it is written, never from its prefix.
+// Spelling is checked against the registry at compose time (see
+// compose.TestPrefixIsCheckedAgainstTheRegistry); the parser checks only what
+// it can know alone: that a qualifier agrees with its scope, that an unscoped
+// symbol is qualified, and that the name is a Kconfig name.
 func TestScopeEnforcement(t *testing.T) {
-	rejects(t, `(fragment target:x (linux (y BR2_aarch64)))`, "Buildroot symbol")
-	rejects(t, `(fragment target:x (buildroot (y CONFIG_ARM64)))`, "Linux symbol")
-	rejects(t, `(fragment target:x (buildroot (y NOT_A_SYMBOL)))`, "BR2_ or CONFIG_")
+	rejects(t, `(fragment target:x (linux (y buildroot:BR2_aarch64)))`, "written in a linux scope")
+	rejects(t, `(rules r (when (y BR2_A) (y linux:CONFIG_X)))`, "needs a tree outside a scope")
+	rejects(t, `(image i (compose target:t profile:p) (override (y BR2_A)))`, "needs a tree outside a scope")
+	rejects(t, `(fragment target:x (buildroot (y BR2-bad)))`, "not a Kconfig symbol name")
+	rejects(t, `(fragment target:x (scope Busybox (y CONFIG_X)))`, "needs a tree name")
+
+	f, err := ParseFile(`(fragment target:x
+	  (scope busybox (y CONFIG_DESKTOP))
+	  (linux (y CONFIG_DESKTOP) (y linux:CONFIG_NET)
+	    (when (y buildroot:BR2_INIT_SYSTEMD) (y CONFIG_CGROUPS))))`, "t.sx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr := f.Fragments[0]
+	if got := fr.Constraints["busybox"][0].Sym; got != (SymbolID{"busybox", "CONFIG_DESKTOP"}) {
+		t.Errorf("busybox scope: %v", got)
+	}
+	if got := fr.Constraints[Linux][0].Sym; got != (SymbolID{"linux", "CONFIG_DESKTOP"}) {
+		t.Errorf("linux scope: %v", got)
+	}
+	g := fr.Guards[0]
+	if g.Cond.C.Sym != (SymbolID{"buildroot", "BR2_INIT_SYSTEMD"}) || g.Then[0].Sym != (SymbolID{"linux", "CONFIG_CGROUPS"}) {
+		t.Errorf("guard in a linux scope: %v -> %v", g.Cond.C.Sym, g.Then[0].Sym)
+	}
+}
+
+func TestTreeDeclarations(t *testing.T) {
+	f, err := ParseFile(`(tree busybox (kind kconfig) (prefix "CONFIG_")
+	  (consumed-by BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES) (source "../busybox"))`, "t.sx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := f.Trees[0]
+	if d.Name != "busybox" || d.Prefix != "CONFIG_" || d.ConsumedBy != "BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES" {
+		t.Errorf("%+v", d)
+	}
+	rejects(t, `(tree dt (kind devicetree))`, "not a constraint system")
+	rejects(t, `(tree busybox (prefix "CONFIG_"))`, "needs (kind kconfig)")
 }
 
 // Targets and profiles provide; features only require.
@@ -90,17 +128,17 @@ func TestComposeShape(t *testing.T) {
 }
 
 func TestRulesHoldOnlyGuards(t *testing.T) {
-	rejects(t, `(rules r (y BR2_X))`, "only (when")
-	f := parse(t, `(rules cross-tree (when (y BR2_PACKAGE_DHCPCD) (y CONFIG_PACKET)))`)
+	rejects(t, `(rules r (y buildroot:BR2_X))`, "only (when")
+	f := parse(t, `(rules cross-tree (when (y buildroot:BR2_PACKAGE_DHCPCD) (y linux:CONFIG_PACKET)))`)
 	g := f.Rules[0].Guards[0]
-	if g.Cond.C.Symbol != "BR2_PACKAGE_DHCPCD" || g.Then[0].Symbol != "CONFIG_PACKET" {
+	if g.Cond.C.Sym.String() != "buildroot:BR2_PACKAGE_DHCPCD" || g.Then[0].Sym.String() != "linux:CONFIG_PACKET" {
 		t.Fatalf("cross-tree guard not parsed: %+v", g)
 	}
 }
 
 func TestConditions(t *testing.T) {
 	f := parse(t, `(rules r
-	  (when (and (y BR2_A) (or (set? BR2_S) (not (n BR2_B)))) (y CONFIG_X)))`)
+	  (when (and (y buildroot:BR2_A) (or (set? buildroot:BR2_S) (not (n buildroot:BR2_B)))) (y linux:CONFIG_X)))`)
 	c := f.Rules[0].Guards[0].Cond
 	if c.Op != "and" || len(c.Args) != 2 || c.Args[1].Op != "or" {
 		t.Fatalf("condition tree wrong: %+v", c)
@@ -111,7 +149,7 @@ func TestConditions(t *testing.T) {
 }
 
 func TestSoftCannotGuard(t *testing.T) {
-	rejects(t, `(rules r (when (prefer y BR2_A) (y CONFIG_X)))`, "soft constraint cannot be a condition")
+	rejects(t, `(rules r (when (prefer y buildroot:BR2_A) (y linux:CONFIG_X)))`, "soft constraint cannot be a condition")
 }
 
 func TestImageDeclarations(t *testing.T) {
@@ -119,10 +157,10 @@ func TestImageDeclarations(t *testing.T) {
 (image i
   (compose target:t profile:p)
   (linux (custom-version "6.18.7"))
-  (opaque (value BR2_GLOBAL_PATCH_DIR "board/x"))
-  (unmanaged BR2_TARGET_UBOOT_*)
+  (opaque (value buildroot:BR2_GLOBAL_PATCH_DIR "board/x"))
+  (unmanaged buildroot:BR2_TARGET_UBOOT_*)
   (delegate uboot (custom-config-file "board/x/uboot.config"))
-  (environment (value BR2_HOST_GCC_VERSION "13 2"))
+  (environment (value buildroot:BR2_HOST_GCC_VERSION "13 2"))
   (repair-policy (minimize changed-symbols) (keep target) (baseline "b")))`)
 	im := f.Images[0]
 	if im.Version != "6.18.7" || len(im.Opaque) != 1 || len(im.Unmanaged) != 1 ||
@@ -146,7 +184,7 @@ func TestUnknownFormsRejected(t *testing.T) {
 
 // Diagnostics must name a file and line: Invariant 3 applied to errors.
 func TestErrorsCarryPosition(t *testing.T) {
-	_, err := ParseFile("\n\n(fragment target:x\n  (linux (y BR2_aarch64)))", "f.sx")
+	_, err := ParseFile("\n\n(fragment target:x\n  (linux (y buildroot:BR2_aarch64)))", "f.sx")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -158,18 +196,18 @@ func TestErrorsCarryPosition(t *testing.T) {
 func TestCapabilityDeclarations(t *testing.T) {
 	f := parse(t, `
 (capabilities
-  (capability mmu (doc "has an MMU") (symbol BR2_USE_MMU))
+  (capability mmu (doc "has an MMU") (symbol buildroot:BR2_USE_MMU))
   (capability dhcp-client (doc "something does DHCP")))`)
 	d := f.Capabilities[0].Decls
 	if len(d) != 2 {
 		t.Fatalf("got %d decls", len(d))
 	}
-	if d[0].Symbol != "BR2_USE_MMU" || d[0].Doc != "has an MMU" {
+	if d[0].Symbol.String() != "buildroot:BR2_USE_MMU" || d[0].Doc != "has an MMU" {
 		t.Errorf("mmu: %+v", d[0])
 	}
 	// A capability need not correspond to any symbol. dhcp-client is an
 	// outcome two profiles satisfy by different means.
-	if d[1].Symbol != "" {
+	if !d[1].Symbol.IsZero() {
 		t.Errorf("dhcp-client should have no symbol: %+v", d[1])
 	}
 	rejects(t, `(capabilities (capability x (nonsense "y")))`, "unknown capability clause")

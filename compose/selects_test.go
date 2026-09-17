@@ -38,7 +38,7 @@ config BR2_PACKAGE_SYSTEMD
 	l := lib(t,
 		`(fragment target:t (buildroot (y BR2_ARCH)) (provides (capability mmu)))`,
 		`(fragment profile:p (requires (capability mmu)) (buildroot (y BR2_INIT_SYSTEMD)))`,
-		`(rules x (when (y BR2_PACKAGE_SYSTEMD) (n CONFIG_SYSFS_DEPRECATED)))`)
+		`(rules x (when (y buildroot:BR2_PACKAGE_SYSTEMD) (n linux:CONFIG_SYSFS_DEPRECATED)))`)
 
 	if r, err := composeSrc(t, l, `(image i (compose target:t profile:p))`); err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ config BR2_PACKAGE_SYSTEMD
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Derived) != 1 || r.Derived[0].Constraint.Symbol != "CONFIG_SYSFS_DEPRECATED" {
+	if len(r.Derived) != 1 || r.Derived[0].Constraint.Sym.Name != "CONFIG_SYSFS_DEPRECATED" {
 		t.Fatalf("rule did not fire on the selected symbol: %+v", r.Derived)
 	}
 	if r.Selected["BR2_PACKAGE_SYSTEMD"] != "BR2_INIT_SYSTEMD" {
@@ -113,14 +113,14 @@ config BR2_B
 	l := lib(t,
 		`(fragment target:t (buildroot (y BR2_ARCH)) (provides (capability mmu)))`,
 		`(fragment profile:p (requires (capability mmu)) (buildroot (y BR2_A)))`,
-		`(rules x (when (y BR2_B) (y BR2_B)))`)
+		`(rules x (when (y buildroot:BR2_B) (y buildroot:BR2_B)))`)
 	l.Tree = tr
 	r, err := composeSrc(t, l, `(image i (compose target:t profile:p))`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range r.Constraints[lang.Buildroot] {
-		if c.Symbol == "BR2_B" {
+		if c.Sym.Name == "BR2_B" {
 			t.Fatalf("select-implied symbol was emitted: %+v", c)
 		}
 	}

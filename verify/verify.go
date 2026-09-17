@@ -58,17 +58,23 @@ func Check(res *compose.Result, tree *kconfig.Tree) *Report {
 	rep := &Report{Symbols: len(tree.Symbols)}
 
 	// Index what the composition asserts, so dependency evaluation can consult it.
+	// Only Buildroot symbols: that is the tree loaded here. A symbol from
+	// another tree is not unknown, it is unchecked, and saying "does not
+	// exist" about it would be a lie. Keying by bare name used to let an
+	// opaque linux value be looked up in the Buildroot tree.
 	stated := map[string]lang.Constraint{}
+	br := string(lang.Buildroot)
 	for _, c := range res.Constraints[lang.Buildroot] {
 		if !c.Soft {
-			stated[c.Symbol] = c
+			stated[c.Sym.Name] = c
 		}
 	}
-	for _, c := range res.Opaque {
-		stated[c.Symbol] = c
-	}
-	for _, c := range res.Environment {
-		stated[c.Symbol] = c
+	for _, cs := range [][]lang.Constraint{res.Opaque, res.Environment} {
+		for _, c := range cs {
+			if c.Sym.Tree == br {
+				stated[c.Sym.Name] = c
+			}
+		}
 	}
 
 	// Deterministic order, so output is diffable.
@@ -125,9 +131,9 @@ func Check(res *compose.Result, tree *kconfig.Tree) *Report {
 			rep.add(Finding{
 				Pos: c.Pos.Short(), Symbol: name,
 				Message: fmt.Sprintf("%s requires %s (%s:%d)",
-					name, requirement(sym.Depends, why.Symbol), sym.File, sym.Line),
+					name, requirement(sym.Depends, why.Sym.Name), sym.File, sym.Line),
 				Detail: fmt.Sprintf("but %s is stated %s by %s at %s",
-					why.Symbol, describe(*why), why.From, why.Pos.Short()),
+					why.Sym, describe(*why), why.From, why.Pos.Short()),
 			})
 		}
 	}
@@ -145,12 +151,12 @@ func CheckCapabilities(decls map[string]lang.CapabilityDecl, tree *kconfig.Tree,
 	sort.Strings(names)
 	for _, n := range names {
 		d := decls[n]
-		if d.Symbol == "" || strings.HasPrefix(d.Symbol, "CONFIG_") {
-			continue // unbound, or a Linux symbol from a tree not loaded here
+		if d.Symbol.IsZero() || d.Symbol.Tree != string(lang.Buildroot) {
+			continue // unbound, or a symbol from a tree not loaded here
 		}
-		if _, ok := tree.Symbols[d.Symbol]; !ok {
+		if _, ok := tree.Symbols[d.Symbol.Name]; !ok {
 			rep.add(Finding{
-				Pos: d.Pos.Short(), Symbol: d.Symbol,
+				Pos: d.Pos.Short(), Symbol: d.Symbol.String(),
 				Message: fmt.Sprintf("capability %q is bound to %s, which does not exist in this tree",
 					d.Name, d.Symbol),
 			})
@@ -165,8 +171,12 @@ func describe(c lang.Constraint) string {
 	return c.Want.String()
 }
 
-func isUnmanaged(name string, patterns []string) bool {
-	for _, p := range patterns {
+func isUnmanaged(name string, ids []lang.SymbolID) bool {
+	for _, id := range ids {
+		if id.Tree != string(lang.Buildroot) {
+			continue
+		}
+		p := id.Name
 		if strings.HasSuffix(p, "*") {
 			if strings.HasPrefix(name, strings.TrimSuffix(p, "*")) {
 				return true
@@ -267,4 +277,36 @@ func mentions(e *kconfig.Expr, sym string) bool {
 		}
 	}
 	return false
+}
+
+// CheckTrees verifies that every declared tree hands its config to Buildroot
+// through a symbol that exists and takes a string. A consumed-by pointing at a
+// misspelled symbol would emit a line kbuild drops, and the tree's whole
+// config fragment would be built and then ignored.
+func CheckTrees(trees map[string]lang.TreeDecl, tree *kconfig.Tree, rep *Report) {
+	names := make([]string, 0, len(trees))
+	for n := range trees {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		d := trees[n]
+		if d.ConsumedBy == "" {
+			continue
+		}
+		sym, ok := tree.Symbols[d.ConsumedBy]
+		switch {
+		case !ok:
+			rep.add(Finding{
+				Pos: d.Pos.Short(), Symbol: d.ConsumedBy,
+				Message: fmt.Sprintf("tree %s is consumed by %s, which does not exist in this tree", n, d.ConsumedBy),
+			})
+		case sym.Type != kconfig.String:
+			rep.add(Finding{
+				Pos: d.Pos.Short(), Symbol: d.ConsumedBy,
+				Message: fmt.Sprintf("tree %s is consumed by %s, which is %s, not a string of file paths",
+					n, d.ConsumedBy, sym.Type),
+			})
+		}
+	}
 }

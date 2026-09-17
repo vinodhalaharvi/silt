@@ -14,7 +14,7 @@
   ;; The one place last-wins is permitted, and only when explicit. Recorded in the
   ;; solution with provenance, so `silt why` attributes the value to this line.
   (override
-    (value BR2_TARGET_ROOTFS_EXT2_SIZE "256M"))
+    (value buildroot:BR2_TARGET_ROOTFS_EXT2_SIZE "256M"))
 
   ;; Ranking for the completion solver (DESIGN.md §9). Everything here is statically
   ;; known: no image size, no boot time — those are observed outputs, and only

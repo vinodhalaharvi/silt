@@ -173,7 +173,7 @@ func TestUnmanagedIsSkipped(t *testing.T) {
 	tr := tree(t, "config BR2_ARCH\n\tbool \"arch\"\n")
 	r := composed(t, []string{tgt,
 		`(fragment profile:p (requires (capability mmu)) (buildroot (y BR2_TARGET_UBOOT_THING)))`,
-	}, `(image i (compose target:t profile:p) (unmanaged BR2_TARGET_UBOOT_*))`)
+	}, `(image i (compose target:t profile:p) (unmanaged buildroot:BR2_TARGET_UBOOT_*))`)
 
 	if rep := Check(r, tr); !rep.OK() {
 		t.Errorf("unmanaged symbols must be skipped:\n%s", msgs(rep))
@@ -186,5 +186,25 @@ func TestTreeVersion(t *testing.T) {
 	v, err := kconfig.TreeVersion(dir)
 	if err != nil || v != "2025.02.16" {
 		t.Fatalf("got %q, %v", v, err)
+	}
+}
+
+func TestConsumedByMustExistAndTakeAString(t *testing.T) {
+	tr := tree(t, `
+config BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES
+	string "fragments"
+config BR2_PACKAGE_BUSYBOX
+	bool "busybox"
+`)
+	trees := map[string]lang.TreeDecl{
+		"busybox": {Name: "busybox", ConsumedBy: "BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES"},
+		"uboot":   {Name: "uboot", ConsumedBy: "BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILE"},
+		"wrong":   {Name: "wrong", ConsumedBy: "BR2_PACKAGE_BUSYBOX"},
+	}
+	rep := &Report{}
+	CheckTrees(trees, tr, rep)
+	m := msgs(rep)
+	if len(rep.Findings) != 2 || !strings.Contains(m, "does not exist") || !strings.Contains(m, "is bool") {
+		t.Fatalf("findings:\n%s", m)
 	}
 }

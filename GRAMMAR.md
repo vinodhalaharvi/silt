@@ -23,7 +23,9 @@ quoted. Comments run from `;` to end of line and are not part of any production.
 ## Lexical
 
 ```ebnf
-symbol         = "BR2_" ident | "CONFIG_" ident ;
+name-in-tree   = ( letter | digit | "_" ) { letter | digit | "_" } ;
+tree-name      = lower { lower | digit | "-" } ;
+symbol         = name-in-tree | tree-name ":" name-in-tree ;
 ident          = ( letter | digit | "_" ) { letter | digit | "_" } ;
 name           = letter { letter | digit | "-" } ;
 fragment-id    = kind ":" name ;
@@ -31,6 +33,13 @@ kind           = "target" | "profile" | "feature" ;
 string         = '"' { any-char-except-quote } '"' ;
 symbol-pattern = symbol [ "*" ] ;
 ```
+
+A symbol's tree comes from where it is written, never from its spelling. Inside a
+scope block a bare name belongs to that scope's tree, and a qualified one must name
+the same tree. Everywhere else — rule conditions and consequents, `override`,
+`opaque`, `environment`, `unmanaged`, a capability's `symbol` — the `tree:` qualifier
+is required. `CONFIG_` is not a namespace: Linux, BusyBox and U-Boot all use it, and
+Buildroot builds its own `conf` with the prefix emptied.
 
 Values inside `string` are never interpreted by Silt. A `$(...)` inside one is a make
 expansion (DESIGN.md §14.3) and is carried verbatim.
@@ -41,10 +50,10 @@ expansion (DESIGN.md §14.3) and is carried verbatim.
 
 ```ebnf
 file     = { toplevel } ;
-toplevel = fragment | rules | image | capabilities ;
+toplevel = fragment | rules | image | capabilities | tree ;
 ```
 
-Exactly three things can appear at the top of a file. A file holding more than one
+Five things can appear at the top of a file. A file holding more than one
 `fragment` is legal but discouraged; the directory layout in DESIGN.md §13 assumes one.
 
 ---
@@ -87,8 +96,9 @@ A library with no declarations keeps the older behaviour, where `provides` and
 ## Scopes and constraints
 
 ```ebnf
-scope       = "(" scope-name { constraint } ")" ;
-scope-name  = "buildroot" | "linux" ;
+scope       = "(" "buildroot" { constraint } ")"
+            | "(" "linux" { constraint } ")"
+            | "(" "scope" tree-name { constraint } ")" ;
 
 constraint  = hard | soft | value | guarded | tree-option ;
 
@@ -111,8 +121,28 @@ special-casing.
 
 `tree-option` is valid only in the `linux` scope.
 
-Symbols must match their scope: `BR2_*` in `buildroot`, `CONFIG_*` in `linux`. Static
-check.
+`(buildroot ...)` and `(linux ...)` are shorthand for `(scope buildroot ...)` and
+`(scope linux ...)`. Every other tree must be declared (below) before a scope may name
+it. Symbols are checked against their tree's declared `prefix` at compose time: static
+check, and a spelling check only.
+
+---
+
+## Trees
+
+```ebnf
+tree        = "(" "tree" tree-name { tree-clause } ")" ;
+tree-clause = "(" "kind" "kconfig" ")"
+            | "(" "prefix" string ")"
+            | "(" "consumed-by" symbol ")"
+            | "(" "source" string ")" ;
+```
+
+`buildroot` (prefix `BR2_`) and `linux` (prefix `CONFIG_`, consumed by
+`BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES`) are built in. `kind` is required and only
+`kconfig` exists; devicetree is not a constraint system and is rejected. `consumed-by`
+names the Buildroot symbol that receives the tree's emitted config file; `silt check
+--buildroot` verifies it exists and is a string.
 
 ---
 
@@ -221,7 +251,7 @@ implementation-faithful and spec-faithful — expressible over the same imported
 
 ## The complete keyword set
 
-Thirty-seven authored, plus nine that only the importer emits. The documentation
+Forty-two authored, plus nine that only the importer emits. The documentation
 previously claimed seven, which counted only the constraint forms and was wrong.
 
 | group | keywords |
@@ -231,6 +261,7 @@ previously claimed seven, which counted only the constraint forms and was wrong.
 | capability decl | `symbol` |
 | scope | `buildroot` `linux` |
 | constraint | `y` `m` `n` `at-least` `prefer` `value` `when` |
+| tree | `tree` `scope` `kind` `prefix` `consumed-by` `source` |
 | condition | `set?` `and` `or` `not` |
 | tree option | `custom-version` |
 | image | `compose` `override` `opaque` `unmanaged` `delegate` `environment` `verified-against` |

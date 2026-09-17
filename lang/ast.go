@@ -56,7 +56,7 @@ func (id ID) String() string { return string(id.Kind) + ":" + id.Name }
 
 // Constraint is one requirement on one symbol.
 type Constraint struct {
-	Symbol  string
+	Sym     SymbolID
 	Want    Tristate
 	AtLeast bool // (at-least m X): Want or stronger
 	Soft    bool // (prefer ...): yields to hard constraints
@@ -80,7 +80,7 @@ type Guarded struct {
 type Cond struct {
 	Op   string // "constraint", "set?", "and", "or", "not"
 	C    *Constraint
-	Sym  string
+	Sym  SymbolID
 	Args []*Cond
 	Pos  sexpr.Pos
 }
@@ -100,7 +100,7 @@ type Capability struct {
 type CapabilityDecl struct {
 	Name   string
 	Doc    string
-	Symbol string // optional BR2_/CONFIG_ symbol this capability corresponds to
+	Symbol SymbolID // optional symbol this capability corresponds to
 	Pos    sexpr.Pos
 }
 
@@ -155,7 +155,7 @@ type Image struct {
 	Constraints map[Scope][]Constraint
 	Override    []Constraint
 	Opaque      []Constraint
-	Unmanaged   []string
+	Unmanaged   []SymbolID // Name may end in *
 	Delegate    []Delegation
 	Environment []Constraint
 	Policy      Policy
@@ -174,4 +174,5 @@ type File struct {
 	Rules        []*Rules
 	Images       []*Image
 	Capabilities []*Capabilities
+	Trees        []*TreeDecl
 }

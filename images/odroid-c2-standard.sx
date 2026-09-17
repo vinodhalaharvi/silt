@@ -15,13 +15,13 @@
   ;; Board scripts and overlays: arbitrary shell and file trees, carried
   ;; verbatim and reported as opaque on every run.
   (opaque
-    (value BR2_ROOTFS_OVERLAY           "board/hardkernel/odroidc2/rootfs_overlay")
-    (value BR2_ROOTFS_POST_IMAGE_SCRIPT "board/hardkernel/odroidc2/post-image.sh")
-    (value BR2_PACKAGE_HOST_UBOOT_TOOLS_BOOT_SCRIPT_SOURCE
+    (value buildroot:BR2_ROOTFS_OVERLAY           "board/hardkernel/odroidc2/rootfs_overlay")
+    (value buildroot:BR2_ROOTFS_POST_IMAGE_SCRIPT "board/hardkernel/odroidc2/post-image.sh")
+    (value buildroot:BR2_PACKAGE_HOST_UBOOT_TOOLS_BOOT_SCRIPT_SOURCE
            "board/hardkernel/odroidc2/boot.cmd"))
 
   ;; U-Boot is one of the ten Kconfig trees Silt does not model.
-  (unmanaged BR2_TARGET_UBOOT_CUSTOM_*)
+  (unmanaged buildroot:BR2_TARGET_UBOOT_CUSTOM_*)
 
   (repair-policy
     (minimize changed-symbols)

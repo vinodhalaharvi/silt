@@ -14,52 +14,52 @@
 (rules cross-tree
 
   ;; Enabling a package in one tree constrains drivers in the other.
-  (when (y BR2_PACKAGE_WPA_SUPPLICANT)
-    (at-least m CONFIG_MAC80211))
+  (when (y buildroot:BR2_PACKAGE_WPA_SUPPLICANT)
+    (at-least m linux:CONFIG_MAC80211))
 
-  (when (y BR2_PACKAGE_LIBCAMERA)
-    (at-least m CONFIG_VIDEO_DEV))
+  (when (y buildroot:BR2_PACKAGE_LIBCAMERA)
+    (at-least m linux:CONFIG_VIDEO_DEV))
 
-  (when (y BR2_PACKAGE_DHCPCD)
-    (y CONFIG_PACKET))
+  (when (y buildroot:BR2_PACKAGE_DHCPCD)
+    (y linux:CONFIG_PACKET))
 
   ;; Userspace policy constrains the kernel.
   ;; systemd's mandatory kernel options, quoted from its own README under
   ;; "Kernel Config Options" — github.com/systemd/systemd, README lines 93-103.
   ;; Ten, not the three an earlier draft listed from memory.
-  (when (y BR2_INIT_SYSTEMD)
-    (y CONFIG_DEVTMPFS)
-    (y CONFIG_CGROUPS)
-    (y CONFIG_INOTIFY_USER)
-    (y CONFIG_SIGNALFD)
-    (y CONFIG_TIMERFD)
-    (y CONFIG_EPOLL)
-    (y CONFIG_UNIX)
-    (y CONFIG_SYSFS)
-    (y CONFIG_PROC_FS)
-    (y CONFIG_FHANDLE))
+  (when (y buildroot:BR2_INIT_SYSTEMD)
+    (y linux:CONFIG_DEVTMPFS)
+    (y linux:CONFIG_CGROUPS)
+    (y linux:CONFIG_INOTIFY_USER)
+    (y linux:CONFIG_SIGNALFD)
+    (y linux:CONFIG_TIMERFD)
+    (y linux:CONFIG_EPOLL)
+    (y linux:CONFIG_UNIX)
+    (y linux:CONFIG_SYSFS)
+    (y linux:CONFIG_PROC_FS)
+    (y linux:CONFIG_FHANDLE))
 
   ;; Same README: udev will not work with the legacy sysfs layout.
-  (when (y BR2_PACKAGE_SYSTEMD)
-    (n CONFIG_SYSFS_DEPRECATED))
+  (when (y buildroot:BR2_PACKAGE_SYSTEMD)
+    (n linux:CONFIG_SYSFS_DEPRECATED))
 
   ;; Rootfs format chosen in Buildroot must be mountable by the kernel it builds.
-  (when (y BR2_TARGET_ROOTFS_EXT2_4)
-    (y CONFIG_EXT4_FS))
+  (when (y buildroot:BR2_TARGET_ROOTFS_EXT2_4)
+    (y linux:CONFIG_EXT4_FS))
 
   ;; A module-only filesystem cannot hold the root filesystem: nothing can load it
   ;; before it is mounted. Neither Kconfig tree can express boot ordering.
-  (when (y BR2_TARGET_ROOTFS_EXT2)
-    (n CONFIG_EXT4_FS_MODULE))
+  (when (y buildroot:BR2_TARGET_ROOTFS_EXT2)
+    (n linux:CONFIG_EXT4_FS_MODULE))
 
   ;; The three requirements Buildroot states in help text and enforces nowhere.
   ;; Each cites the Config.in it was read from; see DESIGN.md §14.6.
-  (when (y BR2_PACKAGE_FSCRYPTCTL)      ; package/fscryptctl/Config.in
-    (y CONFIG_EXT4_ENCRYPTION))
-  (when (y BR2_PACKAGE_BCC)             ; package/bcc/Config.in
-    (y CONFIG_IKHEADERS))
-  (when (y BR2_PACKAGE_18XX_TI_UTILS)   ; package/18xx-ti-utils/Config.in
-    (y CONFIG_NL80211_TESTMODE)))
+  (when (y buildroot:BR2_PACKAGE_FSCRYPTCTL)      ; package/fscryptctl/Config.in
+    (y linux:CONFIG_EXT4_ENCRYPTION))
+  (when (y buildroot:BR2_PACKAGE_BCC)             ; package/bcc/Config.in
+    (y linux:CONFIG_IKHEADERS))
+  (when (y buildroot:BR2_PACKAGE_18XX_TI_UTILS)   ; package/18xx-ti-utils/Config.in
+    (y linux:CONFIG_NL80211_TESTMODE)))
 
 ;; Note the redundancy this introduces with the fragments: feature:networking also
 ;; states (y CONFIG_PACKET). Once the constraint model exists, the linter should

@@ -195,6 +195,7 @@ func cmdCheck(args []string) error {
 		}
 		rep := verify.Check(res, tree)
 		verify.CheckCapabilities(lib.Declared, tree, rep)
+		verify.CheckTrees(lib.Trees, tree, rep)
 		if rep.OK() {
 			fmt.Printf("ok  %-18s %d symbols checked against buildroot %s\n",
 				im.Name, rep.Checked, treeVer)
@@ -290,26 +291,39 @@ func cmdEmit(args []string) error {
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return err
 	}
-	br := filepath.Join(outDir, "defconfig")
-	lx := filepath.Join(outDir, "linux.config")
-	lxAbs, err := filepath.Abs(lx)
-	if err != nil {
-		lxAbs = lx
+	// One file per tree the image configures, each wired into the defconfig
+	// through its tree's consumed-by symbol.
+	paths := map[string]string{}
+	var written []string
+	for _, tree := range emit.Trees(r) {
+		path := filepath.Join(outDir, emit.FileName(tree))
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			abs = path
+		}
+		if err := os.WriteFile(path, []byte(emit.Defconfig(r, lang.Scope(tree))), 0o644); err != nil {
+			return err
+		}
+		paths[tree] = abs
+		written = append(written, path)
 	}
-	if err := os.WriteFile(br, []byte(emit.DefconfigWithKernel(r, lang.Buildroot, lxAbs)), 0o644); err != nil {
+	br := filepath.Join(outDir, emit.FileName("buildroot"))
+	def, err := emit.BuildrootDefconfig(r, paths)
+	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(lx, []byte(emit.Defconfig(r, lang.Linux)), 0o644); err != nil {
+	if err := os.WriteFile(br, []byte(def), 0o644); err != nil {
 		return err
 	}
 
-	report(r, br, lx)
+	report(r, append([]string{br}, written...))
 	return nil
 }
 
 // report prints the managed / opaque / unmanaged split. Invariant 9: a loss
 // that does not appear in the output is a bug, whatever else is true about it.
-func report(r *compose.Result, br, lx string) {
+func report(r *compose.Result, files []string) {
+	br := files[0]
 	fmt.Printf("composed %s\n", r.Image.Name)
 	for _, f := range r.Fragments {
 		fmt.Printf("  %-28s %s\n", f.ID, f.Pos.Short())
@@ -320,18 +334,28 @@ func report(r *compose.Result, br, lx string) {
 	}
 	sort.Strings(caps)
 	fmt.Printf("\ncapabilities  %s\n", strings.Join(caps, " "))
-	hardBR, softBR := split(r.Constraints[lang.Buildroot])
-	hardLX, softLX := split(r.Constraints[lang.Linux])
-	fmt.Printf("stated        %d buildroot, %d linux\n", hardBR, hardLX)
-	if softBR+softLX > 0 {
-		fmt.Printf("soft          %d  not emitted; needs MaxSAT (Rung 7)\n", softBR+softLX)
+	var scopes []string
+	for sc := range r.Constraints {
+		scopes = append(scopes, string(sc))
+	}
+	sort.Strings(scopes)
+	var parts []string
+	softs := 0
+	for _, sc := range scopes {
+		hard, soft := split(r.Constraints[lang.Scope(sc)])
+		parts = append(parts, fmt.Sprintf("%d %s", hard, sc))
+		softs += soft
+	}
+	fmt.Printf("stated        %s\n", strings.Join(parts, ", "))
+	if softs > 0 {
+		fmt.Printf("soft          %d  not emitted; needs MaxSAT (Rung 7)\n", softs)
 	}
 	fmt.Printf("guards        %d\n", len(r.Guards))
 	if n := len(r.Derived); n > 0 {
 		fmt.Printf("derived       %d  by cross-tree rules:\n", n)
 		for _, d := range r.Derived {
 			fmt.Printf("                %s=%s  %s\n",
-				d.Constraint.Symbol, d.Constraint.Want, d.Rule.Pos.Short())
+				d.Constraint.Sym, d.Constraint.Want, d.Rule.Pos.Short())
 		}
 	}
 	if n := len(r.Opaque); n > 0 {
@@ -346,7 +370,7 @@ func report(r *compose.Result, br, lx string) {
 	if n := len(r.Overridden); n > 0 {
 		fmt.Printf("overridden    %d  displaced by an explicit (override ...)\n", n)
 	}
-	fmt.Printf("\nwrote %s\n      %s\n", br, lx)
+	fmt.Printf("\nwrote %s\n", strings.Join(files, "\n      "))
 	fmt.Printf("\nnot solved: this is a partial config (Rung 2). Complete it with:\n")
 	abs, err := filepath.Abs(br)
 	if err != nil {
@@ -461,13 +485,17 @@ func cmdWhy(args []string) error {
 		return err
 	}
 
-	if s, ok := r.ExplainDerived(sym); ok {
+	id, err := resolveSymbol(r, sym)
+	if err != nil {
+		return err
+	}
+	if s, ok := r.ExplainDerived(id); ok {
 		fmt.Print(s)
 		return nil
 	}
-	for _, sc := range []lang.Scope{lang.Buildroot, lang.Linux} {
-		for _, c := range r.Constraints[sc] {
-			if c.Symbol != sym {
+	{
+		for _, c := range r.Constraints[lang.Scope(id.Tree)] {
+			if c.Sym != id {
 				continue
 			}
 			kind := "stated"
@@ -475,7 +503,7 @@ func cmdWhy(args []string) error {
 				kind = "preferred (soft; not emitted before Rung 7)"
 			}
 			fmt.Printf("%s = %s\n  %s by %s at %s\n",
-				sym, valueOf(c), kind, c.From, c.Pos.Short())
+				id, valueOf(c), kind, c.From, c.Pos.Short())
 			return nil
 		}
 	}
@@ -483,6 +511,42 @@ func cmdWhy(args []string) error {
 	fmt.Printf("Its value would be decided by Kconfig defaults, which needs the\n")
 	fmt.Printf("importer and the solver (Rungs 4-7).\n")
 	return nil
+}
+
+// resolveSymbol turns a command-line symbol into an identity. tree:NAME is
+// exact. A bare name is accepted when exactly one tree in the composition
+// mentions it, and refused when several do: linux:CONFIG_NET and
+// busybox:CONFIG_NET are different questions.
+func resolveSymbol(r *compose.Result, sym string) (lang.SymbolID, error) {
+	if i := strings.IndexByte(sym, ':'); i >= 0 {
+		return lang.SymbolID{Tree: sym[:i], Name: sym[i+1:]}, nil
+	}
+	found := map[string]bool{}
+	for sc, cs := range r.Constraints {
+		for _, c := range cs {
+			if c.Sym.Name == sym {
+				found[string(sc)] = true
+			}
+		}
+	}
+	for _, d := range r.Derived {
+		if d.Constraint.Sym.Name == sym {
+			found[d.Constraint.Sym.Tree] = true
+		}
+	}
+	var trees []string
+	for t := range found {
+		trees = append(trees, t)
+	}
+	sort.Strings(trees)
+	switch len(trees) {
+	case 0:
+		return lang.SymbolID{Tree: string(lang.Buildroot), Name: sym}, nil
+	case 1:
+		return lang.SymbolID{Tree: trees[0], Name: sym}, nil
+	}
+	return lang.SymbolID{}, fmt.Errorf("%s is stated in several trees (%s); qualify it, e.g. %s:%s",
+		sym, strings.Join(trees, ", "), trees[0], sym)
 }
 
 func valueOf(c lang.Constraint) string {

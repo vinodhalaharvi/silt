@@ -31,7 +31,7 @@ func run(t *testing.T, srcs []string, image string) (*Result, error) {
 
 func find(r *Result, sc lang.Scope, sym string) (lang.Constraint, bool) {
 	for _, c := range r.Constraints[sc] {
-		if c.Symbol == sym && !c.Soft {
+		if c.Sym.Name == sym && !c.Soft {
 			return c, true
 		}
 	}
@@ -44,7 +44,7 @@ func find(r *Result, sc lang.Scope, sym string) (lang.Constraint, bool) {
 func TestCrossTreeRuleFires(t *testing.T) {
 	r, err := run(t, []string{tgt, prof,
 		`(fragment feature:net (buildroot (y BR2_PACKAGE_DHCPCD)))`,
-		`(rules x (when (y BR2_PACKAGE_DHCPCD) (y CONFIG_PACKET)))`,
+		`(rules x (when (y buildroot:BR2_PACKAGE_DHCPCD) (y linux:CONFIG_PACKET)))`,
 	}, `(image i (compose target:t profile:p feature:net))`)
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +53,7 @@ func TestCrossTreeRuleFires(t *testing.T) {
 	if !ok || c.Want != lang.Y {
 		t.Fatalf("rule did not fire: %+v", r.Constraints[lang.Linux])
 	}
-	if len(r.Derived) != 1 || r.Derived[0].Constraint.Symbol != "CONFIG_PACKET" {
+	if len(r.Derived) != 1 || r.Derived[0].Constraint.Sym != (lang.SymbolID{Tree: "linux", Name: "CONFIG_PACKET"}) {
 		t.Fatalf("derivation not recorded: %+v", r.Derived)
 	}
 }
@@ -61,7 +61,7 @@ func TestCrossTreeRuleFires(t *testing.T) {
 // A rule must not fire on a symbol nobody asked for.
 func TestRuleDoesNotFireWithoutAntecedent(t *testing.T) {
 	r, err := run(t, []string{tgt, prof,
-		`(rules x (when (y BR2_PACKAGE_DHCPCD) (y CONFIG_PACKET)))`,
+		`(rules x (when (y buildroot:BR2_PACKAGE_DHCPCD) (y linux:CONFIG_PACKET)))`,
 	}, `(image i (compose target:t profile:p))`)
 	if err != nil {
 		t.Fatal(err)
@@ -77,8 +77,8 @@ func TestRulesCascade(t *testing.T) {
 		`(fragment feature:a (buildroot (y BR2_PACKAGE_DHCPCD)))`,
 		// deliberately reversed, so the cascade needs a second pass
 		`(rules x
-		   (when (y BR2_PACKAGE_IW)     (y CONFIG_MAC80211))
-		   (when (y BR2_PACKAGE_DHCPCD) (y BR2_PACKAGE_IW)))`,
+		   (when (y buildroot:BR2_PACKAGE_IW)     (y linux:CONFIG_MAC80211))
+		   (when (y buildroot:BR2_PACKAGE_DHCPCD) (y buildroot:BR2_PACKAGE_IW)))`,
 	}, `(image i (compose target:t profile:p feature:a))`)
 	if err != nil {
 		t.Fatal(err)
@@ -103,7 +103,7 @@ func TestRuleConflictIsAnError(t *testing.T) {
 	_, err := run(t, []string{tgt,
 		`(fragment profile:p (requires (capability mmu)) (buildroot (n BR2_PACKAGE_SYSTEMD)))`,
 		`(fragment feature:a (buildroot (y BR2_INIT_SYSTEMD)))`,
-		`(rules x (when (y BR2_INIT_SYSTEMD) (y BR2_PACKAGE_SYSTEMD)))`,
+		`(rules x (when (y buildroot:BR2_INIT_SYSTEMD) (y buildroot:BR2_PACKAGE_SYSTEMD)))`,
 	}, `(image i (compose target:t profile:p feature:a))`)
 	if err == nil {
 		t.Fatal("expected a rule conflict")
@@ -120,7 +120,7 @@ func TestRuleConflictIsAnError(t *testing.T) {
 // completed model.
 func TestNegationDoesNotFireOnAbsence(t *testing.T) {
 	r, err := run(t, []string{tgt, prof,
-		`(rules x (when (not (y BR2_STATIC_LIBS)) (y CONFIG_PACKET)))`,
+		`(rules x (when (not (y buildroot:BR2_STATIC_LIBS)) (y linux:CONFIG_PACKET)))`,
 	}, `(image i (compose target:t profile:p))`)
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +133,7 @@ func TestNegationDoesNotFireOnAbsence(t *testing.T) {
 func TestNegationFiresOnContradiction(t *testing.T) {
 	r, err := run(t, []string{tgt,
 		`(fragment profile:p (requires (capability mmu)) (buildroot (n BR2_STATIC_LIBS)))`,
-		`(rules x (when (not (y BR2_STATIC_LIBS)) (y CONFIG_PACKET)))`,
+		`(rules x (when (not (y buildroot:BR2_STATIC_LIBS)) (y linux:CONFIG_PACKET)))`,
 	}, `(image i (compose target:t profile:p))`)
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +147,7 @@ func TestSetPredicate(t *testing.T) {
 	r, err := run(t, []string{tgt,
 		`(fragment profile:p (requires (capability mmu))
 		   (buildroot (value BR2_TARGET_OPENSBI_PLAT "generic")))`,
-		`(rules x (when (set? BR2_TARGET_OPENSBI_PLAT) (y CONFIG_PACKET)))`,
+		`(rules x (when (set? buildroot:BR2_TARGET_OPENSBI_PLAT) (y linux:CONFIG_PACKET)))`,
 	}, `(image i (compose target:t profile:p))`)
 	if err != nil {
 		t.Fatal(err)
@@ -161,8 +161,8 @@ func TestAndOr(t *testing.T) {
 	r, err := run(t, []string{tgt,
 		`(fragment profile:p (requires (capability mmu)) (buildroot (y BR2_INIT_BUSYBOX)))`,
 		`(rules x
-		   (when (and (y BR2_aarch64) (y BR2_INIT_BUSYBOX)) (y CONFIG_PACKET))
-		   (when (or  (y BR2_PACKAGE_DHCPCD) (y BR2_INIT_BUSYBOX)) (y CONFIG_INET)))`,
+		   (when (and (y buildroot:BR2_aarch64) (y buildroot:BR2_INIT_BUSYBOX)) (y linux:CONFIG_PACKET))
+		   (when (or  (y buildroot:BR2_PACKAGE_DHCPCD) (y buildroot:BR2_INIT_BUSYBOX)) (y linux:CONFIG_INET)))`,
 	}, `(image i (compose target:t profile:p))`)
 	if err != nil {
 		t.Fatal(err)
@@ -180,8 +180,8 @@ func TestCycleTerminates(t *testing.T) {
 	_, err := run(t, []string{tgt,
 		`(fragment profile:p (requires (capability mmu)) (buildroot (y BR2_INIT_BUSYBOX)))`,
 		`(rules x
-		   (when (y BR2_INIT_BUSYBOX)  (at-least m CONFIG_A))
-		   (when (at-least m CONFIG_A) (y CONFIG_A)))`,
+		   (when (y buildroot:BR2_INIT_BUSYBOX)  (at-least m linux:CONFIG_A))
+		   (when (at-least m linux:CONFIG_A) (y linux:CONFIG_A)))`,
 	}, `(image i (compose target:t profile:p))`)
 	// Strengthening m -> y terminates; the point is that it does terminate.
 	if err != nil && !strings.Contains(err.Error(), "fixed point") {
@@ -192,16 +192,16 @@ func TestCycleTerminates(t *testing.T) {
 func TestExplainDerived(t *testing.T) {
 	r, err := run(t, []string{tgt, prof,
 		`(fragment feature:net (buildroot (y BR2_PACKAGE_DHCPCD)))`,
-		`(rules cross-tree (when (y BR2_PACKAGE_DHCPCD) (y CONFIG_PACKET)))`,
+		`(rules cross-tree (when (y buildroot:BR2_PACKAGE_DHCPCD) (y linux:CONFIG_PACKET)))`,
 	}, `(image i (compose target:t profile:p feature:net))`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, ok := r.ExplainDerived("CONFIG_PACKET")
+	s, ok := r.ExplainDerived(lang.SymbolID{Tree: "linux", Name: "CONFIG_PACKET"})
 	if !ok {
 		t.Fatal("no explanation")
 	}
-	for _, want := range []string{"CONFIG_PACKET", "rules:cross-tree", "(y BR2_PACKAGE_DHCPCD)"} {
+	for _, want := range []string{"CONFIG_PACKET", "rules:cross-tree", "(y buildroot:BR2_PACKAGE_DHCPCD)"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("explanation missing %q:\n%s", want, s)
 		}

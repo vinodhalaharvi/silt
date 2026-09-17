@@ -34,9 +34,12 @@ func parseImage(n *sexpr.Node) (*Image, error) {
 				return nil, err
 			}
 
-		case "buildroot", "linux":
-			sc := Scope(cl.Head())
-			cs, _, version, err := parseScope(cl, sc, from)
+		case "buildroot", "linux", "scope":
+			sc, items, err := scopeBlock(cl)
+			if err != nil {
+				return nil, err
+			}
+			cs, _, version, err := parseScope(items, sc, from)
 			if err != nil {
 				return nil, err
 			}
@@ -47,7 +50,7 @@ func parseImage(n *sexpr.Node) (*Image, error) {
 
 		case "override":
 			for _, a := range cl.Args() {
-				c, err := parseConstraint(a, scopeOf(a), from)
+				c, err := parseConstraint(a, "", from)
 				if err != nil {
 					return nil, err
 				}
@@ -65,7 +68,7 @@ func parseImage(n *sexpr.Node) (*Image, error) {
 				if a.Head() != "value" {
 					return nil, errf(a, "(%s ...) holds only (value SYMBOL \"...\") forms", cl.Head())
 				}
-				c, err := parseConstraint(a, scopeOf(a), from)
+				c, err := parseConstraint(a, "", from)
 				if err != nil {
 					return nil, err
 				}
@@ -75,9 +78,13 @@ func parseImage(n *sexpr.Node) (*Image, error) {
 		case "unmanaged":
 			for _, a := range cl.Args() {
 				if a.Kind != sexpr.KindSymbol {
-					return nil, errf(a, "unmanaged takes symbol patterns such as BR2_TARGET_UBOOT_*")
+					return nil, errf(a, "unmanaged takes symbol patterns such as buildroot:BR2_TARGET_UBOOT_*")
 				}
-				im.Unmanaged = append(im.Unmanaged, a.Text)
+				id, err := parseSymbolRef(a, "")
+				if err != nil {
+					return nil, err
+				}
+				im.Unmanaged = append(im.Unmanaged, id)
 			}
 
 		case "delegate":
@@ -214,20 +221,4 @@ func parsePolicy(n *sexpr.Node, p *Policy) error {
 		}
 	}
 	return nil
-}
-
-// scopeOf infers the tree from the symbol itself, for forms written outside a
-// scope block.
-func scopeOf(n *sexpr.Node) Scope {
-	for _, a := range n.Args() {
-		if a.Kind == sexpr.KindSymbol {
-			if strings.HasPrefix(a.Text, "CONFIG_") {
-				return Linux
-			}
-			if strings.HasPrefix(a.Text, "BR2_") {
-				return Buildroot
-			}
-		}
-	}
-	return ""
 }

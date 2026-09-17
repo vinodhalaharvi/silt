@@ -60,12 +60,11 @@ func Solve(res *compose.Result, tree *kconfig.Tree) *Result {
 	// Which fragment stated each symbol, so a repair can name a fragment
 	// rather than a symbol.
 	byFragment := map[string]lang.ID{}
+	// The model is Buildroot's, so only Buildroot symbols can be culprits.
 	for _, fr := range res.Fragments {
-		for _, cs := range fr.Constraints {
-			for _, c := range cs {
-				if !c.Soft {
-					byFragment[c.Symbol] = fr.ID
-				}
+		for _, c := range fr.Constraints[lang.Buildroot] {
+			if !c.Soft {
+				byFragment[c.Sym.Name] = fr.ID
 			}
 		}
 	}
@@ -77,15 +76,15 @@ func Solve(res *compose.Result, tree *kconfig.Tree) *Result {
 		if c.Soft || c.IsValue {
 			continue // soft needs MaxSAT; values are not in the model
 		}
-		if _, ok := tree.Symbols[c.Symbol]; !ok {
+		if _, ok := tree.Symbols[c.Sym.Name]; !ok {
 			continue // verify reports unknown symbols; do not guess here
 		}
-		lit := m.F.Var(c.Symbol)
+		lit := m.F.Var(c.Sym.Name)
 		if c.Want == lang.N {
 			lit = lit.Neg()
 		}
 		out.Assumptions = append(out.Assumptions, Assumption{
-			Lit: lit, Symbol: c.Symbol, Want: c.Want, From: c.From, Pos: c.Pos.Short(),
+			Lit: lit, Symbol: c.Sym.Name, Want: c.Want, From: c.From, Pos: c.Pos.Short(),
 		})
 	}
 

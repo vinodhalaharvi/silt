@@ -144,7 +144,7 @@ BR2_JLEVEL=4
 	}
 	got := map[string]lang.Constraint{}
 	for _, c := range res.Constraints[lang.Buildroot] {
-		got[c.Symbol] = c
+		got[c.Sym.Name] = c
 	}
 	if len(got) != len(es) {
 		t.Fatalf("composed %d symbols from %d lines", len(got), len(es))

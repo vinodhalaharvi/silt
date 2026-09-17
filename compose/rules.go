@@ -34,8 +34,8 @@ func (c RuleConflict) Error() string {
 		"rule at %s requires %s = %s, but %s is stated %s at %s\n"+
 			"  rule fired because its condition held: %s",
 		c.Derived.Rule.Pos.Short(),
-		c.Derived.Constraint.Symbol, describe(c.Derived.Constraint),
-		c.Stated.Symbol, describe(c.Stated), c.Stated.Pos.Short(),
+		c.Derived.Constraint.Sym, describe(c.Derived.Constraint),
+		c.Stated.Sym, describe(c.Stated), c.Stated.Pos.Short(),
 		c.Derived.Rule.From)
 }
 
@@ -56,40 +56,44 @@ const maxRounds = 32
 // (not (y X)) does not fire merely because X was not mentioned. Deciding those
 // cases needs the completed model, which is Rung 7.
 func (r *Result) applyRules() error {
-	index := map[string]lang.Constraint{}
-	key := func(sym string) string { return sym }
+	// Keyed by SymbolID, not name. Keyed by name, linux:CONFIG_NET and
+	// busybox:CONFIG_NET were one entry, and a rule about one fired on the
+	// other.
+	index := map[lang.SymbolID]lang.Constraint{}
 	for _, cs := range r.Constraints {
 		for _, c := range cs {
 			if !c.Soft {
-				index[key(c.Symbol)] = c
+				index[c.Sym] = c
 			}
 		}
 	}
 	for _, c := range r.Opaque {
-		index[key(c.Symbol)] = c
+		index[c.Sym] = c
 	}
 	for _, c := range r.Environment {
-		index[key(c.Symbol)] = c
+		index[c.Sym] = c
 	}
 
 	// Add what Kconfig's select machinery will turn on. These are real facts
 	// about the built image, so a rule may fire on them — but they are not
 	// emitted, because kbuild derives them itself and restating a select is
-	// exactly what fragments/README.md forbids.
+	// exactly what fragments/README.md forbids. The loaded tree is Buildroot's,
+	// so only Buildroot symbols take part.
 	if r.tree != nil {
 		on := map[string]bool{}
-		for _, c := range index {
-			if !c.IsValue {
-				on[c.Symbol] = c.Want != lang.N
+		for id, c := range index {
+			if !c.IsValue && id.Tree == string(lang.Buildroot) {
+				on[id.Name] = c.Want != lang.N
 			}
 		}
 		r.Selected = selectClosure(r.tree, on)
 		for sym, by := range r.Selected {
-			if _, ok := index[key(sym)]; ok {
+			id := lang.SymbolID{Tree: string(lang.Buildroot), Name: sym}
+			if _, ok := index[id]; ok {
 				continue
 			}
-			index[key(sym)] = lang.Constraint{
-				Symbol: sym, Want: lang.Y,
+			index[id] = lang.Constraint{
+				Sym: id, Want: lang.Y,
 				From: "selected by " + by,
 			}
 		}
@@ -102,7 +106,7 @@ func (r *Result) applyRules() error {
 				continue
 			}
 			for _, want := range g.Then {
-				have, ok := index[key(want.Symbol)]
+				have, ok := index[want.Sym]
 				if ok {
 					if conflicts(have, want) {
 						d := Derived{Constraint: want, Rule: g, Round: round}
@@ -115,7 +119,7 @@ func (r *Result) applyRules() error {
 				d := want
 				d.From = "rule " + g.From
 				d.Pos = g.Pos
-				index[key(d.Symbol)] = d
+				index[d.Sym] = d
 				r.Derived = append(r.Derived, Derived{Constraint: d, Rule: g, Round: round})
 				changed = true
 			}
@@ -133,13 +137,14 @@ func (r *Result) applyRules() error {
 	// only exists in the index because select will enable it is not folded in:
 	// kbuild produces it, and emitting it would restate a select.
 	for _, d := range r.Derived {
-		if _, viaSelect := r.Selected[d.Constraint.Symbol]; viaSelect {
+		if _, viaSelect := r.Selected[d.Constraint.Sym.Name]; viaSelect &&
+			d.Constraint.Sym.Tree == string(lang.Buildroot) {
 			continue
 		}
-		sc := scopeFor(d.Constraint.Symbol)
+		sc := lang.Scope(d.Constraint.Sym.Tree)
 		replaced := false
 		for i, c := range r.Constraints[sc] {
-			if c.Symbol == d.Constraint.Symbol && !c.Soft {
+			if c.Sym == d.Constraint.Sym && !c.Soft {
 				r.Constraints[sc][i] = d.Constraint
 				replaced = true
 				break
@@ -151,11 +156,11 @@ func (r *Result) applyRules() error {
 	}
 	for sc := range r.Constraints {
 		cs := r.Constraints[sc]
-		sort.SliceStable(cs, func(i, j int) bool { return cs[i].Symbol < cs[j].Symbol })
+		sort.SliceStable(cs, func(i, j int) bool { return cs[i].Sym.Name < cs[j].Sym.Name })
 		r.Constraints[sc] = cs
 	}
 	sort.SliceStable(r.Derived, func(i, j int) bool {
-		return r.Derived[i].Constraint.Symbol < r.Derived[j].Constraint.Symbol
+		return r.Derived[i].Constraint.Sym.String() < r.Derived[j].Constraint.Sym.String()
 	})
 	return nil
 }
@@ -170,13 +175,13 @@ const (
 	refuted       // condition is contradicted by what is stated
 )
 
-func holds(c *lang.Cond, index map[string]lang.Constraint) truth {
+func holds(c *lang.Cond, index map[lang.SymbolID]lang.Constraint) truth {
 	if c == nil {
 		return unknown
 	}
 	switch c.Op {
 	case "constraint":
-		have, ok := index[c.C.Symbol]
+		have, ok := index[c.C.Sym]
 		if !ok {
 			return unknown
 		}
@@ -235,9 +240,9 @@ func holds(c *lang.Cond, index map[string]lang.Constraint) truth {
 }
 
 // ExplainDerived renders why a symbol ended up derived, for `silt why`.
-func (r *Result) ExplainDerived(sym string) (string, bool) {
+func (r *Result) ExplainDerived(sym lang.SymbolID) (string, bool) {
 	for _, d := range r.Derived {
-		if d.Constraint.Symbol != sym {
+		if d.Constraint.Sym != sym {
 			continue
 		}
 		var b strings.Builder
@@ -255,9 +260,9 @@ func condString(c *lang.Cond) string {
 	}
 	switch c.Op {
 	case "constraint":
-		return "(" + describe(*c.C) + " " + c.C.Symbol + ")"
+		return "(" + describe(*c.C) + " " + c.C.Sym.String() + ")"
 	case "set?":
-		return "(set? " + c.Sym + ")"
+		return "(set? " + c.Sym.String() + ")"
 	case "not":
 		return "(not " + condString(c.Args[0]) + ")"
 	default:

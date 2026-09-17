@@ -187,7 +187,7 @@ func TestYieldedPreferencesAreReported(t *testing.T) {
 	c := completeFor(t, kcfg, []string{tgt,
 		`(fragment profile:p (requires (capability mmu)) (buildroot (y BR2_PKG) (prefer y BR2_STATIC)))`,
 	}, `(image i (compose target:t profile:p))`)
-	if len(c.Yielded) != 1 || c.Yielded[0].Symbol != "BR2_STATIC" {
+	if len(c.Yielded) != 1 || c.Yielded[0].Sym.Name != "BR2_STATIC" {
 		t.Fatalf("yielded preference not reported: %+v", c.Yielded)
 	}
 	if !strings.Contains(c.Report(), "BR2_STATIC") {

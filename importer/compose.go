@@ -41,7 +41,11 @@ func Compose(tree *kconfig.Tree, image string, fragments ...string) (*compose.Re
 // path. Linux constraints are not handled: imported fragments have none.
 func Emit(res *compose.Result, dir string) (string, error) {
 	path := filepath.Join(dir, "emitted_defconfig")
-	return path, os.WriteFile(path, []byte(emit.DefconfigWithKernel(res, lang.Buildroot, "")), 0o644)
+	def, err := emit.BuildrootDefconfig(res, nil)
+	if err != nil {
+		return "", err
+	}
+	return path, os.WriteFile(path, []byte(def), 0o644)
 }
 
 // DeriveProvides returns the declared capabilities whose symbol is on in a
@@ -49,10 +53,12 @@ func Emit(res *compose.Result, dir string) (string, error) {
 func DeriveProvides(cfg map[string]string, decls map[string]lang.CapabilityDecl) []string {
 	var out []string
 	for name, d := range decls {
-		if d.Symbol == "" {
+		// kbuild's .config here is Buildroot's; a capability bound to
+		// another tree cannot be read off it.
+		if d.Symbol.Tree != string(lang.Buildroot) {
 			continue
 		}
-		if v := cfg[d.Symbol]; v == "y" || v == "m" {
+		if v := cfg[d.Symbol.Name]; v == "y" || v == "m" {
 			out = append(out, name)
 		}
 	}

@@ -28,12 +28,16 @@ type Library struct {
 	// what fragments state, which is correct but misses select-implied
 	// antecedents.
 	Tree *kconfig.Tree
+	// Trees is the tree registry: buildroot and linux built in, anything else
+	// declared with (tree ...). A symbol for an undeclared tree is an error.
+	Trees map[string]lang.TreeDecl
 }
 
 func NewLibrary() *Library {
 	return &Library{
 		Fragments: map[string]*lang.Fragment{},
 		Declared:  map[string]lang.CapabilityDecl{},
+		Trees:     lang.BuiltinTrees(),
 	}
 }
 
@@ -55,7 +59,76 @@ func (l *Library) Add(f *lang.File) error {
 			l.Declared[d.Name] = d
 		}
 	}
+	for _, d := range f.Trees {
+		if prev, ok := l.Trees[d.Name]; ok {
+			where := "built in"
+			if prev.Pos.File != "" {
+				where = "first at " + prev.Pos.Short()
+			}
+			return fmt.Errorf("%s: tree %s redeclared (%s)", d.Pos.Short(), d.Name, where)
+		}
+		l.Trees[d.Name] = *d
+	}
 	l.Rules = append(l.Rules, f.Rules...)
+	return nil
+}
+
+// checkSymbol reports a symbol whose tree is not registered or whose name is
+// spelled against that tree's convention.
+func (l *Library) checkSymbol(id lang.SymbolID, pos string) error {
+	decl, ok := l.Trees[id.Tree]
+	if !ok {
+		return fmt.Errorf("%s: %s names tree %q, which is not declared; add (tree %s (kind kconfig) ...)",
+			pos, id, id.Tree, id.Tree)
+	}
+	// An unmanaged pattern such as BR2_TARGET_UBOOT_* is checked on the part
+	// before the star, which may itself be shorter than the prefix.
+	name := strings.TrimSuffix(id.Name, "*")
+	if name != id.Name && strings.HasPrefix(decl.Prefix, name) {
+		return nil
+	}
+	if err := lang.CheckPrefix(lang.SymbolID{Tree: id.Tree, Name: name}, decl); err != nil {
+		return fmt.Errorf("%s: %v", pos, err)
+	}
+	return nil
+}
+
+func (l *Library) checkConstraints(cs []lang.Constraint) error {
+	for _, c := range cs {
+		if err := l.checkSymbol(c.Sym, c.Pos.Short()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (l *Library) checkCond(c *lang.Cond) error {
+	if c == nil {
+		return nil
+	}
+	switch c.Op {
+	case "constraint":
+		return l.checkSymbol(c.C.Sym, c.Pos.Short())
+	case "set?":
+		return l.checkSymbol(c.Sym, c.Pos.Short())
+	}
+	for _, a := range c.Args {
+		if err := l.checkCond(a); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (l *Library) checkGuards(gs []lang.Guarded) error {
+	for _, g := range gs {
+		if err := l.checkCond(g.Cond); err != nil {
+			return err
+		}
+		if err := l.checkConstraints(g.Then); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -113,14 +186,16 @@ type Result struct {
 	Guards       []lang.Guarded
 	Opaque       []lang.Constraint
 	Environment  []lang.Constraint
-	Unmanaged    []string
+	Unmanaged    []lang.SymbolID
 	Overridden   []lang.Constraint
 	Derived      []Derived
 	Capabilities map[string]string // capability -> providing fragment
 	// Selected maps a symbol Kconfig will enable via select to the symbol that
 	// selects it. Populated only when the library carries a tree.
 	Selected map[string]string
-	tree     *kconfig.Tree
+	// Trees is the registry the image was composed against.
+	Trees map[string]lang.TreeDecl
+	tree  *kconfig.Tree
 }
 
 // Tree is the Kconfig tree the library was composed against, or nil.
@@ -136,6 +211,7 @@ func (l *Library) Compose(im *lang.Image) (*Result, error) {
 		Environment:  im.Environment,
 		Unmanaged:    im.Unmanaged,
 		Capabilities: map[string]string{},
+		Trees:        l.Trees,
 	}
 
 	// Resolve fragments first so a missing one is reported before anything else.
@@ -145,11 +221,47 @@ func (l *Library) Compose(im *lang.Image) (*Result, error) {
 			return nil, fmt.Errorf("%s: no such fragment %s", im.Pos.Short(), id)
 		}
 		r.Fragments = append(r.Fragments, fr)
+		for sc, cs := range fr.Constraints {
+			if _, ok := l.Trees[string(sc)]; !ok {
+				return nil, fmt.Errorf("%s: %s has a %s scope, but no tree %s is declared",
+					fr.Pos.Short(), fr.ID, sc, sc)
+			}
+			if err := l.checkConstraints(cs); err != nil {
+				return nil, err
+			}
+		}
+		if err := l.checkGuards(fr.Guards); err != nil {
+			return nil, err
+		}
 		for _, c := range fr.Provides {
 			if err := l.checkDeclared(c, fr.ID, "provides"); err != nil {
 				return nil, err
 			}
 			r.Capabilities[c.Name] = fr.ID.String()
+		}
+	}
+
+	for sc, cs := range im.Constraints {
+		if _, ok := l.Trees[string(sc)]; !ok {
+			return nil, fmt.Errorf("%s: image has a %s scope, but no tree %s is declared", im.Pos.Short(), sc, sc)
+		}
+		if err := l.checkConstraints(cs); err != nil {
+			return nil, err
+		}
+	}
+	for _, cs := range [][]lang.Constraint{im.Override, im.Opaque, im.Environment} {
+		if err := l.checkConstraints(cs); err != nil {
+			return nil, err
+		}
+	}
+	for _, u := range im.Unmanaged {
+		if err := l.checkSymbol(u, im.Pos.Short()); err != nil {
+			return nil, err
+		}
+	}
+	for _, rs := range l.Rules {
+		if err := l.checkGuards(rs.Guards); err != nil {
+			return nil, err
 		}
 	}
 
@@ -169,12 +281,12 @@ func (l *Library) Compose(im *lang.Image) (*Result, error) {
 	}
 
 	// Merge, detecting conflicts.
-	seen := map[string]lang.Constraint{} // symbol -> winning hard constraint
+	seen := map[lang.SymbolID]lang.Constraint{} // symbol -> winning hard constraint
 	add := func(sc lang.Scope, c lang.Constraint) error {
-		key := string(sc) + "/" + c.Symbol
+		key := c.Sym
 		if prev, ok := seen[key]; ok {
 			if conflicts(prev, c) {
-				return Conflict{Symbol: c.Symbol, A: prev, B: c}
+				return Conflict{Symbol: c.Sym.String(), A: prev, B: c}
 			}
 			if stronger(c, prev) {
 				seen[key] = c
@@ -218,8 +330,7 @@ func (l *Library) Compose(im *lang.Image) (*Result, error) {
 	// `silt why` can attribute the value to the override rather than to the
 	// fragment it silenced.
 	for _, o := range im.Override {
-		sc := scopeFor(o.Symbol)
-		key := string(sc) + "/" + o.Symbol
+		key := o.Sym
 		if prev, ok := seen[key]; ok && conflicts(prev, o) {
 			r.Overridden = append(r.Overridden, prev)
 		}
@@ -227,12 +338,12 @@ func (l *Library) Compose(im *lang.Image) (*Result, error) {
 	}
 
 	for key, c := range seen {
-		sc := lang.Scope(strings.SplitN(key, "/", 2)[0])
+		sc := lang.Scope(key.Tree)
 		r.Constraints[sc] = append(r.Constraints[sc], c)
 	}
 	for sc := range r.Constraints {
 		cs := r.Constraints[sc]
-		sort.SliceStable(cs, func(i, j int) bool { return cs[i].Symbol < cs[j].Symbol })
+		sort.SliceStable(cs, func(i, j int) bool { return cs[i].Sym.Name < cs[j].Sym.Name })
 		r.Constraints[sc] = cs
 	}
 
@@ -283,13 +394,6 @@ func stronger(c, prev lang.Constraint) bool {
 		return true
 	}
 	return false
-}
-
-func scopeFor(sym string) lang.Scope {
-	if strings.HasPrefix(sym, "CONFIG_") {
-		return lang.Linux
-	}
-	return lang.Buildroot
 }
 
 func targetOf(frs []*lang.Fragment) string {

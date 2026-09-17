@@ -111,7 +111,7 @@ func TestOverrideRecordsWhatItDisplaced(t *testing.T) {
 	p := `(fragment profile:p (buildroot (value BR2_TARGET_ROOTFS_EXT2_SIZE "120M")) (requires (capability mmu)))`
 	l := lib(t, target, p)
 	r, err := composeSrc(t, l, `(image i (compose target:t profile:p)
-	  (override (value BR2_TARGET_ROOTFS_EXT2_SIZE "256M")))`)
+	  (override (value buildroot:BR2_TARGET_ROOTFS_EXT2_SIZE "256M")))`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestOverrideRecordsWhatItDisplaced(t *testing.T) {
 		t.Fatalf("displaced constraint not recorded: %+v", r.Overridden)
 	}
 	for _, c := range r.Constraints[lang.Buildroot] {
-		if c.Symbol == "BR2_TARGET_ROOTFS_EXT2_SIZE" && c.Value != "256M" {
+		if c.Sym.Name == "BR2_TARGET_ROOTFS_EXT2_SIZE" && c.Value != "256M" {
 			t.Errorf("override did not win: %+v", c)
 		}
 	}

@@ -13,7 +13,7 @@
 
   (capability mmu
     (doc "The target has a memory management unit.")
-    (symbol BR2_USE_MMU))
+    (symbol buildroot:BR2_USE_MMU))
 
   (capability virtio
     (doc "The target exposes virtio devices for storage and network."))

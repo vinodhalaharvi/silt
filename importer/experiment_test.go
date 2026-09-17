@@ -496,7 +496,7 @@ func TestImportedTargetsTakeLibraryProfiles(t *testing.T) {
 					continue
 				}
 				if !holdsConstraint(c, out) {
-					lost = append(lost, c.Symbol)
+					lost = append(lost, c.Sym.String())
 				}
 			}
 			lost = dedupe(lost)
@@ -530,10 +530,10 @@ func TestImportedTargetsTakeLibraryProfiles(t *testing.T) {
 
 func holdsConstraint(c lang.Constraint, cfg map[string]string) bool {
 	if c.IsValue {
-		got, ok := cfg[c.Symbol]
+		got, ok := cfg[c.Sym.Name]
 		return ok && strings.Trim(got, `"`) == c.Value
 	}
-	return Holds(Entry{Symbol: c.Symbol, Raw: c.Want.String(), Unset: c.Want == lang.N}, cfg)
+	return Holds(Entry{Symbol: c.Sym.Name, Raw: c.Want.String(), Unset: c.Want == lang.N}, cfg)
 }
 
 func dedupe(s []string) []string {

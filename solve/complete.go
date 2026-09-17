@@ -48,10 +48,10 @@ func Complete(res *compose.Result, tree *kconfig.Tree) *Completion {
 		if k.IsValue {
 			continue
 		}
-		if _, ok := tree.Symbols[k.Symbol]; !ok {
+		if _, ok := tree.Symbols[k.Sym.Name]; !ok {
 			continue
 		}
-		lit := m.F.Var(k.Symbol)
+		lit := m.F.Var(k.Sym.Name)
 		if k.Want == lang.N {
 			lit = lit.Neg()
 		}
@@ -72,7 +72,7 @@ func Complete(res *compose.Result, tree *kconfig.Tree) *Completion {
 	assumed := append([]cnf.Lit(nil), hard...)
 	probe := solver.New(m.F)
 	for _, s := range softs {
-		lit := m.F.Var(s.Symbol)
+		lit := m.F.Var(s.Sym.Name)
 		if s.Want == lang.N {
 			lit = lit.Neg()
 		}
@@ -158,7 +158,7 @@ func (c *Completion) Report() string {
 		fmt.Fprintf(&b, "  yielded    %d preference(s) could not hold:\n", len(c.Yielded))
 		for _, y := range c.Yielded {
 			fmt.Fprintf(&b, "               %s = %s  (%s at %s)\n",
-				y.Symbol, y.Want, y.From, y.Pos.Short())
+				y.Sym, y.Want, y.From, y.Pos.Short())
 		}
 	}
 	return b.String()

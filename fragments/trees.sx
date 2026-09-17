@@ -1,0 +1,33 @@
+;; The tree registry.
+;;
+;; A symbol's tree is where it is written, never what it is spelled like.
+;; CONFIG_ is not a namespace: Linux, BusyBox and U-Boot all use it for three
+;; unrelated symbol spaces, and Buildroot builds its own conf with the prefix
+;; set to the empty string. So every tree other than the two built in
+;; (buildroot and linux) is declared here, and a fragment configures one with
+;; (scope NAME ...).
+;;
+;; consumed-by is the Buildroot symbol that hands the tree's emitted config
+;; fragment to its build. Each was checked to exist, as a string, in Buildroot
+;; 2025.02.16; `silt check --buildroot` re-checks them against whatever tree
+;; it is given. prefix is a spelling check only.
+;;
+;; No Kconfig tree for these is imported yet, so their symbols are carried and
+;; emitted but not verified. Devicetree is deliberately absent: it binds to
+;; drivers by compatible string at runtime and is not a constraint system.
+
+(tree busybox
+  (kind kconfig)
+  (prefix "CONFIG_")
+  (consumed-by BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES))
+
+(tree uboot
+  (kind kconfig)
+  (prefix "CONFIG_")
+  (consumed-by BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES))
+
+;; uClibc-ng spells most symbols UCLIBC_, but not all (ARCH_*, DO_C99_MATH), so
+;; no prefix is claimed.
+(tree uclibc
+  (kind kconfig)
+  (consumed-by BR2_UCLIBC_CONFIG_FRAGMENT_FILES))

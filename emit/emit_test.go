@@ -77,7 +77,7 @@ func TestOpaqueIsEmittedVerbatim(t *testing.T) {
 		`(fragment target:t (buildroot (y BR2_aarch64)) (provides (capability mmu)))`,
 		`(fragment profile:p (requires (capability mmu)))`,
 	}, `(image i (compose target:t profile:p)
-	      (opaque (value BR2_ROOTFS_POST_SCRIPT_ARGS "$(BR2_DEFCONFIG)")))`)
+	      (opaque (value buildroot:BR2_ROOTFS_POST_SCRIPT_ARGS "$(BR2_DEFCONFIG)")))`)
 
 	out := Defconfig(r, lang.Buildroot)
 	if !strings.Contains(out, `BR2_ROOTFS_POST_SCRIPT_ARGS="$(BR2_DEFCONFIG)"`) {
@@ -124,7 +124,7 @@ func TestKernelIsActuallyRequested(t *testing.T) {
 		`(fragment profile:p (requires (capability mmu)))`,
 	}, `(image i (compose target:t profile:p) (linux (custom-version "6.18.7")))`)
 
-	out := DefconfigWithKernel(r, lang.Buildroot, "/abs/out/linux.config")
+	out := mustBR(t, r, map[string]string{"linux": "/abs/out/linux.config"})
 	for _, want := range []string{
 		"BR2_LINUX_KERNEL=y",
 		"BR2_LINUX_KERNEL_IMAGE=y",
@@ -146,7 +146,7 @@ func TestLinuxHalfIsWiredIn(t *testing.T) {
 		`(fragment profile:p (requires (capability mmu)))`,
 	}, `(image i (compose target:t profile:p))`)
 
-	if !strings.Contains(DefconfigWithKernel(r, lang.Buildroot, "/x/linux.config"),
+	if !strings.Contains(mustBR(t, r, map[string]string{"linux": "/x/linux.config"}),
 		"BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES") {
 		t.Error("linux.config is emitted but never referenced from the defconfig")
 	}
@@ -162,7 +162,7 @@ func TestNoLinuxHalfNoFragmentLine(t *testing.T) {
 		`(fragment target:t (buildroot (y BR2_aarch64) (y BR2_LINUX_KERNEL)) (provides (capability mmu)))`,
 		`(fragment profile:p (requires (capability mmu)))`,
 	}, `(image i (compose target:t profile:p))`)
-	if strings.Contains(DefconfigWithKernel(r, lang.Buildroot, "/x/linux.config"),
+	if strings.Contains(mustBR(t, r, map[string]string{"linux": "/x/linux.config"}),
 		"BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES") {
 		t.Error("an empty linux.config was wired in")
 	}
@@ -214,5 +214,64 @@ config BR2_NAME
 	r, _ = l.Compose(f.Images[0])
 	if !strings.Contains(Defconfig(r, lang.Buildroot), "WARNING") {
 		t.Error("numeric values emitted untyped without a warning")
+	}
+}
+
+func mustBR(t *testing.T, r *compose.Result, paths map[string]string) string {
+	t.Helper()
+	out, err := BuildrootDefconfig(r, paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// Two trees that both spell their symbols CONFIG_ are two namespaces. A
+// fragment configuring BusyBox and Linux with the same name must produce two
+// separate files, each wired in through its own Buildroot symbol, and neither
+// file may contain the other tree's setting.
+func TestTreesAreSeparateNamespaces(t *testing.T) {
+	r := build(t, []string{
+		`(tree busybox (kind kconfig) (prefix "CONFIG_")
+		   (consumed-by buildroot:BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES))`,
+		`(fragment target:t (buildroot (y BR2_aarch64)) (provides (capability mmu))
+		   (linux (y CONFIG_DESKTOP)))`,
+		`(fragment profile:p (requires (capability mmu))
+		   (scope busybox (n CONFIG_DESKTOP)))`,
+	}, `(image i (compose target:t profile:p))`)
+
+	if got := Trees(r); len(got) != 2 || got[0] != "busybox" || got[1] != "linux" {
+		t.Fatalf("trees: %v", got)
+	}
+	lx, bb := Defconfig(r, lang.Linux), Defconfig(r, "busybox")
+	if !strings.Contains(lx, "CONFIG_DESKTOP=y") || strings.Contains(lx, "is not set") {
+		t.Errorf("linux.config:\n%s", lx)
+	}
+	if !strings.Contains(bb, "# CONFIG_DESKTOP is not set") || strings.Contains(bb, "=y") {
+		t.Errorf("busybox.config:\n%s", bb)
+	}
+	def := mustBR(t, r, map[string]string{"linux": "/o/linux.config", "busybox": "/o/busybox.config"})
+	for _, want := range []string{
+		`BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="/o/linux.config"`,
+		`BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="/o/busybox.config"`,
+	} {
+		if !strings.Contains(def, want) {
+			t.Errorf("missing %s:\n%s", want, def)
+		}
+	}
+}
+
+// A tree with constraints and nowhere to send them must fail loudly rather
+// than write a file nothing reads.
+func TestUnroutedTreeIsAnError(t *testing.T) {
+	r := build(t, []string{
+		`(tree uboot (kind kconfig) (prefix "CONFIG_"))`,
+		`(fragment target:t (buildroot (y BR2_aarch64)) (provides (capability mmu))
+		   (scope uboot (y CONFIG_FIT_SIGNATURE)))`,
+		`(fragment profile:p (requires (capability mmu)))`,
+	}, `(image i (compose target:t profile:p))`)
+	if _, err := BuildrootDefconfig(r, map[string]string{"uboot": "/o/uboot.config"}); err == nil ||
+		!strings.Contains(err.Error(), "consumed-by") {
+		t.Fatalf("want a consumed-by error, got %v", err)
 	}
 }

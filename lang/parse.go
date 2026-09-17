@@ -48,6 +48,12 @@ func ParseFile(src, path string) (*File, error) {
 				return nil, err
 			}
 			f.Capabilities = append(f.Capabilities, c)
+		case "tree":
+			d, err := parseTreeDecl(n)
+			if err != nil {
+				return nil, err
+			}
+			f.Trees = append(f.Trees, d)
 		case "image":
 			im, err := parseImage(n)
 			if err != nil {
@@ -57,7 +63,7 @@ func ParseFile(src, path string) (*File, error) {
 		case "":
 			return nil, errf(n, "expected a list headed by a keyword")
 		default:
-			return nil, errf(n, "unknown top-level form %q; expected fragment, rules, image or capabilities", n.Head())
+			return nil, errf(n, "unknown top-level form %q; expected fragment, rules, image, capabilities or tree", n.Head())
 		}
 	}
 	return f, nil
@@ -127,9 +133,12 @@ func parseFragment(n *sexpr.Node) (*Fragment, error) {
 				return nil, errf(cl, "a target provides capabilities, it does not require them")
 			}
 			fr.Requires = append(fr.Requires, caps...)
-		case "buildroot", "linux":
-			sc := Scope(cl.Head())
-			cs, gs, version, err := parseScope(cl, sc, id.String())
+		case "buildroot", "linux", "scope":
+			sc, items, err := scopeBlock(cl)
+			if err != nil {
+				return nil, err
+			}
+			cs, gs, version, err := parseScope(items, sc, id.String())
 			if err != nil {
 				return nil, err
 			}
@@ -160,12 +169,27 @@ func parseCapabilities(n *sexpr.Node) ([]Capability, error) {
 	return out, nil
 }
 
-// parseScope reads a (buildroot ...) or (linux ...) block.
-func parseScope(n *sexpr.Node, sc Scope, from string) ([]Constraint, []Guarded, string, error) {
+// scopeBlock splits a scope block into its tree and its items. (buildroot
+// ...) and (linux ...) are shorthand for (scope buildroot ...) and (scope
+// linux ...); any other tree is written with scope, since only the registry
+// knows which trees exist and every list must still begin with a keyword.
+func scopeBlock(n *sexpr.Node) (Scope, []*sexpr.Node, error) {
+	if n.Head() != "scope" {
+		return Scope(n.Head()), n.Args(), nil
+	}
+	a := n.Args()
+	if len(a) == 0 || a[0].Kind != sexpr.KindSymbol || !treeNameOK(a[0].Text) {
+		return "", nil, errf(n, "(scope TREE ...) needs a tree name")
+	}
+	return Scope(a[0].Text), a[1:], nil
+}
+
+// parseScope reads the items of a scope block.
+func parseScope(items []*sexpr.Node, sc Scope, from string) ([]Constraint, []Guarded, string, error) {
 	var cs []Constraint
 	var gs []Guarded
 	var version string
-	for _, item := range n.Args() {
+	for _, item := range items {
 		switch item.Head() {
 		case "when":
 			g, err := parseGuarded(item, sc, from)
@@ -193,38 +217,13 @@ func parseScope(n *sexpr.Node, sc Scope, from string) ([]Constraint, []Guarded, 
 	return cs, gs, version, nil
 }
 
-// checkSymbolScope enforces that BR2_* appears only in buildroot and CONFIG_*
-// only in linux. A symbol in the wrong tree is always a mistake and is much
-// cheaper to catch here than as a mysterious fixpoint diff later.
-func checkSymbolScope(n *sexpr.Node, sym string, sc Scope) error {
-	switch {
-	case strings.HasPrefix(sym, "BR2_"):
-		if sc == Linux {
-			return errf(n, "%s is a Buildroot symbol but appears in a linux scope", sym)
-		}
-	case strings.HasPrefix(sym, "CONFIG_"):
-		if sc == Buildroot {
-			return errf(n, "%s is a Linux symbol but appears in a buildroot scope", sym)
-		}
-	default:
-		return errf(n, "symbol %q must start with BR2_ or CONFIG_", sym)
-	}
-	return nil
-}
-
 func parseConstraint(n *sexpr.Node, sc Scope, from string) (Constraint, error) {
 	args := n.Args()
-	sym := func(i int) (string, error) {
+	sym := func(i int) (SymbolID, error) {
 		if i >= len(args) || args[i].Kind != sexpr.KindSymbol {
-			return "", errf(n, "%s: expected a symbol", n.Head())
+			return SymbolID{}, errf(n, "%s: expected a symbol", n.Head())
 		}
-		s := args[i].Text
-		if sc != "" {
-			if err := checkSymbolScope(args[i], s, sc); err != nil {
-				return "", err
-			}
-		}
-		return s, nil
+		return parseSymbolRef(args[i], sc)
 	}
 
 	switch h := n.Head(); h {
@@ -236,7 +235,7 @@ func parseConstraint(n *sexpr.Node, sc Scope, from string) (Constraint, error) {
 		if err != nil {
 			return Constraint{}, err
 		}
-		return Constraint{Symbol: s, Want: tristate(h), Pos: n.Pos, From: from}, nil
+		return Constraint{Sym: s, Want: tristate(h), Pos: n.Pos, From: from}, nil
 
 	case "at-least":
 		if len(args) != 2 {
@@ -250,7 +249,7 @@ func parseConstraint(n *sexpr.Node, sc Scope, from string) (Constraint, error) {
 		if err != nil {
 			return Constraint{}, err
 		}
-		return Constraint{Symbol: s, Want: t, AtLeast: true, Pos: n.Pos, From: from}, nil
+		return Constraint{Sym: s, Want: t, AtLeast: true, Pos: n.Pos, From: from}, nil
 
 	case "prefer":
 		if len(args) != 2 {
@@ -265,7 +264,7 @@ func parseConstraint(n *sexpr.Node, sc Scope, from string) (Constraint, error) {
 		if err != nil {
 			return Constraint{}, err
 		}
-		return Constraint{Symbol: s, Want: t, Soft: true, Pos: n.Pos, From: from}, nil
+		return Constraint{Sym: s, Want: t, Soft: true, Pos: n.Pos, From: from}, nil
 
 	case "value":
 		if len(args) != 2 || args[1].Kind != sexpr.KindString {
@@ -275,7 +274,7 @@ func parseConstraint(n *sexpr.Node, sc Scope, from string) (Constraint, error) {
 		if err != nil {
 			return Constraint{}, err
 		}
-		return Constraint{Symbol: s, Value: args[1].Text, IsValue: true, Pos: n.Pos, From: from}, nil
+		return Constraint{Sym: s, Value: args[1].Text, IsValue: true, Pos: n.Pos, From: from}, nil
 
 	case "require", "set":
 		return Constraint{}, errf(n, "unknown form %q; see GRAMMAR.md", h)
@@ -306,13 +305,29 @@ func parseGuarded(n *sexpr.Node, sc Scope, from string) (Guarded, error) {
 	return g, nil
 }
 
+// parseCondConstraint parses a constraint used as a condition. A qualified
+// symbol may name any tree even inside a scope, since a guard in a linux block
+// conditioned on a Buildroot symbol is the ordinary cross-tree case.
+func parseCondConstraint(n *sexpr.Node, sc Scope) (Constraint, error) {
+	for _, a := range n.Args() {
+		if a.Kind == sexpr.KindSymbol && strings.Contains(a.Text, ":") {
+			return parseConstraint(n, "", "")
+		}
+	}
+	return parseConstraint(n, sc, "")
+}
+
 func parseCond(n *sexpr.Node, sc Scope) (*Cond, error) {
 	switch h := n.Head(); h {
 	case "set?":
 		if len(n.Args()) != 1 || n.Args()[0].Kind != sexpr.KindSymbol {
 			return nil, errf(n, "(set? SYMBOL) takes one symbol")
 		}
-		return &Cond{Op: "set?", Sym: n.Args()[0].Text, Pos: n.Pos}, nil
+		id, err := parseSymbolRef(n.Args()[0], sc)
+		if err != nil {
+			return nil, err
+		}
+		return &Cond{Op: "set?", Sym: id, Pos: n.Pos}, nil
 	case "and", "or":
 		if len(n.Args()) < 2 {
 			return nil, errf(n, "(%s ...) needs at least two conditions", h)
@@ -336,10 +351,10 @@ func parseCond(n *sexpr.Node, sc Scope) (*Cond, error) {
 		}
 		return &Cond{Op: "not", Args: []*Cond{sub}, Pos: n.Pos}, nil
 	default:
-		// A bare constraint is a condition. Scope is not enforced here:
-		// cross-tree rules are exactly the case where a buildroot symbol
-		// guards a linux one.
-		c, err := parseConstraint(n, "", "")
+		// A bare constraint is a condition. Inside a scope a bare symbol
+		// belongs to that scope's tree; crossing trees, which is what rules
+		// are for, takes an explicit tree:NAME.
+		c, err := parseCondConstraint(n, sc)
 		if err != nil {
 			return nil, err
 		}
@@ -421,9 +436,13 @@ func parseCapabilityDecls(n *sexpr.Node) (*Capabilities, error) {
 				d.Doc = s
 			case "symbol":
 				if len(opt.Args()) != 1 || opt.Args()[0].Kind != sexpr.KindSymbol {
-					return nil, errf(opt, "(symbol SYMBOL) takes one symbol")
+					return nil, errf(opt, "(symbol TREE:SYMBOL) takes one symbol")
 				}
-				d.Symbol = opt.Args()[0].Text
+				id, err := parseSymbolRef(opt.Args()[0], "")
+				if err != nil {
+					return nil, err
+				}
+				d.Symbol = id
 			default:
 				return nil, errf(opt, "unknown capability clause %q", opt.Head())
 			}

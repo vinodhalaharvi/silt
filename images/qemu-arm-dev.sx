@@ -44,14 +44,14 @@
   ;; know it was harmful, because a patch directory is exactly the kind of thing
   ;; the constraint model does not model. Opaque values a human still owns.
   (opaque
-    (value BR2_ROOTFS_POST_IMAGE_SCRIPT "board/qemu/post-image.sh")
+    (value buildroot:BR2_ROOTFS_POST_IMAGE_SCRIPT "board/qemu/post-image.sh")
     ;; make expands this after Kconfig stores the literal
-    (value BR2_ROOTFS_POST_SCRIPT_ARGS  "$(BR2_DEFCONFIG)"))
+    (value buildroot:BR2_ROOTFS_POST_SCRIPT_ARGS  "$(BR2_DEFCONFIG)"))
 
   ;; Two of the ten Kconfig trees Silt does not model (DESIGN.md §14.1).
   (unmanaged
-    BR2_TARGET_UBOOT_*
-    BR2_PACKAGE_BUSYBOX_CONFIG_*)
+    buildroot:BR2_TARGET_UBOOT_*
+    buildroot:BR2_PACKAGE_BUSYBOX_CONFIG_*)
 
   (repair-policy
     (minimize changed-symbols)
