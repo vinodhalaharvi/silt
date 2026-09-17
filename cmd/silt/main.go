@@ -36,6 +36,8 @@ const usage = `silt — composable S-expressions over Kconfig
                                     ask the Kconfig model whether it can exist
   silt complete IMAGE.sx --buildroot DIR
                                     solve for a total assignment (partial: see below)
+  silt fixpoint IMAGE.sx --buildroot DIR --config .config [--config TREE=PATH]
+                                    diff kbuild's .config against the image (absent = n)
   silt import DEFCONFIG --buildroot DIR [--kbuild] [--name NAME] [-n] [-f]
                                     split a real defconfig into target, profile, image;
                                     --kbuild also proves it round-trips via savedefconfig
@@ -54,6 +56,8 @@ func main() {
 		err = cmdCheck(os.Args[2:])
 	case "import":
 		err = cmdImport(os.Args[2:])
+	case "fixpoint":
+		err = cmdFixpoint(os.Args[2:])
 	case "emit":
 		err = cmdEmit(os.Args[2:])
 	case "fmt":

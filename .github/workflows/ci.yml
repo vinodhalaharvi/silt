@@ -61,8 +61,8 @@ jobs:
       - name: kbuild experiments
         run: >
           SILT_BUILDROOT="$PWD/buildroot" SILT_KBUILD=1
-          go test ./importer -v -timeout 30m
-          -run 'TestFactoring|TestImportedTargetsTakeLibraryProfiles|TestModelAcceptsEveryDefconfig'
+          go test ./importer ./fixpoint -v -timeout 30m
+          -run 'TestFactoring|TestImportedTargetsTakeLibraryProfiles|TestModelAcceptsEveryDefconfig|TestLibraryImagesAgainstKbuild'
 
       - name: build silt
         run: go build -o bin/silt ./cmd/silt
