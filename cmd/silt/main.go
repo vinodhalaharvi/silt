@@ -15,6 +15,7 @@ import (
 
 	"github.com/vinodhalaharvi/silt/compose"
 	"github.com/vinodhalaharvi/silt/emit"
+	"github.com/vinodhalaharvi/silt/fixpoint"
 	"github.com/vinodhalaharvi/silt/kconfig"
 	"github.com/vinodhalaharvi/silt/lang"
 	"github.com/vinodhalaharvi/silt/sexpr"
@@ -35,7 +36,7 @@ const usage = `silt — composable S-expressions over Kconfig
   silt solve IMAGE.sx --buildroot DIR
                                     ask the Kconfig model whether it can exist
   silt complete IMAGE.sx --buildroot DIR
-                                    solve for a total assignment (partial: see below)
+                                    predict the full .config kbuild will produce [-o FILE]
   silt fixpoint IMAGE.sx --buildroot DIR --config .config [--config TREE=PATH]
                                     diff kbuild's .config against the image (absent = n)
   silt import DEFCONFIG --buildroot DIR [--kbuild] [--name NAME] [-n] [-f]
@@ -375,12 +376,14 @@ func report(r *compose.Result, files []string) {
 		fmt.Printf("overridden    %d  displaced by an explicit (override ...)\n", n)
 	}
 	fmt.Printf("\nwrote %s\n", strings.Join(files, "\n      "))
-	fmt.Printf("\nnot solved: this is a partial config (Rung 2). Complete it with:\n")
+	fmt.Printf("\nThis defconfig states intent; kbuild completes it. To see the full .config\n")
+	fmt.Printf("it will become, and any stated line kbuild would drop, without running make:\n")
+	fmt.Printf("  silt complete %s --buildroot DIR -o predicted.config\n", r.Image.Pos.File)
 	abs, err := filepath.Abs(br)
 	if err != nil {
 		abs = br
 	}
-	fmt.Printf("  make defconfig BR2_DEFCONFIG=%s && make olddefconfig\n", abs)
+	fmt.Printf("To build:\n  make defconfig BR2_DEFCONFIG=%s\n", abs)
 }
 
 func split(cs []lang.Constraint) (hard, soft int) {
@@ -571,32 +574,118 @@ func loadTree(dir string) (*kconfig.Tree, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s does not look like a Buildroot tree: %w", dir, err)
 	}
-	tree, err := kconfig.Load("Config.in", kconfig.Options{Root: dir, Env: map[string]string{
-		"BR2_BASE_DIR": filepath.Join(dir, "output"), "HOSTARCH": "x86_64",
-		"HOST_GCC_VERSION": "13 2", "BR2_VERSION_FULL": ver,
-	}})
+	_ = ver
+	env, err := kconfig.BuildrootEnv(dir, filepath.Join(dir, "output"))
+	if err != nil {
+		return nil, err
+	}
+	tree, err := kconfig.Load("Config.in", kconfig.Options{Root: dir, Env: env})
 	if err != nil {
 		return nil, fmt.Errorf("importing %s: %w", dir, err)
 	}
 	return tree, nil
 }
 
-// cmdComplete solves for a total assignment.
+// cmdComplete predicts the .config kbuild will produce for an image.
 //
-// It does not yet replace olddefconfig. Conditional defaults are treated as
-// decision hints rather than evaluated, so the result decides every symbol but
-// turns fewer on than kbuild would. Reporting that honestly is more useful than
-// emitting a config that silently differs.
+// It loads the emitted defconfig into Buildroot's menu model and evaluates it
+// the way support/kconfig does, so the prediction is the whole configuration,
+// not the stated part. Every stated constraint the prediction does not honour
+// is reported: those are the lines make defconfig would silently drop.
+//
+//	silt complete IMAGE.sx --buildroot DIR [-o FILE] [-L DIR]
 func cmdComplete(args []string) error {
-	res, tree, name, err := composeWithTree(args)
+	var outFile string
+	var rest []string
+	brDir := ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-o":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("-o needs a file")
+			}
+			outFile = args[i]
+			continue
+		case "--buildroot":
+			if i+1 < len(args) {
+				brDir = args[i+1]
+			}
+		}
+		rest = append(rest, args[i])
+	}
+	res, _, name, err := composeWithTree(rest)
 	if err != nil {
 		return err
 	}
-	c := solve.Complete(res, tree)
+	env, err := kconfig.BuildrootEnv(brDir, filepath.Join(brDir, "output"))
+	if err != nil {
+		return err
+	}
+	menu, err := kconfig.LoadMenu("Config.in", kconfig.Options{Root: brDir, Env: env})
+	if err != nil {
+		return err
+	}
+
+	// Exactly what emit writes, so the prediction is of emit's output.
+	paths := map[string]string{}
+	for _, t := range emit.Trees(res) {
+		paths[t] = emit.FileName(t)
+	}
+	def, err := emit.BuildrootDefconfig(res, paths)
+	if err != nil {
+		return err
+	}
+	assign, err := kconfig.ReadAssignments(strings.NewReader(def))
+	if err != nil {
+		return err
+	}
+	cfg := menu.Evaluate(assign).Config()
+
+	on := 0
+	for _, v := range cfg {
+		if v == "y" {
+			on++
+		}
+	}
 	fmt.Printf("%s\n", name)
-	fmt.Print(c.Report())
-	fmt.Printf("\nnot a replacement for olddefconfig yet: conditional defaults are\n")
-	fmt.Printf("hints here, not evaluated, so fewer symbols come on than kbuild sets.\n")
+	fmt.Printf("completed  %d symbols written, %d on (host gcc %s, %s)\n",
+		len(cfg), on, env["HOST_GCC_VERSION"], env["HOSTARCH"])
+
+	ms := fixpoint.Check(res, lang.Buildroot, fixpoint.Config(cfg))
+	stated := 0
+	for _, c := range res.Constraints[lang.Buildroot] {
+		if !c.Soft {
+			stated++
+		}
+	}
+	if len(ms) == 0 {
+		fmt.Printf("stated     all %d honoured\n", stated)
+	} else {
+		fmt.Printf("stated     %d of %d would be dropped by kbuild:\n", len(ms), stated)
+		for _, m := range ms {
+			fmt.Printf("  %v\n", m)
+		}
+		fmt.Printf("  run silt solve for why\n")
+	}
+
+	if outFile != "" {
+		var b strings.Builder
+		for _, k := range kconfig.Names(cfg) {
+			if cfg[k] == "n" {
+				fmt.Fprintf(&b, "# %s is not set\n", k)
+			} else {
+				fmt.Fprintf(&b, "%s=%s\n", k, cfg[k])
+			}
+		}
+		if err := os.WriteFile(outFile, []byte(b.String()), 0o644); err != nil {
+			return err
+		}
+		fmt.Printf("wrote      %s\n", outFile)
+	}
+	if len(ms) > 0 {
+		return fmt.Errorf("%d stated symbol(s) would not survive kbuild", len(ms))
+	}
 	return nil
 }
 

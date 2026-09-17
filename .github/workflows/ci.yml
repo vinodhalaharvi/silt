@@ -64,6 +64,18 @@ jobs:
           go test ./importer ./fixpoint -v -timeout 30m
           -run 'TestFactoring|TestImportedTargetsTakeLibraryProfiles|TestModelAcceptsEveryDefconfig|TestLibraryImagesAgainstKbuild'
 
+      # The evaluator against Buildroot's own conf: the synthetic cases
+      # through the conf binary, and a sample of real and perturbed
+      # defconfigs through make. The full 290 run weekly.
+      - name: kconfig evaluator against conf
+        run: |
+          mkdir -p kbo
+          make -s -C buildroot O="$PWD/kbo" defconfig
+          SILT_KCONF="$PWD/kbo/build/buildroot-config/conf" go test ./kconfig -run Evaluate
+          SILT_BUILDROOT="$PWD/buildroot" SILT_KBUILD=1 SILT_KBUILD_OUT="$PWD/kbo" SILT_FUZZ=20 \
+            SILT_DEFCONFIGS="qemu_aarch64_virt odroidc2 raspberrypi4_64 pine64 acmesystems_aria_g25_128mb at91sam9x5ek_dev beaglebone qemu_x86_64 qemu_riscv64_virt aarch64_efi" \
+            go test ./kconfig -v -run MatchesKbuild
+
       - name: build silt
         run: go build -o bin/silt ./cmd/silt
 
@@ -83,6 +95,10 @@ jobs:
         run: >
           git clone --depth 1 --branch "$BUILDROOT_VERSION"
           https://github.com/buildroot/buildroot.git buildroot
+      - name: evaluator against kbuild on every shipped defconfig
+        run: >
+          SILT_BUILDROOT="$PWD/buildroot" SILT_KBUILD=1 SILT_FUZZ=100
+          go test ./kconfig -v -timeout 60m -run MatchesKbuild
       - name: round-trip every shipped defconfig
         run: >
           SILT_BUILDROOT="$PWD/buildroot" SILT_KBUILD=1
