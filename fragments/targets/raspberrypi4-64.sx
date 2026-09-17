@@ -9,6 +9,15 @@
   (provides
     (capability mmu))
 
+  ;; Uncommented from the import's stub. These are claims about the board that
+  ;; no defconfig contains: a Pi 4 has a CSI camera connector, an SD slot, a
+  ;; serial console on the GPIO header and an SDIO-attached wireless part.
+  (provides
+    (capability csi-camera)
+    (capability sdcard)
+    (capability serial-console)
+    (capability wifi-sdio))
+
   (buildroot
     (y BR2_aarch64)                                            ; :1 defined under arch/
     (y BR2_cortex_a72)                                         ; :2 defined under arch/

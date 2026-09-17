@@ -5,15 +5,21 @@
 ;; conflict lives in Buildroot's Kconfig, not in any fragment, so compose alone
 ;; cannot see it — which is the whole reason the verifier exists.
 ;;
-;; `silt solve` on this must produce testdata/edge-camera.expected, and that file
-;; is asserted like any other test. Explanation quality is the subjective part of
-;; this project and therefore the part most likely to rot quietly; pinning the
-;; output is the only guard against that.
+;; `silt solve` on this must produce solve/testdata/edge-camera.expected, and
+;; that file is asserted by TestEdgeCameraExplanation. Explanation quality is
+;; the subjective part of this project and therefore the part most likely to
+;; rot quietly; pinning the output is the only guard against that.
+;;
+;; The target was target:rpi4-64, hand-written and never built. silt fixpoint
+;; found kbuild dropping its BR2_LINUX_KERNEL_INTREE_DTS_NAME, so it is gone
+;; and this composes the imported target:raspberrypi4-64 instead. That target
+;; states no kernel options: the Pi 4 defconfig builds a vendor kernel from
+;; BR2_LINUX_KERNEL_DEFCONFIG="bcm2711", which brings its own.
 
 (image edge-camera
 
   (compose
-    target:rpi4-64
+    target:raspberrypi4-64
     profile:minimal
     feature:networking
     feature:wifi
