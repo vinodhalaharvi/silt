@@ -341,10 +341,20 @@ func (p *parser) addDefault(s *Symbol, rest string) error {
 	return nil
 }
 
-func (p *parser) expand(s string) string {
-	for k, v := range p.opts.Env {
-		s = strings.ReplaceAll(s, "$"+k, v)
+func (p *parser) expand(s string) string { return expandVars(s, p.opts.Env) }
+
+// expandVars substitutes environment variables written $VAR, ${VAR} or
+// $(VAR). The last spelling is the kernel's: Buildroot's Kconfig uses option
+// env and $VAR, the kernel uses $(SRCARCH) and friends, and both trees have to
+// be importable by the same parser.
+//
+// A $(name,args) call is a macro, not a variable, and is left alone: kbuild
+// evaluates those by running the compiler.
+func expandVars(s string, env map[string]string) string {
+	for k, v := range env {
+		s = strings.ReplaceAll(s, "$("+k+")", v)
 		s = strings.ReplaceAll(s, "${"+k+"}", v)
+		s = strings.ReplaceAll(s, "$"+k, v)
 	}
 	return s
 }

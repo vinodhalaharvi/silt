@@ -28,6 +28,7 @@ const usage = `silt — composable S-expressions over Kconfig
 
   silt check [PATH...]              parse and validate; report problems
   silt check --buildroot DIR        also verify every claim against that tree
+        [--linux DIR]               and every CONFIG_* claim against a kernel tree
   silt emit IMAGE.sx [-o DIR]       compose and write defconfig + linux.config
         [--buildroot DIR]           let rules see select-implied symbols
   silt fmt [-w] [PATH...]           canonical form
@@ -136,15 +137,21 @@ func loadAll(paths []string) ([]*lang.File, error) {
 }
 
 func cmdCheck(args []string) error {
-	var brDir string
+	var brDir, lxDir string
 	var rest []string
 	for i := 0; i < len(args); i++ {
-		if args[i] == "--buildroot" {
+		switch args[i] {
+		case "--buildroot", "--linux":
+			flag := args[i]
 			i++
 			if i >= len(args) {
-				return fmt.Errorf("--buildroot needs a directory")
+				return fmt.Errorf("%s needs a directory", flag)
 			}
-			brDir = args[i]
+			if flag == "--buildroot" {
+				brDir = args[i]
+			} else {
+				lxDir = args[i]
+			}
 			continue
 		}
 		rest = append(rest, args[i])
@@ -198,16 +205,43 @@ func cmdCheck(args []string) error {
 				im.Name, want, treeVer)
 			bad++
 		}
-		rep := verify.Check(res, tree)
+		rep := verify.Check(res, tree, lib.Trees[string(lang.Buildroot)])
 		verify.CheckCapabilities(lib.Declared, tree, rep)
 		verify.CheckTrees(lib.Trees, tree, rep)
+		verify.CheckRules(lib.Rules, tree, lib.Trees[string(lang.Buildroot)], rep)
+		against := []string{fmt.Sprintf("%d buildroot", rep.Checked)}
+		versions := []string{"buildroot " + treeVer}
+
+		// Every other tree the library declares and the caller supplied. A
+		// tree nobody loaded is not checked, and the count below says so.
+		for _, sc := range otherScopes(res) {
+			t2, ver, err := treeFor(sc, lib.Trees, lxDir)
+			if err != nil {
+				return err
+			}
+			if t2 == nil {
+				fmt.Printf("    %-18s %d %s symbols not checked: no %s tree given\n",
+					im.Name, countScope(res, sc), sc, sc)
+				continue
+			}
+			if want, ok := im.VerifiedAgainst[string(sc)]; ok && want != ver {
+				fmt.Printf("%s: pinned to %s %s, checking against %s\n", im.Name, sc, want, ver)
+				bad++
+			}
+			r2 := verify.Check(res, t2, lib.Trees[string(sc)])
+			verify.CheckRules(lib.Rules, t2, lib.Trees[string(sc)], r2)
+			rep.Findings = append(rep.Findings, r2.Findings...)
+			against = append(against, fmt.Sprintf("%d %s", r2.Checked, sc))
+			versions = append(versions, string(sc)+" "+ver)
+		}
+
 		if rep.OK() {
-			fmt.Printf("ok  %-18s %d symbols checked against buildroot %s\n",
-				im.Name, rep.Checked, treeVer)
+			fmt.Printf("ok  %-18s %s symbols checked against %s\n",
+				im.Name, strings.Join(against, ", "), strings.Join(versions, ", "))
 			continue
 		}
 		bad++
-		fmt.Printf("\n%s — %d problem(s), buildroot %s\n", im.Name, len(rep.Findings), treeVer)
+		fmt.Printf("\n%s — %d problem(s), %s\n", im.Name, len(rep.Findings), strings.Join(versions, ", "))
 		for _, f := range rep.Findings {
 			fmt.Printf("  %s\n", f)
 		}
@@ -218,6 +252,62 @@ func cmdCheck(args []string) error {
 	fmt.Printf("ok  %d files, %d fragments, %d rule blocks, %d images\n",
 		len(files), nf, nr, len(images))
 	return nil
+}
+
+// otherScopes lists the trees an image configures beyond Buildroot, sorted.
+func otherScopes(res *compose.Result) []lang.Scope {
+	var out []lang.Scope
+	for sc, cs := range res.Constraints {
+		if sc != lang.Buildroot && len(cs) > 0 {
+			out = append(out, sc)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+func countScope(res *compose.Result, sc lang.Scope) int {
+	n := 0
+	for _, c := range res.Constraints[sc] {
+		if !c.Soft {
+			n++
+		}
+	}
+	return n
+}
+
+// treeFor imports a declared tree from its checkout. The path comes from the
+// command line if given, else from the registry's (source ...); the
+// environment comes from the registry's (env ...), since the kernel cannot be
+// read at all without ARCH.
+func treeFor(sc lang.Scope, decls map[string]lang.TreeDecl, override string) (*kconfig.Tree, string, error) {
+	if sc != lang.Linux {
+		return nil, "", nil // only the kernel has an importer entry point so far
+	}
+	decl := decls[string(sc)]
+	dir := override
+	if dir == "" {
+		dir = decl.Source
+	}
+	if dir == "" {
+		return nil, "", nil
+	}
+	arch := "arm64"
+	if a, ok := decl.Env["ARCH"]; ok {
+		arch = a
+	}
+	env, err := kconfig.LinuxEnv(dir, arch)
+	if err != nil {
+		return nil, "", fmt.Errorf("%s does not look like a Linux tree: %w", dir, err)
+	}
+	for k, v := range decl.Env {
+		env[k] = v
+	}
+	tree, err := kconfig.Load("Kconfig", kconfig.Options{Root: dir, Env: env})
+	if err != nil {
+		return nil, "", fmt.Errorf("importing %s: %w", dir, err)
+	}
+	return tree, env["KERNELVERSION"], nil
 }
 
 func cmdEmit(args []string) error {

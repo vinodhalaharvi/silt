@@ -8,11 +8,14 @@
 # fixture that starts passing fails the run too, since it has stopped testing
 # what it was checked in to test.
 #
-# Usage: ci/check-images.sh BUILDROOT_DIR [SILT_BINARY]
+# Usage: ci/check-images.sh BUILDROOT_DIR [SILT_BINARY] [LINUX_DIR]
 set -euo pipefail
 
 br=${1:?usage: ci/check-images.sh BUILDROOT_DIR [SILT_BINARY]}
 silt=${2:-bin/silt}
+linux=${3:-}
+lxflag=()
+[[ -n $linux ]] && lxflag=(--linux "$linux")
 
 expect_fail=(edge-camera)
 
@@ -25,7 +28,7 @@ for img in images/*.sx; do
 	done
 
 	set +e
-	out=$("$silt" check --buildroot "$br" fragments "$img" 2>&1)
+	out=$("$silt" check --buildroot "$br" "${lxflag[@]}" fragments "$img" 2>&1)
 	rc=$?
 	set -e
 

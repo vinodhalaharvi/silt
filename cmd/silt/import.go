@@ -149,7 +149,7 @@ func cmdImport(args []string) error {
 	if err != nil {
 		return fmt.Errorf("imported fragments do not compose: %w", err)
 	}
-	rep := verify.Check(res, tree)
+	rep := verify.Check(res, tree, lang.BuiltinTrees()[string(lang.Buildroot)])
 	if !rep.OK() {
 		for _, fd := range rep.Findings {
 			fmt.Printf("  %s\n", fd)

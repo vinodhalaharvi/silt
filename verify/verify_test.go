@@ -64,11 +64,11 @@ func TestUnknownSymbol(t *testing.T) {
 		`(fragment profile:p (requires (capability mmu)) (buildroot (y BR2_NOT_IN_THIS_RELEASE)))`,
 	}, `(image i (compose target:t profile:p))`)
 
-	rep := Check(r, tr)
+	rep := Check(r, tr, lang.BuiltinTrees()["buildroot"])
 	if rep.OK() {
 		t.Fatal("expected the unknown symbol to be reported")
 	}
-	if !strings.Contains(msgs(rep), "does not exist in this Buildroot tree") {
+	if !strings.Contains(msgs(rep), "does not exist in this buildroot tree") {
 		t.Errorf("wrong message:\n%s", msgs(rep))
 	}
 }
@@ -91,7 +91,7 @@ config BR2_PKG
 		`(fragment feature:f (buildroot (y BR2_PKG)))`,
 	}, `(image i (compose target:t profile:p feature:f))`)
 
-	rep := Check(r, tr)
+	rep := Check(r, tr, lang.BuiltinTrees()["buildroot"])
 	if rep.OK() {
 		t.Fatal("expected the refuted dependency to be reported")
 	}
@@ -122,7 +122,7 @@ config BR2_PKG
 		`(fragment feature:f (buildroot (y BR2_PKG)))`,
 	}, `(image i (compose target:t profile:p feature:f))`)
 
-	if rep := Check(r, tr); !rep.OK() {
+	if rep := Check(r, tr, lang.BuiltinTrees()["buildroot"]); !rep.OK() {
 		t.Errorf("unstated dependency must not be reported:\n%s", msgs(rep))
 	}
 }
@@ -143,7 +143,7 @@ config BR2_PKG
 		`(fragment feature:f (buildroot (y BR2_PKG)))`,
 	}, `(image i (compose target:t profile:p feature:f))`)
 
-	if rep := Check(r, tr); !rep.OK() {
+	if rep := Check(r, tr, lang.BuiltinTrees()["buildroot"]); !rep.OK() {
 		t.Errorf("BR2_B is unstated, so the disjunction stands:\n%s", msgs(rep))
 	}
 }
@@ -161,7 +161,7 @@ config BR2_NAME
 		`(fragment profile:p (requires (capability mmu)) (buildroot (y BR2_NAME)))`,
 	}, `(image i (compose target:t profile:p))`)
 
-	rep := Check(r, tr)
+	rep := Check(r, tr, lang.BuiltinTrees()["buildroot"])
 	if rep.OK() || !strings.Contains(msgs(rep), "is string, but is set as a boolean") {
 		t.Errorf("expected a type mismatch:\n%s", msgs(rep))
 	}
@@ -175,7 +175,7 @@ func TestUnmanagedIsSkipped(t *testing.T) {
 		`(fragment profile:p (requires (capability mmu)) (buildroot (y BR2_TARGET_UBOOT_THING)))`,
 	}, `(image i (compose target:t profile:p) (unmanaged buildroot:BR2_TARGET_UBOOT_*))`)
 
-	if rep := Check(r, tr); !rep.OK() {
+	if rep := Check(r, tr, lang.BuiltinTrees()["buildroot"]); !rep.OK() {
 		t.Errorf("unmanaged symbols must be skipped:\n%s", msgs(rep))
 	}
 }
@@ -206,5 +206,44 @@ config BR2_PACKAGE_BUSYBOX
 	m := msgs(rep)
 	if len(rep.Findings) != 2 || !strings.Contains(m, "does not exist") || !strings.Contains(m, "is bool") {
 		t.Fatalf("findings:\n%s", m)
+	}
+}
+
+// A tree's prefix is serialization, not identity. Buildroot declares
+// `config BR2_X` and writes BR2_X; the kernel declares `config EXT4_FS` and
+// writes CONFIG_EXT4_FS, because conf adds the prefix on the way out. Looking
+// the written name up verbatim reported every CONFIG_ symbol in the library
+// as missing, including ones that plainly exist.
+func TestPrefixIsStrippedForTheTreeThatOmitsIt(t *testing.T) {
+	tr := tree(t, "config EXT4_FS\n\tbool \"ext4\"\nconfig DEVTMPFS\n\tbool \"devtmpfs\"\n")
+	r := composed(t, []string{tgt,
+		`(fragment profile:p (requires (capability mmu))
+		   (linux (y CONFIG_EXT4_FS) (y CONFIG_NOT_A_KERNEL_SYMBOL)))`,
+	}, `(image i (compose target:t profile:p))`)
+
+	decl := lang.TreeDecl{Name: "linux", Prefix: "CONFIG_"}
+	rep := Check(r, tr, decl)
+	if len(rep.Findings) != 1 || !strings.Contains(msgs(rep), "CONFIG_NOT_A_KERNEL_SYMBOL does not exist") {
+		t.Fatalf("findings:\n%s", msgs(rep))
+	}
+	if rep.Checked != 2 {
+		t.Errorf("checked %d, want both linux symbols", rep.Checked)
+	}
+}
+
+// A rule's consequent is a claim about a tree even when the rule never fires,
+// and an unfired rule is where a stale claim hides.
+func TestRuleSymbolsAreCheckedWhetherOrNotTheyFire(t *testing.T) {
+	tr := tree(t, "config FS_ENCRYPTION\n\tbool \"encryption\"\n")
+	f, err := lang.ParseFile(`(rules cross
+	  (when (y buildroot:BR2_PACKAGE_FSCRYPTCTL) (y linux:CONFIG_EXT4_ENCRYPTION))
+	  (when (y buildroot:BR2_PACKAGE_OTHER) (y linux:CONFIG_FS_ENCRYPTION)))`, "r.sx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := &Report{}
+	CheckRules(f.Rules, tr, lang.TreeDecl{Name: "linux", Prefix: "CONFIG_"}, rep)
+	if len(rep.Findings) != 1 || !strings.Contains(msgs(rep), "CONFIG_EXT4_ENCRYPTION does not exist") {
+		t.Fatalf("findings:\n%s", msgs(rep))
 	}
 }

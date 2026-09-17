@@ -312,3 +312,44 @@ endif
 		t.Fatalf("an unguarded declaration should absorb the rest: %s", d)
 	}
 }
+
+// The kernel's Kconfig dialect. Buildroot's parser had to grow three things
+// for it: $(VAR) expansion, relational comparisons, and macro calls, which
+// kbuild evaluates by running the compiler and Silt cannot.
+func TestKernelDialect(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(dir+"/arch/arm64", 0o755)
+	os.WriteFile(dir+"/Kconfig", []byte(`
+source "arch/$(SRCARCH)/Kconfig"
+
+config GCC_VERSION
+	int
+	default 130300
+
+config NEEDS_NEW_GCC
+	bool "needs a new compiler"
+	depends on GCC_VERSION >= 110500
+
+config STACKPROTECTOR
+	bool "stack protector"
+	depends on $(cc-option,-fstack-protector-strong)
+`), 0o644)
+	os.WriteFile(dir+"/arch/arm64/Kconfig", []byte("config ARM64\n\tdef_bool y\n"), 0o644)
+
+	tr, err := Load("Kconfig", Options{Root: dir, Env: map[string]string{"SRCARCH": "arm64"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tr.Symbols["ARM64"] == nil {
+		t.Error("arch/$(SRCARCH)/Kconfig was not sourced")
+	}
+	if got := tr.Symbols["NEEDS_NEW_GCC"].Depends.String(); got != "GCC_VERSION >= 110500" {
+		t.Errorf("relational comparison: %s", got)
+	}
+	// The macro call survives as one opaque name. It is an undefined symbol,
+	// so nothing states it and no condition mentioning it is ever refuted —
+	// which is the honest answer, since only a compiler knows.
+	if got := tr.Symbols["STACKPROTECTOR"].Depends.String(); got != "$(cc-option,-fstack-protector-strong)" {
+		t.Errorf("macro call: %s", got)
+	}
+}

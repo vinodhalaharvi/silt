@@ -38,6 +38,7 @@ func (f Finding) String() string {
 // Report is everything found, plus what the check ran against.
 type Report struct {
 	Tree     string // the tree's own version string
+	Scope    string // the tree this report is about
 	Symbols  int
 	Findings []Finding
 	Checked  int
@@ -48,14 +49,22 @@ func (r *Report) add(f Finding) { r.Findings = append(r.Findings, f) }
 // OK reports whether the composition is consistent with the tree.
 func (r *Report) OK() bool { return len(r.Findings) == 0 }
 
-// Check verifies a composed image against an imported tree.
+// Check verifies one tree's half of a composed image against that tree.
 //
-// Only the Buildroot scope is checked: the Linux tree is a separate import and
-// is not loaded here, so CONFIG_ symbols are left alone rather than reported as
-// unknown. Saying nothing is correct; saying "unknown symbol" about a symbol
-// from a tree that was never loaded would be a lie.
-func Check(res *compose.Result, tree *kconfig.Tree) *Report {
-	rep := &Report{Symbols: len(tree.Symbols)}
+// Only the named scope is checked. A symbol from a tree that was not loaded is
+// left alone rather than reported as unknown: saying nothing is correct,
+// saying "unknown symbol" about a tree nobody imported would be a lie.
+func Check(res *compose.Result, tree *kconfig.Tree, decl lang.TreeDecl) *Report {
+	sc := lang.Scope(decl.Name)
+	rep := &Report{Symbols: len(tree.Symbols), Scope: decl.Name}
+
+	// The prefix is serialization, not identity. A Buildroot symbol is
+	// declared as `config BR2_X` and written as BR2_X; a kernel symbol is
+	// declared as `config EXT4_FS` and written as CONFIG_EXT4_FS, because
+	// conf adds CONFIG_ on the way out. Looking a stated name up in the tree
+	// verbatim reported every CONFIG_ symbol in the library as missing,
+	// including ones that plainly exist.
+	inTree := treeName(tree, decl)
 
 	// Index what the composition asserts, so dependency evaluation can consult it.
 	// Only Buildroot symbols: that is the tree loaded here. A symbol from
@@ -63,15 +72,14 @@ func Check(res *compose.Result, tree *kconfig.Tree) *Report {
 	// exist" about it would be a lie. Keying by bare name used to let an
 	// opaque linux value be looked up in the Buildroot tree.
 	stated := map[string]lang.Constraint{}
-	br := string(lang.Buildroot)
-	for _, c := range res.Constraints[lang.Buildroot] {
+	for _, c := range res.Constraints[sc] {
 		if !c.Soft {
 			stated[c.Sym.Name] = c
 		}
 	}
 	for _, cs := range [][]lang.Constraint{res.Opaque, res.Environment} {
 		for _, c := range cs {
-			if c.Sym.Tree == br {
+			if lang.Scope(c.Sym.Tree) == sc {
 				stated[c.Sym.Name] = c
 			}
 		}
@@ -86,16 +94,16 @@ func Check(res *compose.Result, tree *kconfig.Tree) *Report {
 
 	for _, name := range names {
 		c := stated[name]
-		if isUnmanaged(name, res.Unmanaged) {
+		if isUnmanaged(name, res.Unmanaged, sc) {
 			continue
 		}
 		rep.Checked++
 
-		sym, ok := tree.Symbols[name]
+		sym, ok := tree.Symbols[inTree(name)]
 		if !ok {
 			rep.add(Finding{
 				Pos: c.Pos.Short(), Symbol: name,
-				Message: fmt.Sprintf("%s does not exist in this Buildroot tree", name),
+				Message: fmt.Sprintf("%s does not exist in this %s tree", name, sc),
 				Detail:  "stated by " + c.From,
 			})
 			continue
@@ -171,9 +179,9 @@ func describe(c lang.Constraint) string {
 	return c.Want.String()
 }
 
-func isUnmanaged(name string, ids []lang.SymbolID) bool {
+func isUnmanaged(name string, ids []lang.SymbolID, sc lang.Scope) bool {
 	for _, id := range ids {
-		if id.Tree != string(lang.Buildroot) {
+		if lang.Scope(id.Tree) != sc {
 			continue
 		}
 		p := id.Name
@@ -309,4 +317,70 @@ func CheckTrees(trees map[string]lang.TreeDecl, tree *kconfig.Tree, rep *Report)
 			})
 		}
 	}
+}
+
+// firstSymbol returns any declared symbol's name, to see whether this tree
+// spells its symbols with the prefix it is written with. Buildroot's do;
+// the kernel's do not.
+func firstSymbol(tree *kconfig.Tree) string {
+	for _, name := range tree.Order {
+		if s := tree.Symbols[name]; s != nil && s.Type != kconfig.Unknown {
+			return name
+		}
+	}
+	return ""
+}
+
+// CheckRules verifies every symbol a rule mentions, whether or not the rule
+// fires. A rule's consequent is a claim about the tree exactly like a
+// fragment's, and a rule nothing has triggered yet is where a stale claim
+// hides: the fscryptctl rule named CONFIG_EXT4_ENCRYPTION, copied from
+// Buildroot's own help text, which the kernel renamed to CONFIG_FS_ENCRYPTION.
+func CheckRules(rules []*lang.Rules, tree *kconfig.Tree, decl lang.TreeDecl, rep *Report) {
+	inTree := treeName(tree, decl)
+	seen := map[lang.SymbolID]bool{}
+	report := func(id lang.SymbolID, pos, from string) {
+		if lang.Scope(id.Tree) != lang.Scope(decl.Name) || seen[id] {
+			return
+		}
+		seen[id] = true
+		if _, ok := tree.Symbols[inTree(id.Name)]; !ok {
+			rep.add(Finding{
+				Pos: pos, Symbol: id.Name,
+				Message: fmt.Sprintf("%s does not exist in this %s tree", id.Name, decl.Name),
+				Detail:  "named by " + from,
+			})
+		}
+	}
+	var cond func(c *lang.Cond, pos, from string)
+	cond = func(c *lang.Cond, pos, from string) {
+		if c == nil {
+			return
+		}
+		switch c.Op {
+		case "constraint":
+			report(c.C.Sym, pos, from)
+		case "set?", "equal?":
+			report(c.Sym, pos, from)
+		}
+		for _, a := range c.Args {
+			cond(a, pos, from)
+		}
+	}
+	for _, rs := range rules {
+		for _, g := range rs.Guards {
+			cond(g.Cond, g.Pos.Short(), "rules:"+rs.Name)
+			for _, c := range g.Then {
+				report(c.Sym, c.Pos.Short(), "rules:"+rs.Name)
+			}
+		}
+	}
+}
+
+// treeName maps a symbol as written to the name the tree declares it under.
+func treeName(tree *kconfig.Tree, decl lang.TreeDecl) func(string) string {
+	if decl.Prefix == "" || strings.HasPrefix(firstSymbol(tree), decl.Prefix) {
+		return func(name string) string { return name }
+	}
+	return func(name string) string { return strings.TrimPrefix(name, decl.Prefix) }
 }

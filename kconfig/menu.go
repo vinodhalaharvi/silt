@@ -314,13 +314,7 @@ func contains(list []*KSym, s *KSym) bool {
 	return false
 }
 
-func (p *menuParser) expand(s string) string {
-	for k, v := range p.opts.Env {
-		s = strings.ReplaceAll(s, "$"+k, v)
-		s = strings.ReplaceAll(s, "${"+k+"}", v)
-	}
-	return s
-}
+func (p *menuParser) expand(s string) string { return expandVars(s, p.opts.Env) }
 
 func (p *menuParser) prompt(e *Entry, rest, file string, i int) error {
 	text, condStr := splitIf(rest)

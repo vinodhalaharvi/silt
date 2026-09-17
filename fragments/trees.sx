@@ -15,6 +15,13 @@
 ;; No Kconfig tree for these is imported yet, so their symbols are carried and
 ;; emitted but not verified. Devicetree is deliberately absent: it binds to
 ;; drivers by compatible string at runtime and is not a constraint system.
+;;
+;; linux is built in, and `silt check --linux DIR` verifies every CONFIG_*
+;; claim against a kernel checkout — the Kconfig files alone are enough. A
+;; (source "...") here would point at a fixed path on one machine, so the path
+;; stays on the command line. ARCH defaults to arm64; override it with
+;; (tree linux (kind kconfig) (env (ARCH "x86_64"))) in a library that targets
+;; something else.
 
 (tree busybox
   (kind kconfig)

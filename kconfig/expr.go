@@ -21,7 +21,27 @@ const (
 	ExprOr
 	ExprEq  // sym = "literal" or sym = sym
 	ExprNeq // sym != ...
+	// Relational comparisons. The kernel uses them (GCC_VERSION >= 110500);
+	// Buildroot does not.
+	ExprLt
+	ExprLe
+	ExprGt
+	ExprGe
 )
+
+// compareOps maps the source spelling of a comparison to its node type.
+var compareOps = map[string]ExprOp{
+	"=": ExprEq, "!=": ExprNeq, "<": ExprLt, "<=": ExprLe, ">": ExprGt, ">=": ExprGe,
+}
+
+func (o ExprOp) String() string {
+	for s, op := range compareOps {
+		if op == o {
+			return s
+		}
+	}
+	return "?"
+}
 
 // Expr is a Kconfig condition.
 type Expr struct {
@@ -45,10 +65,8 @@ func (e *Expr) String() string {
 		return "(" + e.Args[0].String() + " && " + e.Args[1].String() + ")"
 	case ExprOr:
 		return "(" + e.Args[0].String() + " || " + e.Args[1].String() + ")"
-	case ExprEq:
-		return e.Sym + " = " + quoted(e.Lit, e.IsLit)
-	case ExprNeq:
-		return e.Sym + " != " + quoted(e.Lit, e.IsLit)
+	case ExprEq, ExprNeq, ExprLt, ExprLe, ExprGt, ExprGe:
+		return e.Sym + " " + e.Op.String() + " " + quoted(e.Lit, e.IsLit)
 	}
 	return "?"
 }
@@ -66,7 +84,7 @@ func (e *Expr) Symbols(into map[string]bool) {
 		return
 	}
 	switch e.Op {
-	case ExprSym, ExprEq, ExprNeq:
+	case ExprSym, ExprEq, ExprNeq, ExprLt, ExprLe, ExprGt, ExprGe:
 		if e.Sym != "" && !isConst(e.Sym) {
 			into[e.Sym] = true
 		}
@@ -198,7 +216,8 @@ func (p *exprParser) primary() (*Expr, error) {
 	sym := t
 	// Comparison against a symbol or a literal. 154 of these exist in
 	// Buildroot inside real depends-on clauses, so they are not optional.
-	if op := p.peek(); op == "=" || op == "!=" {
+	if kind, ok := compareOps[p.peek()]; ok {
+		op := p.peek()
 		p.pos++
 		rhs := p.peek()
 		if rhs == "" {
@@ -206,10 +225,6 @@ func (p *exprParser) primary() (*Expr, error) {
 		}
 		p.pos++
 		isLit := strings.HasPrefix(rhs, `"`)
-		kind := ExprEq
-		if op == "!=" {
-			kind = ExprNeq
-		}
 		return &Expr{Op: kind, Sym: sym, Lit: strings.Trim(rhs, `"`), IsLit: isLit}, nil
 	}
 	return &Expr{Op: ExprSym, Sym: strings.Trim(sym, `"`)}, nil
@@ -242,6 +257,34 @@ func tokenizeExpr(s string) ([]string, error) {
 		case c == '=':
 			out = append(out, "=")
 			i++
+		case c == '<' || c == '>':
+			if i+1 < len(s) && s[i+1] == '=' {
+				out = append(out, s[i:i+2])
+				i += 2
+				continue
+			}
+			out = append(out, string(c))
+			i++
+		case c == '$' && i+1 < len(s) && s[i+1] == '(':
+			// A Kconfig macro call: $(cc-option,-fstack-protector). Kbuild
+			// runs the compiler to evaluate these at parse time. Silt cannot,
+			// so the whole call is kept as one opaque name; it is an
+			// undefined symbol, which nothing states, so no condition
+			// mentioning it is ever refuted.
+			depth, j := 0, i
+			for ; j < len(s); j++ {
+				if s[j] == '(' {
+					depth++
+				} else if s[j] == ')' {
+					depth--
+					if depth == 0 {
+						j++
+						break
+					}
+				}
+			}
+			out = append(out, s[i:j])
+			i = j
 		case c == '"':
 			j := i + 1
 			for j < len(s) && s[j] != '"' {
@@ -254,7 +297,7 @@ func tokenizeExpr(s string) ([]string, error) {
 			i = j + 1
 		default:
 			j := i
-			for j < len(s) && !strings.ContainsRune(" \t()!&|=#\"", rune(s[j])) {
+			for j < len(s) && !strings.ContainsRune(" \t()!&|=<>#\"", rune(s[j])) {
 				j++
 			}
 			out = append(out, s[i:j])

@@ -53,7 +53,11 @@ type TreeDecl struct {
 	// config fragment to its build. Empty for buildroot itself.
 	ConsumedBy string
 	Source     string // checkout of the tree, for importing it
-	Pos        sexpr.Pos
+	// Env is what the tree's own Kconfig needs before it can be read at all.
+	// The kernel sources arch/$(SRCARCH)/Kconfig, so without ARCH there is
+	// no tree to import.
+	Env map[string]string
+	Pos sexpr.Pos
 }
 
 // BuiltinTrees are declared without a (tree ...) form, so a library written
@@ -110,6 +114,14 @@ func parseTreeDecl(n *sexpr.Node) (*TreeDecl, error) {
 				return nil, errf(cl, "(consumed-by BR2_SYMBOL) takes one Buildroot symbol")
 			}
 			d.ConsumedBy = cl.Args()[0].Text
+		case "env":
+			d.Env = map[string]string{}
+			for _, a := range cl.Args() {
+				if a.Head() == "" || len(a.Args()) != 1 || a.Args()[0].Kind != sexpr.KindString {
+					return nil, errf(a, `expected (NAME "value")`)
+				}
+				d.Env[a.Head()] = a.Args()[0].Text
+			}
 		default:
 			return nil, errf(cl, "unknown tree clause %q", cl.Head())
 		}

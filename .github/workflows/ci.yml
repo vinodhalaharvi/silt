@@ -13,6 +13,9 @@ env:
   # Every fragment claim is only meaningful for the release it was checked
   # against. This must match the (verified-against ...) pins in images/.
   BUILDROOT_VERSION: "2025.02.16"
+  # Only the Kconfig files are needed to check CONFIG_* claims, so the kernel
+  # is fetched as a tarball and unpacked selectively: 37 MB, not a clone.
+  LINUX_VERSION: "v6.12"
 
 jobs:
   test:
@@ -76,11 +79,31 @@ jobs:
             SILT_DEFCONFIGS="qemu_aarch64_virt odroidc2 raspberrypi4_64 pine64 acmesystems_aria_g25_128mb at91sam9x5ek_dev beaglebone qemu_x86_64 qemu_riscv64_virt aarch64_efi" \
             go test ./kconfig -v -run MatchesKbuild
 
+      - name: cache linux Kconfig
+        id: lx-cache
+        uses: actions/cache@v4
+        with:
+          path: linux
+          key: linux-kconfig-${{ env.LINUX_VERSION }}
+
+      - name: fetch linux Kconfig
+        if: steps.lx-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -sL -o linux.tar.gz \
+            "https://codeload.github.com/torvalds/linux/tar.gz/refs/tags/$LINUX_VERSION"
+          mkdir -p linux.tmp
+          tar xzf linux.tar.gz -C linux.tmp --wildcards '*/Kconfig*' '*/Makefile'
+          mv linux.tmp/linux-* linux
+          rm -rf linux.tar.gz linux.tmp
+
+      - name: check CONFIG_* claims against the kernel
+        run: SILT_LINUX="$PWD/linux" go test ./verify -v -run Linux
+
       - name: build silt
         run: go build -o bin/silt ./cmd/silt
 
-      - name: check images against buildroot
-        run: ci/check-images.sh "$PWD/buildroot" bin/silt
+      - name: check images against buildroot and the kernel
+        run: ci/check-images.sh "$PWD/buildroot" bin/silt "$PWD/linux"
 
   every-defconfig:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
