@@ -41,6 +41,7 @@ const usage = `silt — composable S-expressions over Kconfig
                                     ask the Kconfig model whether it can exist
   silt complete IMAGE.sx --buildroot DIR
                                     predict the full .config kbuild will produce [-o FILE]
+        [--linux DIR]               and the kernel's, from the base Buildroot picks
   silt fixpoint IMAGE.sx --buildroot DIR --config .config [--config TREE=PATH]
                                     diff kbuild's .config against the image (absent = n)
   silt import DEFCONFIG --buildroot DIR [--kbuild] [--name NAME] [-n] [-f]
@@ -607,6 +608,113 @@ func cmdSolutionHash(args []string) error {
 	return nil
 }
 
+// completeLinux predicts the kernel's .config and reports which stated
+// CONFIG_ claims survive it.
+func completeLinux(res *compose.Result, brCfg map[string]string, brDir, lxDir, base, name string) error {
+	arch := "arm64"
+	if d, ok := res.Trees[string(lang.Linux)]; ok {
+		if a, ok := d.Env["ARCH"]; ok {
+			arch = a
+		}
+	}
+	env, err := kconfig.LinuxEnv(lxDir, arch)
+	if err != nil {
+		return fmt.Errorf("%s does not look like a Linux tree: %w", lxDir, err)
+	}
+	menu, err := kconfig.LoadMenu("Kconfig", kconfig.Options{
+		Root: lxDir, Env: env, Prefix: "CONFIG_"})
+	if err != nil {
+		return err
+	}
+	basePath, why, err := kernelBase(brCfg, brDir, lxDir, arch, base)
+	if err != nil {
+		return err
+	}
+	var assign []kconfig.Assignment
+	if basePath != "" {
+		f, err := os.Open(basePath)
+		if os.IsNotExist(err) {
+			// Usually the right answer to this is that the image builds a
+			// vendor kernel: BR2_LINUX_KERNEL_DEFCONFIG="bcm2711" exists in
+			// the Raspberry Pi fork and nowhere in mainline.
+			return fmt.Errorf("%s: the kernel base %s chosen by %s is not in %s.\n"+
+				"  If this image builds a vendor kernel, point --linux at that tree, "+
+				"or pass --linux-defconfig PATH", name, filepath.Base(basePath), why, lxDir)
+		}
+		if err != nil {
+			return err
+		}
+		assign, err = kconfig.ReadAssignments(f)
+		f.Close()
+		if err != nil {
+			return err
+		}
+	}
+	// Silt's fragment is layered over it, exactly as Buildroot layers the
+	// file it passes in BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES.
+	ours, err := kconfig.ReadAssignments(strings.NewReader(emit.Defconfig(res, lang.Linux)))
+	if err != nil {
+		return err
+	}
+	ev := menu.Evaluate(append(assign, ours...))
+	cfg := ev.Config()
+	on := 0
+	for _, v := range cfg {
+		if v == "y" || v == "m" {
+			on++
+		}
+	}
+	fmt.Printf("linux      %d symbols written, %d on, from %s (%s), linux %s\n",
+		len(cfg), on, filepath.Base(basePath), why, env["KERNELVERSION"])
+
+	tainted := map[string]bool{}
+	for _, n := range ev.Tainted() {
+		tainted[n] = true
+	}
+	ms := fixpoint.Check(res, lang.Linux, fixpoint.Config(cfg))
+	stated := countScope(res, lang.Linux)
+	if len(ms) == 0 {
+		fmt.Printf("           all %d stated CONFIG_ symbols honoured\n", stated)
+	} else {
+		fmt.Printf("           %d of %d stated CONFIG_ symbols would be dropped:\n", len(ms), stated)
+		for _, m := range ms {
+			fmt.Printf("  %v\n", m)
+		}
+	}
+	// Symbols whose own conditions are compiler probes are read as no here,
+	// because only a compiler can answer them. Saying how many is the
+	// difference between a prediction and a guess.
+	fmt.Printf("           %d symbols decided by compiler probes ($(cc-option,...)), read as n\n",
+		len(tainted))
+	if len(ms) > 0 {
+		return fmt.Errorf("%d stated kernel symbol(s) would not survive kbuild", len(ms))
+	}
+	return nil
+}
+
+// kernelBase is the configuration the kernel starts from, which Buildroot
+// chooses: the architecture's default, a named defconfig, or a file.
+func kernelBase(brCfg map[string]string, brDir, lxDir, arch, override string) (string, string, error) {
+	if override != "" {
+		return override, "--linux-defconfig", nil
+	}
+	unquote := func(s string) string { return strings.Trim(s, `"`) }
+	switch {
+	case brCfg["BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG"] == "y":
+		return filepath.Join(lxDir, "arch", arch, "configs", "defconfig"),
+			"BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG", nil
+	case brCfg["BR2_LINUX_KERNEL_DEFCONFIG"] != "":
+		name := unquote(brCfg["BR2_LINUX_KERNEL_DEFCONFIG"])
+		return filepath.Join(lxDir, "arch", arch, "configs", name+"_defconfig"),
+			"BR2_LINUX_KERNEL_DEFCONFIG=" + name, nil
+	case brCfg["BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE"] != "":
+		return filepath.Join(brDir, unquote(brCfg["BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE"])),
+			"BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE", nil
+	}
+	return filepath.Join(lxDir, "arch", arch, "configs", "defconfig"),
+		"no kernel base stated; the architecture default", nil
+}
+
 // solutionInputs collects the tree versions and host values a solution
 // depends on. A tree the caller did not supply is recorded as unknown rather
 // than left out: two runs against different kernels must not hash the same.
@@ -776,6 +884,8 @@ func loadTree(dir string) (*kconfig.Tree, error) {
 //
 //	silt complete IMAGE.sx --buildroot DIR [-o FILE] [-L DIR]
 func cmdComplete(args []string) error {
+	args, lxDir := takeFlag(args, "--linux")
+	args, lxBase := takeFlag(args, "--linux-defconfig")
 	var outFile string
 	var rest []string
 	brDir := ""
@@ -848,6 +958,19 @@ func cmdComplete(args []string) error {
 			fmt.Printf("  %v\n", m)
 		}
 		fmt.Printf("  run silt solve for why\n")
+	}
+
+	// The kernel's half. Which base configuration it starts from is a
+	// Buildroot decision — arch default, a named defconfig, or a file — so
+	// the prediction above chooses it, which is the cross-tree link this
+	// project exists for.
+	if lxDir != "" {
+		if err := completeLinux(res, cfg, brDir, lxDir, lxBase, name); err != nil {
+			return err
+		}
+	} else if len(res.Constraints[lang.Linux]) > 0 {
+		fmt.Printf("linux      %d stated symbols not predicted: pass --linux DIR\n",
+			countScope(res, lang.Linux))
 	}
 
 	if outFile != "" {
