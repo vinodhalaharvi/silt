@@ -1,0 +1,21 @@
+;; SBSA reference platform with the standard userspace.
+;;
+;; target:qemu-aarch64-sbsa was imported from Buildroot's own defconfig — nobody
+;; hand-tuned it for this. Its boot chain is ARM Trusted Firmware, then EDK2,
+;; then GRUB2 off an EFI partition on a GPT disk, and the kernel enumerates
+;; hardware through ACPI rather than devicetree. Nothing like the Odroid's
+;; Amlogic chain or the Pi's VideoCore firmware.
+;;
+;; profile:standard and feature:networking are the same fragments those images
+;; use, unedited. That is the claim: a server platform and an Amlogic SBC can
+;; share a userspace definition, because the axes are separable.
+;;
+;; Verified: 32 buildroot symbols and 14 linux symbols honoured by kbuild, and
+;; it boots to a systemd login with no failed units.
+
+(image sbsa-standard
+  (compose
+    target:qemu-aarch64-sbsa
+    profile:standard
+    feature:networking)
+  (verified-against (buildroot "2025.02.16")))
