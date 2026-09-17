@@ -83,7 +83,7 @@ func cmdImport(args []string) error {
 	}
 
 	var kb *importer.Kbuild
-	var provides []string
+	var provides, undecidable []string
 	input := src
 	if useKbuild {
 		tmp, err := os.MkdirTemp("", "silt-import-")
@@ -101,11 +101,12 @@ func cmdImport(args []string) error {
 		// Capabilities the library ties to a symbol are read off kbuild's
 		// .config of the source, the only place they can be derived from.
 		if cfg, err := kb.Config(); err == nil {
-			decls, err := libraryCapabilities(filepath.Join(root, "fragments"))
+			decls, byProfiles, err := libraryCapabilities(filepath.Join(root, "fragments"))
 			if err != nil {
 				return err
 			}
 			provides = importer.DeriveProvides(cfg, decls)
+			undecidable = importer.UndecidableCapabilities(decls, byProfiles)
 		}
 		input = filepath.Join(tmp, "source_defconfig")
 		if err := os.WriteFile(input, []byte(norm), 0o644); err != nil {
@@ -128,6 +129,7 @@ func cmdImport(args []string) error {
 	}
 
 	im.Provides = provides
+	im.Undecidable = undecidable
 	targetSrc := im.Fragment(importer.Target)
 	profileSrc := im.Fragment(importer.Profile)
 	imageSrc := im.Image()
@@ -250,19 +252,19 @@ func lineDiff(want, got string) string {
 // libraryCapabilities reads the capability vocabulary from a fragment
 // library, if there is one. A missing library is not an error: import works
 // outside a Silt checkout, it just derives no capabilities.
-func libraryCapabilities(dir string) (map[string]lang.CapabilityDecl, error) {
+func libraryCapabilities(dir string) (map[string]lang.CapabilityDecl, map[string]bool, error) {
 	if _, err := os.Stat(dir); err != nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	files, err := loadAll([]string{dir})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	lib := compose.NewLibrary()
 	for _, f := range files {
 		if err := lib.Add(f); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	return lib.Declared, nil
+	return lib.Declared, importer.ProfileCapabilities(lib.Fragments), nil
 }

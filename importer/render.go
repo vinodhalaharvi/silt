@@ -20,6 +20,12 @@ type Imported struct {
 	// ties to a symbol; a capability with no symbol is a claim nobody can
 	// derive, so it is left for a person to add.
 	Provides []string
+	// Undecidable lists declared capabilities no defconfig can answer for:
+	// whether the board has a camera connector, an SD slot, an SDIO
+	// wireless part. They are written out commented, so the question is in
+	// front of whoever edits the fragment rather than discovered when a
+	// feature refuses to compose.
+	Undecidable []string
 }
 
 // Classified is an entry with its class and the rule that chose it.
@@ -129,6 +135,16 @@ func (im *Imported) Fragment(c Class) string {
 		b.WriteString("\n  ;; Derived from kbuild's .config of the source, not asserted.\n  (provides")
 		for _, p := range im.Provides {
 			fmt.Fprintf(&b, "\n    (capability %s)", p)
+		}
+		b.WriteString(")\n")
+	}
+	if c == Target && len(im.Undecidable) > 0 {
+		b.WriteString("\n  ;; A defconfig cannot answer these: no symbol says whether the board\n" +
+			"  ;; has the hardware. Uncomment what it has, delete the rest. Until\n" +
+			"  ;; then a feature requiring one of them will not compose onto it.\n")
+		b.WriteString("  ;; (provides")
+		for _, p := range im.Undecidable {
+			fmt.Fprintf(&b, "\n  ;;   (capability %s)", p)
 		}
 		b.WriteString(")\n")
 	}

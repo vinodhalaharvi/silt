@@ -171,3 +171,50 @@ func TestNameFor(t *testing.T) {
 		}
 	}
 }
+
+// A defconfig says nothing about whether a board has a camera connector, so
+// import cannot fill in those capabilities. It writes the question out
+// instead, commented, rather than leaving a target that silently refuses to
+// compose with feature:camera. Capabilities a profile provides are userspace
+// outcomes and are not a board's to claim.
+func TestImportWritesCapabilityStubs(t *testing.T) {
+	tr := tinyTree(t)
+	es, err := ParseDefconfig(strings.NewReader("BR2_aarch64=y\n"), "configs/board_defconfig")
+	if err != nil {
+		t.Fatal(err)
+	}
+	im, err := Import("board", "configs/board_defconfig", "test", es, tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decls := map[string]lang.CapabilityDecl{
+		"mmu":         {Name: "mmu", Symbol: lang.SymbolID{Tree: "buildroot", Name: "BR2_USE_MMU"}},
+		"csi-camera":  {Name: "csi-camera"},
+		"dhcp-client": {Name: "dhcp-client"},
+	}
+	byProfiles := map[string]bool{"dhcp-client": true}
+	got := UndecidableCapabilities(decls, byProfiles)
+	if len(got) != 1 || got[0] != "csi-camera" {
+		t.Fatalf("undecidable: %v", got)
+	}
+	im.Provides = DeriveProvides(map[string]string{"BR2_USE_MMU": "y"}, decls)
+	im.Undecidable = got
+
+	src := im.Fragment(Target)
+	for _, want := range []string{"(capability mmu)", ";;   (capability csi-camera)"} {
+		if !strings.Contains(src, want) {
+			t.Errorf("missing %q:\n%s", want, src)
+		}
+	}
+	if strings.Contains(src, "dhcp-client") {
+		t.Error("a profile's capability should not be offered to a board")
+	}
+	// The stub is a comment, so what it lists is not claimed yet.
+	res, err := Compose(tr, im.Image(), src, im.Fragment(Profile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Capabilities) != 1 {
+		t.Errorf("the commented block must not provide anything: %v", res.Capabilities)
+	}
+}
