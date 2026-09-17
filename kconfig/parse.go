@@ -16,6 +16,12 @@ import (
 type Options struct {
 	Root string            // directory the tree is rooted at
 	Env  map[string]string // values for option env= and $VAR in source paths
+	// Prefix is what conf puts in front of a symbol's name when it writes a
+	// .config, and strips when it reads one. Buildroot builds its conf with
+	// the prefix emptied and spells BR2_ in the Kconfig itself; the kernel
+	// declares EXT4_FS and writes CONFIG_EXT4_FS. Reading a kernel defconfig
+	// without this matched nothing at all.
+	Prefix string
 }
 
 // Load parses a Kconfig tree starting at file, relative to opts.Root.

@@ -85,9 +85,12 @@ type KSym struct {
 // Menu is a Kconfig tree as kbuild evaluates it.
 type Menu struct {
 	root    string
+	Prefix  string
 	Root    *Entry
 	Syms    map[string]*KSym
 	Choices []*KSym
+	// Modules is the symbol marked "option modules", if any.
+	Modules *KSym
 	Env     map[string]string
 }
 
@@ -96,7 +99,7 @@ func LoadMenu(file string, opts Options) (*Menu, error) {
 	if opts.Env == nil {
 		opts.Env = map[string]string{}
 	}
-	m := &Menu{root: opts.Root, Syms: map[string]*KSym{}, Env: opts.Env, Root: &Entry{Kind: EntryMenu}}
+	m := &Menu{root: opts.Root, Prefix: opts.Prefix, Syms: map[string]*KSym{}, Env: opts.Env, Root: &Entry{Kind: EntryMenu}}
 	p := &menuParser{m: m, opts: opts}
 	if err := p.file(file, m.Root); err != nil {
 		return nil, err
@@ -292,6 +295,11 @@ func (p *menuParser) lines(file string, lines []string, top *Entry) error {
 					Value: &Expr{Op: ExprSym, Sym: p.opts.Env[name]}, Entry: cur})
 			case v == "defconfig_list":
 				cur.Sym.Auto = true
+			case v == "modules":
+				// The symbol that decides whether m exists at all. Buildroot
+				// has none, so every m became y; the kernel has MODULES, and
+				// its arm64 defconfig has 1,167 symbols set to m.
+				p.m.Modules = cur.Sym
 			}
 
 		case "help", "---help---":

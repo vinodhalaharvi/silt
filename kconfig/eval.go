@@ -40,7 +40,14 @@ type userValue struct {
 }
 
 type symState struct {
-	valid   bool
+	valid bool
+	// tainted marks a symbol one of whose own conditions is a macro call:
+	// $(cc-option,...) and friends, which kbuild evaluates by running the
+	// compiler. Silt cannot, so it reads them as no and says which symbols
+	// those were. Only direct mentions are marked: taint followed through
+	// dependencies reaches almost every symbol in the kernel, which is true
+	// and useless.
+	tainted bool
 	tri     Tri
 	str     string
 	visible Tri
@@ -61,6 +68,13 @@ type symState struct {
 type Evaluation struct {
 	m     *Menu
 	state map[*KSym]*symState
+	// modules is the value of the "option modules" symbol. Without one, m
+	// cannot exist and every m is promoted to y, which is why Buildroot's
+	// tristates behave like booleans.
+	modules Tri
+	// stack is the symbols being computed, innermost last, so a macro
+	// reached while evaluating one taints it.
+	stack []*KSym
 }
 
 // Evaluate loads assignments as user values and returns the evaluation. The
@@ -75,7 +89,7 @@ func (m *Menu) Evaluate(assign []Assignment) *Evaluation {
 		ev.st(c).user = &userValue{}
 	}
 	for _, a := range assign {
-		s, ok := m.Syms[a.Name]
+		s, ok := m.Syms[strings.TrimPrefix(a.Name, m.Prefix)]
 		if !ok || s.Type == Unknown {
 			continue // kbuild ignores lines for symbols it does not know
 		}
@@ -97,6 +111,12 @@ func (m *Menu) Evaluate(assign []Assignment) *Evaluation {
 		default:
 			st.user = &userValue{str: unescape(a.Value)}
 		}
+	}
+	if m.Modules != nil {
+		// kbuild computes this first and recomputes it whenever it changes;
+		// everything else's promotion of m depends on it.
+		ev.calc(m.Modules)
+		ev.modules = ev.st(m.Modules).tri
 	}
 	return ev
 }
@@ -157,6 +177,14 @@ func unescape(s string) string {
 	return b.String()
 }
 
+// taint marks the symbol currently being computed as depending on something
+// only a compiler could answer.
+func (ev *Evaluation) taint() {
+	if n := len(ev.stack); n > 0 {
+		ev.st(ev.stack[n-1]).tainted = true
+	}
+}
+
 func (ev *Evaluation) st(s *KSym) *symState {
 	st := ev.state[s]
 	if st == nil {
@@ -199,6 +227,9 @@ func (ev *Evaluation) tri(e *Expr) Tri {
 		case "m":
 			return Mod
 		}
+		if strings.HasPrefix(e.Sym, "$(") {
+			ev.taint()
+		}
 		return No
 	case ExprNot:
 		return Yes - ev.tri(e.Args[0])
@@ -206,9 +237,24 @@ func (ev *Evaluation) tri(e *Expr) Tri {
 		return triMin(ev.tri(e.Args[0]), ev.tri(e.Args[1]))
 	case ExprOr:
 		return triMax(ev.tri(e.Args[0]), ev.tri(e.Args[1]))
-	case ExprEq, ExprNeq:
-		eq := ev.compare(e) == 0
-		if (e.Op == ExprEq) == eq {
+	case ExprEq, ExprNeq, ExprLt, ExprLe, ExprGt, ExprGe:
+		c := ev.compare(e)
+		var ok bool
+		switch e.Op {
+		case ExprEq:
+			ok = c == 0
+		case ExprNeq:
+			ok = c != 0
+		case ExprLt:
+			ok = c < 0
+		case ExprLe:
+			ok = c <= 0
+		case ExprGt:
+			ok = c > 0
+		case ExprGe:
+			ok = c >= 0
+		}
+		if ok {
 			return Yes
 		}
 		return No
@@ -290,7 +336,7 @@ func (ev *Evaluation) visibility(s *KSym) {
 			t = triMax(t, ev.tri(p.Vis))
 		}
 	}
-	if t == Mod {
+	if t == Mod && (s.Type != Tristate || ev.modules == No) {
 		t = Yes
 	}
 	st.visible = t
@@ -334,6 +380,8 @@ func (ev *Evaluation) calc(s *KSym) {
 		ev.calc(s.Choice)
 	}
 	st.valid = true
+	ev.stack = append(ev.stack, s)
+	defer func() { ev.stack = ev.stack[:len(ev.stack)-1] }()
 	st.tri, st.str = No, ""
 	if s.Type != Bool && s.Type != Tristate && s.Type != String && s.Type != Int && s.Type != Hex {
 		return
@@ -373,7 +421,7 @@ func (ev *Evaluation) calc(s *KSym) {
 			}
 		}
 		tri = triMax(tri, st.revDep)
-		if tri == Mod {
+		if tri == Mod && (s.Type == Bool || st.implied == Yes) {
 			tri = Yes
 		}
 	default:
@@ -410,6 +458,9 @@ func (ev *Evaluation) valueString(e *Expr) string {
 		if s := ev.resolve(e.Sym); s != nil && !e.IsLit {
 			ev.calc(s)
 			return ev.str(s)
+		}
+		if strings.HasPrefix(e.Sym, "$(") {
+			ev.taint()
 		}
 		return e.Sym
 	}
@@ -453,14 +504,15 @@ func (ev *Evaluation) Config() map[string]string {
 		if s := e.Sym; s != nil && !s.IsChoice && s.Name != "" {
 			ev.calc(s)
 			st := ev.st(s)
-			if _, done := out[s.Name]; !done && st.write {
+			name := ev.m.Prefix + s.Name
+			if _, done := out[name]; !done && st.write {
 				switch s.Type {
 				case Bool, Tristate:
-					out[s.Name] = ev.str(s)
+					out[name] = ev.str(s)
 				case String:
-					out[s.Name] = `"` + escape(st.str) + `"`
+					out[name] = `"` + escape(st.str) + `"`
 				case Int, Hex:
-					out[s.Name] = st.str
+					out[name] = st.str
 				}
 			}
 		} else if s != nil && s.IsChoice {
@@ -477,6 +529,20 @@ func (ev *Evaluation) Config() map[string]string {
 func escape(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	return strings.ReplaceAll(s, `"`, `\"`)
+}
+
+// Tainted lists the symbols whose value depended on a macro call,
+// sorted. Their values are what Silt would compute with every compiler probe
+// answering no; kbuild will answer some of them yes.
+func (ev *Evaluation) Tainted() []string {
+	var out []string
+	for s, st := range ev.state {
+		if st.tainted && s.Name != "" && !s.IsChoice {
+			out = append(out, ev.m.Prefix+s.Name)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Names returns the written symbols sorted, for diffable output.

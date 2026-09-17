@@ -92,12 +92,18 @@ jobs:
           curl -sL -o linux.tar.gz \
             "https://codeload.github.com/torvalds/linux/tar.gz/refs/tags/$LINUX_VERSION"
           mkdir -p linux.tmp
-          tar xzf linux.tar.gz -C linux.tmp --wildcards '*/Kconfig*' '*/Makefile'
+          # scripts/ and the arch configs as well, so the kernel's own conf
+          # can be built and used as the oracle for the evaluator.
+          tar xzf linux.tar.gz -C linux.tmp --wildcards '*/Kconfig*' '*/Makefile' \
+            '*/scripts/*' '*/arch/arm64/configs/*'
           mv linux.tmp/linux-* linux
           rm -rf linux.tar.gz linux.tmp
 
       - name: check CONFIG_* claims against the kernel
         run: SILT_LINUX="$PWD/linux" go test ./verify -v -run Linux
+
+      - name: evaluator against the kernel's own conf
+        run: SILT_LINUX="$PWD/linux" SILT_KBUILD=1 go test ./kconfig -v -run KernelConf
 
       - name: build silt
         run: go build -o bin/silt ./cmd/silt
