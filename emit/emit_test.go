@@ -275,3 +275,75 @@ func TestUnroutedTreeIsAnError(t *testing.T) {
 		t.Fatalf("want a consumed-by error, got %v", err)
 	}
 }
+
+// The solution hash covers everything the emitted configuration depends on,
+// so two builds that differ in any of it hash differently — and two that
+// differ only in which tool wrote the header do not.
+func TestSolutionHash(t *testing.T) {
+	r := build(t, []string{
+		`(fragment target:t (buildroot (y BR2_aarch64)) (linux (y CONFIG_EXT4_FS)) (provides (capability mmu)))`,
+		`(fragment profile:p (requires (capability mmu)) (buildroot (y BR2_INIT_BUSYBOX)))`,
+	}, `(image i (compose target:t profile:p))`)
+
+	versions := map[string]string{"buildroot": "2025.02.16", "linux": "6.12"}
+	env := map[string]string{"HOST_GCC_VERSION": "13", "HOSTARCH": "x86_64", "BASE_DIR": "/tmp/anything"}
+	base := SolutionHash(r, versions, env)
+
+	// The host is part of it: forty depends-on clauses compare against
+	// HOSTARCH, and every BR2_HOST_GCC_AT_LEAST_* against the compiler.
+	for _, changed := range []map[string]string{
+		{"HOST_GCC_VERSION": "14", "HOSTARCH": "x86_64"},
+		{"HOST_GCC_VERSION": "13", "HOSTARCH": "aarch64"},
+	} {
+		if SolutionHash(r, versions, changed) == base {
+			t.Errorf("a different host must hash differently: %v", changed)
+		}
+	}
+	// A tree nobody supplied is not the same as a tree that was.
+	if SolutionHash(r, map[string]string{"buildroot": "2025.02.16", "linux": "unknown"}, env) == base {
+		t.Error("an unknown kernel must not hash as the known one")
+	}
+	// BASE_DIR is where make happens to put output; it configures nothing.
+	if SolutionHash(r, versions, map[string]string{
+		"HOST_GCC_VERSION": "13", "HOSTARCH": "x86_64", "BASE_DIR": "/elsewhere"}) != base {
+		t.Error("the output directory is not part of the configuration")
+	}
+	// Negative intent is configuration: kbuild writes n as a comment, and an
+	// image that forbids systemd must not hash as one that never mentions it.
+	r2 := build(t, []string{
+		`(fragment target:t (buildroot (y BR2_aarch64)) (linux (y CONFIG_EXT4_FS)) (provides (capability mmu)))`,
+		`(fragment profile:p (requires (capability mmu)) (buildroot (y BR2_INIT_BUSYBOX) (n BR2_PACKAGE_SYSTEMD)))`,
+	}, `(image i (compose target:t profile:p))`)
+	if SolutionHash(r2, versions, env) == base {
+		t.Error("(n BR2_PACKAGE_SYSTEMD) must change the hash")
+	}
+
+	// Both trees' configuration is in it, not just Buildroot's.
+	if !strings.Contains(Solution(r, versions, env), "linux CONFIG_EXT4_FS=y") {
+		t.Errorf("solution:\n%s", Solution(r, versions, env))
+	}
+
+	// The recorded hash goes in the header, where it cannot change what it
+	// is a hash of.
+	out, err := BuildrootDefconfigWithSolution(r, nil, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "# silt-solution: "+base) {
+		t.Errorf("hash not recorded:\n%s", out)
+	}
+	plain, _ := BuildrootDefconfig(r, nil)
+	if strip(out) != strip(plain) {
+		t.Error("recording the hash changed the configuration")
+	}
+}
+
+func strip(s string) string {
+	var out []string
+	for _, l := range strings.Split(s, "\n") {
+		if l != "" && configLine(l) {
+			out = append(out, l)
+		}
+	}
+	return strings.Join(out, "\n")
+}

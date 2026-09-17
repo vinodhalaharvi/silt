@@ -47,7 +47,20 @@ func FileName(tree string) string {
 // committed by Silt itself. A tree with constraints and no route is an error,
 // for the same reason.
 func BuildrootDefconfig(r *compose.Result, paths map[string]string) (string, error) {
+	return buildrootDefconfig(r, paths, "")
+}
+
+// BuildrootDefconfigWithSolution is the same, with the solution hash recorded
+// in the header so a built tree can be told apart from a stale one.
+func BuildrootDefconfigWithSolution(r *compose.Result, paths map[string]string, hash string) (string, error) {
+	return buildrootDefconfig(r, paths, hash)
+}
+
+func buildrootDefconfig(r *compose.Result, paths map[string]string, hash string) (string, error) {
 	out := Defconfig(r, lang.Buildroot)
+	if hash != "" {
+		out = strings.Replace(out, "\n", "\n# silt-solution: "+hash+"\n", 1)
+	}
 	var extra strings.Builder
 	if v := r.Image.Version; v != "" {
 		fmt.Fprintf(&extra, "BR2_LINUX_KERNEL_CUSTOM_VERSION=y\n")

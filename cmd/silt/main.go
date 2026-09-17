@@ -33,6 +33,9 @@ const usage = `silt — composable S-expressions over Kconfig
         [--buildroot DIR]           let rules see select-implied symbols
   silt fmt [-w] [PATH...]           canonical form
   silt hash [PATH...]               content address of each file
+  silt hash --solution IMAGE.sx --buildroot DIR [--linux DIR]
+                                    content address of a composed image: its
+                                    configuration, its trees and the host
   silt why SYMBOL IMAGE.sx          why a symbol has the value it has
   silt solve IMAGE.sx --buildroot DIR
                                     ask the Kconfig model whether it can exist
@@ -311,6 +314,7 @@ func treeFor(sc lang.Scope, decls map[string]lang.TreeDecl, override string) (*k
 }
 
 func cmdEmit(args []string) error {
+	args, lxDir := takeFlag(args, "--linux")
 	var target, outDir, libDir, brDir string
 	outDir = "out"
 	libDir = "fragments"
@@ -403,7 +407,12 @@ func cmdEmit(args []string) error {
 		written = append(written, path)
 	}
 	br := filepath.Join(outDir, emit.FileName("buildroot"))
-	def, err := emit.BuildrootDefconfig(r, paths)
+	versions, env, err := solutionInputs(brDir, lxDir, lib.Trees, r)
+	if err != nil {
+		return err
+	}
+	hash := emit.SolutionHash(r, versions, env)
+	def, err := emit.BuildrootDefconfigWithSolution(r, paths, hash)
 	if err != nil {
 		return err
 	}
@@ -411,13 +420,13 @@ func cmdEmit(args []string) error {
 		return err
 	}
 
-	report(r, append([]string{br}, written...))
+	report(r, append([]string{br}, written...), hash)
 	return nil
 }
 
 // report prints the managed / opaque / unmanaged split. Invariant 9: a loss
 // that does not appear in the output is a bug, whatever else is true about it.
-func report(r *compose.Result, files []string) {
+func report(r *compose.Result, files []string, hash string) {
 	br := files[0]
 	fmt.Printf("composed %s\n", r.Image.Name)
 	for _, f := range r.Fragments {
@@ -466,6 +475,9 @@ func report(r *compose.Result, files []string) {
 		fmt.Printf("overridden    %d  displaced by an explicit (override ...)\n", n)
 	}
 	fmt.Printf("\nwrote %s\n", strings.Join(files, "\n      "))
+	if hash != "" {
+		fmt.Printf("solution %s  (recorded in the defconfig; silt hash --solution prints it)\n", hash)
+	}
 	fmt.Printf("\nThis defconfig states intent; kbuild completes it. To see the full .config\n")
 	fmt.Printf("it will become, and any stated line kbuild would drop, without running make:\n")
 	fmt.Printf("  silt complete %s --buildroot DIR -o predicted.config\n", r.Image.Pos.File)
@@ -527,6 +539,9 @@ func cmdFmt(args []string) error {
 }
 
 func cmdHash(args []string) error {
+	if len(args) > 0 && args[0] == "--solution" {
+		return cmdSolutionHash(args[1:])
+	}
 	paths, err := expand(args)
 	if err != nil {
 		return err
@@ -545,6 +560,82 @@ func cmdHash(args []string) error {
 		}
 	}
 	return nil
+}
+
+// takeFlag removes a flag and its value from an argument list.
+func takeFlag(args []string, flag string) ([]string, string) {
+	var out []string
+	value := ""
+	for i := 0; i < len(args); i++ {
+		if args[i] == flag && i+1 < len(args) {
+			value = args[i+1]
+			i++
+			continue
+		}
+		out = append(out, args[i])
+	}
+	return out, value
+}
+
+// cmdSolutionHash prints the content address of a composed image: the
+// configuration, the release of every tree it was checked against, and the
+// host values those trees depend on. An emitted defconfig carries the same
+// hash in its header, so a build can be told apart from a stale one.
+func cmdSolutionHash(args []string) error {
+	args, lxDir := takeFlag(args, "--linux")
+	res, _, name, err := composeWithTree(args)
+	if err != nil {
+		return err
+	}
+	brDir := ""
+	for i := 0; i < len(args)-1; i++ {
+		if args[i] == "--buildroot" {
+			brDir = args[i+1]
+		}
+	}
+	versions, env, err := solutionInputs(brDir, lxDir, res.Trees, res)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s  %s\n", emit.SolutionHash(res, versions, env), name)
+	for _, line := range strings.Split(strings.TrimSpace(emit.Solution(res, versions, env)), "\n") {
+		if strings.HasPrefix(line, "tree ") || strings.HasPrefix(line, "env ") ||
+			strings.HasPrefix(line, "fragment ") {
+			fmt.Printf("  %s\n", line)
+		}
+	}
+	return nil
+}
+
+// solutionInputs collects the tree versions and host values a solution
+// depends on. A tree the caller did not supply is recorded as unknown rather
+// than left out: two runs against different kernels must not hash the same.
+func solutionInputs(brDir, lxDir string, decls map[string]lang.TreeDecl, r *compose.Result) (map[string]string, map[string]string, error) {
+	versions := map[string]string{}
+	env := map[string]string{}
+	if brDir != "" {
+		v, err := kconfig.TreeVersion(brDir)
+		if err != nil {
+			return nil, nil, err
+		}
+		versions[string(lang.Buildroot)] = v
+		if e, err := kconfig.BuildrootEnv(brDir, filepath.Join(brDir, "output")); err == nil {
+			env = e
+		}
+	}
+	for _, sc := range otherScopes(r) {
+		versions[string(sc)] = "unknown"
+		dir := lxDir
+		if d, ok := decls[string(sc)]; ok && d.Source != "" && dir == "" {
+			dir = d.Source
+		}
+		if sc == lang.Linux && dir != "" {
+			if v, err := kconfig.KernelVersion(dir); err == nil {
+				versions[string(sc)] = v
+			}
+		}
+	}
+	return versions, env, nil
 }
 
 // cmdWhy explains one symbol. At Rung 2 it can answer for stated and
