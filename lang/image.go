@@ -30,7 +30,10 @@ func parseImage(n *sexpr.Node) (*Image, error) {
 				}
 				im.Compose = append(im.Compose, id)
 			}
-			if err := checkComposeShape(cl, im.Compose); err != nil {
+			// The shape check moves to compose time. An image composing
+			// another supplies its target and profile from the base, so the
+			// counts are only knowable once the chain is flattened.
+			if err := checkComposeShapeLocal(cl, im.Compose); err != nil {
 				return nil, err
 			}
 
@@ -125,6 +128,50 @@ func parseImage(n *sexpr.Node) (*Image, error) {
 // and static libs, profile:standard wants glibc and systemd. Composing two is
 // UNSAT, and saying so here is far kinder than discovering it as a solver
 // conflict with no explanation of why two profiles were ever allowed.
+// checkComposeShapeLocal catches what is wrong regardless of flattening: two
+// targets or two profiles named directly, and an image mixed with either.
+func checkComposeShapeLocal(n *sexpr.Node, ids []ID) error {
+	var targets, profiles, images []ID
+	for _, id := range ids {
+		switch id.Kind {
+		case Target:
+			targets = append(targets, id)
+		case Profile:
+			profiles = append(profiles, id)
+		case KindImage:
+			images = append(images, id)
+		}
+	}
+	if len(targets) > 1 {
+		return errf(n, "compose names %d targets (%s); a target is exactly one board",
+			len(targets), joinIDs(targets))
+	}
+	if len(profiles) > 1 {
+		return errf(n, "compose names %d profiles (%s); profiles are mutually exclusive, "+
+			"features are additive", len(profiles), joinIDs(profiles))
+	}
+	if len(images) > 1 {
+		return errf(n, "compose names %d images (%s); derive from one base",
+			len(images), joinIDs(images))
+	}
+	// A derived image takes its target and profile from the base. Naming
+	// either alongside is ambiguous rather than an override: say so, rather
+	// than silently picking one.
+	if len(images) == 1 && len(targets) == 1 {
+		return errf(n, "compose names both %s and %s; a derived image takes its "+
+			"target from the base", images[0], targets[0])
+	}
+	if len(images) == 1 && len(profiles) == 1 {
+		return errf(n, "compose names both %s and %s; a derived image takes its "+
+			"profile from the base. Compose a different base instead",
+			images[0], profiles[0])
+	}
+	if len(images) == 0 {
+		return checkComposeShape(n, ids)
+	}
+	return nil
+}
+
 func checkComposeShape(n *sexpr.Node, ids []ID) error {
 	var targets, profiles []ID
 	for _, id := range ids {

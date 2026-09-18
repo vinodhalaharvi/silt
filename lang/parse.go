@@ -84,7 +84,7 @@ func parseID(n *sexpr.Node) (ID, error) {
 		return ID{}, errf(n, "fragment id %q must be kind:name", n.Text)
 	}
 	switch Kind(k) {
-	case Target, Profile, Feature:
+	case Target, Profile, Feature, KindImage:
 	default:
 		return ID{}, errf(n, "unknown fragment kind %q; expected target, profile or feature", k)
 	}

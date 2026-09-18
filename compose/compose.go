@@ -18,7 +18,9 @@ import (
 // Library is a set of fragments and rule blocks, indexed by id.
 type Library struct {
 	Fragments map[string]*lang.Fragment
-	Rules     []*lang.Rules
+	// Images are indexed so that one can derive from another.
+	Images map[string]*lang.Image
+	Rules  []*lang.Rules
 	// Declared is the capability vocabulary. Empty means undeclared, in which
 	// case provides and requires are matched by string alone as before — a
 	// library that has not adopted the declaration file still works.
@@ -36,6 +38,7 @@ type Library struct {
 func NewLibrary() *Library {
 	return &Library{
 		Fragments: map[string]*lang.Fragment{},
+		Images:    map[string]*lang.Image{},
 		Declared:  map[string]lang.CapabilityDecl{},
 		Trees:     lang.BuiltinTrees(),
 	}
@@ -49,6 +52,13 @@ func (l *Library) Add(f *lang.File) error {
 				fr.Pos.Short(), fr.ID, prev.Pos.Short())
 		}
 		l.Fragments[fr.ID.String()] = fr
+	}
+	for _, im := range f.Images {
+		if prev, ok := l.Images[im.Name]; ok {
+			return fmt.Errorf("%s: image %s redefined (first at %s)",
+				im.Pos.Short(), im.Name, prev.Pos.Short())
+		}
+		l.Images[im.Name] = im
 	}
 	for _, cs := range f.Capabilities {
 		for _, d := range cs.Decls {
@@ -208,6 +218,14 @@ func (r *Result) Tree() *kconfig.Tree { return r.tree }
 // Compose merges an image's fragments, applies overrides, and checks
 // capabilities.
 func (l *Library) Compose(im *lang.Image) (*Result, error) {
+	// Resolve any base image first: a derived image supplies its target and
+	// profile from the base, so nothing below can be checked — and nothing
+	// above can be recorded — until the chain is flat.
+	im, err := l.flatten(im, nil)
+	if err != nil {
+		return nil, err
+	}
+
 	r := &Result{
 		Image:        im,
 		Constraints:  map[lang.Scope][]lang.Constraint{},

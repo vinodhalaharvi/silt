@@ -44,6 +44,10 @@ const (
 	Target  Kind = "target"
 	Profile Kind = "profile"
 	Feature Kind = "feature"
+	// KindImage names another image, usable only inside compose. A family of
+	// images differing by a feature or two otherwise means repeating the base
+	// in each, which is the copy-paste this project exists to remove.
+	KindImage Kind = "image"
 )
 
 // ID is a fragment identifier such as target:qemu-aarch64-virt.

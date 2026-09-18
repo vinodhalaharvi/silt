@@ -29,7 +29,7 @@ symbol         = name-in-tree | tree-name ":" name-in-tree ;
 ident          = ( letter | digit | "_" ) { letter | digit | "_" } ;
 name           = letter { letter | digit | "-" } ;
 fragment-id    = kind ":" name ;
-kind           = "target" | "profile" | "feature" ;
+kind           = "target" | "profile" | "feature" | "image" ;
 string         = '"' { any-char-except-quote } '"' ;
 symbol-pattern = symbol [ "*" ] ;
 ```
@@ -222,6 +222,13 @@ image-clause  = doc | compose | scope | override
               | verified-against | repair-policy ;
 
 compose       = "(" "compose" { fragment-id } ")" ;
+
+An "image:" reference derives from another image: its fragments, overrides,
+opaque values, unmanaged patterns, environment and delegations are inherited,
+and its repair policy and kernel version unless restated. Exactly one image
+reference, and it may not be accompanied by a target or profile — those come
+from the base. `verified-against` is inherited, and pinning a different release
+than the base is an error rather than a reinterpretation.
 override      = "(" "override" { constraint } ")" ;
 
 opaque        = "(" "opaque" { value } ")" ;
