@@ -394,6 +394,8 @@ func TestImportedTargetsTakeLibraryProfiles(t *testing.T) {
 	libFiles, _ := filepath.Glob("../fragments/*/*.sx")
 	caps, _ := filepath.Glob("../fragments/*.sx")
 	libFiles = append(libFiles, caps...)
+	pk, _ := filepath.Glob("../packs/*/fragments/*/*.sx")
+	libFiles = append(libFiles, pk...)
 	var library []string
 	profiles := map[string][]lang.Constraint{}
 	for _, p := range libFiles {

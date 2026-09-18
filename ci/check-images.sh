@@ -16,10 +16,12 @@ silt=${2:-bin/silt}
 linux=${3:-}
 lxflag=()
 [[ -n $linux ]] && lxflag=(--linux "$linux")
-# Silt's own packages live in a br2-external tree, so images that compose
-# them need it wherever the Buildroot tree is loaded.
+# Every pack in the repository: an image composing a pack's fragment needs
+# both halves of it, and --pack loads them together.
 extflag=()
-[[ -d br2-external ]] && extflag=(--external br2-external)
+for d in packs/*/; do
+	[[ -f $d/silt.sx ]] && extflag+=(--pack "${d%/}")
+done
 
 expect_fail=(edge-camera)
 

@@ -18,6 +18,7 @@ import (
 	"github.com/vinodhalaharvi/silt/fixpoint"
 	"github.com/vinodhalaharvi/silt/kconfig"
 	"github.com/vinodhalaharvi/silt/lang"
+	"github.com/vinodhalaharvi/silt/pack"
 	"github.com/vinodhalaharvi/silt/sexpr"
 	"github.com/vinodhalaharvi/silt/solve"
 	"github.com/vinodhalaharvi/silt/solver"
@@ -29,6 +30,7 @@ const usage = `silt — composable S-expressions over Kconfig
   silt check [PATH...]              parse and validate; report problems
   silt check --buildroot DIR        also verify every claim against that tree
         [--external DIR]            with a br2-external tree (any command)
+        [--pack DIR]                with a pack: fragments and its tree (any command)
         [--linux DIR]               and every CONFIG_* claim against a kernel tree
   silt emit IMAGE.sx [-o DIR]       compose and write defconfig + linux.config
         [--buildroot DIR]           let rules see select-implied symbols
@@ -59,6 +61,10 @@ Fragments are loaded from ./fragments by default; override with -L DIR.
 // tree is loaded.
 var externalTrees []string
 
+// packs are the packs given with --pack: fragments plus the br2-external tree
+// that implements them, maintained elsewhere.
+var packs []*pack.Pack
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprint(os.Stderr, usage)
@@ -71,6 +77,26 @@ func main() {
 			break
 		}
 		externalTrees = append(externalTrees, dir)
+		args = rest
+	}
+	for {
+		rest, dir := takeFlag(args, "--pack")
+		if dir == "" {
+			break
+		}
+		p, err := pack.Load(dir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		packs = append(packs, p)
+		if p.External != "" {
+			// A pack's fragments and its br2-external tree are two halves of
+			// one thing: the fragment states the symbol, the tree is what
+			// makes the symbol exist. Loading one without the other is the
+			// mistake --pack exists to prevent.
+			externalTrees = append(externalTrees, p.External)
+		}
 		args = rest
 	}
 	var err error
@@ -143,6 +169,11 @@ func loadAll(paths []string) ([]*lang.File, error) {
 		return nil, err
 	}
 	var out []*lang.File
+	// A pack's fragments are part of every library load, so an image can
+	// compose them without the pack being copied into fragments/.
+	for _, p := range packs {
+		out = append(out, p.Files...)
+	}
 	for _, p := range files {
 		src, err := os.ReadFile(p)
 		if err != nil {
@@ -210,6 +241,26 @@ func cmdCheck(args []string) error {
 		images = append(images, f.Images...)
 	}
 	bad := 0
+
+	// The packs' own declarations first: an image composing a pack that does
+	// not offer what it says it does is a problem with the pack, and saying
+	// so at the image is how a consumer ends up reading someone else's
+	// fragments to find out what went wrong.
+	versions := map[string]string{}
+	if treeVer != "" {
+		versions[string(lang.Buildroot)] = treeVer
+	}
+	for _, p := range packs {
+		for _, prob := range p.Check(versions) {
+			fmt.Printf("%v\n", prob)
+			bad++
+		}
+		if len(p.Check(versions)) == 0 {
+			fmt.Printf("ok  pack %-13s %s, %d fragment(s)%s\n", p.Decl.Name, p.Decl.Version,
+				len(p.Decl.Provides), externalNote(p))
+		}
+	}
+
 	for _, im := range images {
 		res, err := lib.Compose(im)
 		if err != nil {
@@ -276,6 +327,13 @@ func cmdCheck(args []string) error {
 }
 
 // otherScopes lists the trees an image configures beyond Buildroot, sorted.
+func externalNote(p *pack.Pack) string {
+	if p.External == "" {
+		return ""
+	}
+	return ", br2-external"
+}
+
 func otherScopes(res *compose.Result) []lang.Scope {
 	var out []lang.Scope
 	for sc, cs := range res.Constraints {

@@ -32,6 +32,9 @@ func TestLibraryImagesAgainstKbuild(t *testing.T) {
 	lib.Tree = tree
 	files, _ := filepath.Glob("../fragments/*.sx")
 	more, _ := filepath.Glob("../fragments/*/*.sx")
+	// Packs are part of the library too; qemu-arm-boot composes one.
+	pk, _ := filepath.Glob("../packs/*/fragments/*/*.sx")
+	more = append(more, pk...)
 	for _, p := range append(files, more...) {
 		data, _ := os.ReadFile(p)
 		f, err := lang.ParseFile(string(data), p)

@@ -176,4 +176,5 @@ type File struct {
 	Images       []*Image
 	Capabilities []*Capabilities
 	Trees        []*TreeDecl
+	Packs        []*PackDecl
 }

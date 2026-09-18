@@ -50,10 +50,10 @@ expansion (DESIGN.md §14.3) and is carried verbatim.
 
 ```ebnf
 file     = { toplevel } ;
-toplevel = fragment | rules | image | capabilities | tree ;
+toplevel = fragment | rules | image | capabilities | tree | pack ;
 ```
 
-Five things can appear at the top of a file. A file holding more than one
+Six things can appear at the top of a file. A file holding more than one
 `fragment` is legal but discouraged; the directory layout in DESIGN.md §13 assumes one.
 
 ---
@@ -125,6 +125,32 @@ special-casing.
 `(scope linux ...)`. Every other tree must be declared (below) before a scope may name
 it. Symbols are checked against their tree's declared `prefix` at compose time: static
 check, and a spelling check only.
+
+---
+
+## Packs
+
+```ebnf
+pack        = "(" "pack" name { pack-clause } ")" ;
+pack-clause = "(" "version" string ")"
+            | "(" "doc" string ")"
+            | "(" "external" string ")"
+            | "(" "requires" { "(" name string ")" } ")"
+            | "(" "provides" { "(" kind name ")" } ")" ;
+```
+
+A pack is a directory someone else maintains: `silt.sx` holding this declaration,
+`fragments/` holding what it offers, and usually a `br2-external` tree that implements
+them. `silt ... --pack DIR` loads all of it, the tree included, because a fragment that
+states `BR2_PACKAGE_X` and the tree that makes `BR2_PACKAGE_X` exist are two halves of
+one thing.
+
+`provides` is an interface and is checked both ways: everything promised must be
+defined, and a fragment the pack does not declare is an error, because a consumer can
+compose it and the pack does not know it maintains it. `requires` names releases —
+`(buildroot "2025.02.16")`, `(linux ">=6.1")` — and is checked against whatever trees
+the run was given; exact versions and `>=` are understood and nothing else, since a
+constraint nobody enforces reads as a promise.
 
 ---
 
@@ -254,7 +280,7 @@ implementation-faithful and spec-faithful — expressible over the same imported
 
 ## The complete keyword set
 
-Forty-three authored, plus nine that only the importer emits. The documentation
+Forty-six authored, plus nine that only the importer emits. The documentation
 previously claimed seven, which counted only the constraint forms and was wrong.
 
 | group | keywords |
@@ -265,6 +291,7 @@ previously claimed seven, which counted only the constraint forms and was wrong.
 | scope | `buildroot` `linux` |
 | constraint | `y` `m` `n` `at-least` `prefer` `value` `when` |
 | tree | `tree` `scope` `kind` `prefix` `consumed-by` `source` |
+| pack | `pack` `version` `external` |
 | condition | `set?` `equal?` `and` `or` `not` |
 | tree option | `custom-version` |
 | image | `compose` `override` `opaque` `unmanaged` `delegate` `environment` `verified-against` |

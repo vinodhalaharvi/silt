@@ -39,6 +39,9 @@ func TestEdgeCameraExplanation(t *testing.T) {
 	lib.Tree = tree
 	a, _ := filepath.Glob("../fragments/*.sx")
 	b, _ := filepath.Glob("../fragments/*/*.sx")
+	// Packs are part of the library too; qemu-arm-boot composes one.
+	pk, _ := filepath.Glob("../packs/*/fragments/*/*.sx")
+	b = append(b, pk...)
 	for _, p := range append(a, b...) {
 		data, err := os.ReadFile(p)
 		if err != nil {

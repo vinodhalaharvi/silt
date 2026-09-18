@@ -101,7 +101,7 @@ jobs:
 
       - name: check the br2-external tree imports
         run: >
-          SILT_BUILDROOT="$PWD/buildroot" SILT_EXTERNAL="$PWD/br2-external"
+          SILT_BUILDROOT="$PWD/buildroot" SILT_EXTERNAL="$PWD/packs/hello-silt/br2-external"
           go test ./kconfig -v -run External
 
       - name: check CONFIG_* claims against the kernel

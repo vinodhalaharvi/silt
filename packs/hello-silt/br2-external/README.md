@@ -1,4 +1,4 @@
-# Silt's br2-external tree
+# hello-silt's br2-external tree
 
 Buildroot reads project-specific packages, board material and configuration
 from a tree outside itself, named by `BR2_EXTERNAL`. Everything here is
@@ -9,8 +9,11 @@ Buildroot release, and `silt check --buildroot` re-checks them against the
 tree it is given. A tree with a package added to `package/Config.in` is no
 longer that release, so the pin stops meaning anything.
 
-    silt check --buildroot ~/buildroot --external ./br2-external
-    make -C ~/buildroot BR2_EXTERNAL=$PWD/br2-external O=$PWD/out ...
+    silt check --buildroot ~/buildroot --pack packs/hello-silt
+
+`--pack` loads the fragments and this tree together, because they are two
+halves of one thing: the fragment states BR2_PACKAGE_HELLO_SILT, and this tree
+is what makes that symbol exist.
 
 `hello-silt` is the smallest package that proves an image built and booted:
 it prints one line, and `ci/boot-test.sh` asserts that line over the QEMU

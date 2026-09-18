@@ -48,6 +48,9 @@ func TestLibraryAgainstLinux(t *testing.T) {
 	var images []*lang.Image
 	a, _ := filepath.Glob("../fragments/*.sx")
 	b, _ := filepath.Glob("../fragments/*/*.sx")
+	// Packs are part of the library too; qemu-arm-boot composes one.
+	pk, _ := filepath.Glob("../packs/*/fragments/*/*.sx")
+	b = append(b, pk...)
 	c, _ := filepath.Glob("../images/*.sx")
 	for _, p := range append(append(a, b...), c...) {
 		data, err := os.ReadFile(p)

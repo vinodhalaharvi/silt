@@ -316,13 +316,28 @@ and a test nobody waits for is a test nobody runs. `qemu-arm-boot` is
 `qemu-arm-dev` with one fragment added, so if it boots and `qemu-arm-dev` does
 not, the difference is that fragment.
 
-Silt's own packages live in `br2-external/`, never in the Buildroot checkout,
-and any command takes `--external DIR` to import them:
+The package it boots comes from a pack: a directory holding fragments, the
+`br2-external` tree that implements them, and a declaration of what it offers.
 
 ```console
-$ silt check --buildroot ~/buildroot --external br2-external
+$ silt check --buildroot ~/buildroot --pack packs/hello-silt
+ok  pack hello-silt    0.1.0, 1 fragment(s), br2-external
 ok  qemu-arm-boot      18 buildroot symbols checked against buildroot 2025.02.16
 ```
+
+```lisp
+(pack hello-silt
+  (version "0.1.0")
+  (requires (buildroot "2025.02.16"))
+  (external "br2-external")
+  (provides (feature hello-silt)))
+```
+
+That declaration is the interface, and it is checked both ways: everything
+promised must exist, and a fragment the pack does not declare is an error —
+a consumer can compose it, and the pack does not know it maintains it. `--pack`
+loads the fragments and the tree together, because the fragment states
+`BR2_PACKAGE_HELLO_SILT` and the tree is what makes that symbol exist.
 
 A checkout with a package added to `package/Config.in` is no longer the release
 it claims to be, and every `verified-against` pin here is about a release. The
@@ -462,7 +477,7 @@ fragments/profiles/   userspace policy
 fragments/features/   one capability, spanning both Kconfig trees
 fragments/rules/      cross-tree implications
 images/               compositions
-br2-external/         Silt's own packages, kept out of the Buildroot checkout
+packs/                packs: fragments, their br2-external tree, their tests
 ci/                   image checks and the build-and-boot test
 tools/                one-off migration scripts
 GRAMMAR.md            the complete syntax, in EBNF

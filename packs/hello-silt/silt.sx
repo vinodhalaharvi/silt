@@ -1,0 +1,27 @@
+;; The smallest complete pack, and the reference for what a pack must contain.
+;;
+;; A pack is a directory someone else maintains: fragments, the br2-external
+;; tree that implements them, and this declaration of what it offers. Consuming
+;; one should not require reading it, which is what the declaration is for —
+;; and it is checked both ways. Everything promised must exist, and nothing
+;; else may be exported, because a fragment a pack does not know it maintains
+;; is one its next release will break.
+;;
+;;   silt check --buildroot ~/buildroot --pack packs/hello-silt
+;;   ci/boot-test.sh images/qemu-arm-boot.sx --buildroot ~/buildroot
+
+(pack hello-silt
+  (version "0.1.0")
+  (doc "One package, one feature, one line read back off the serial console")
+
+  ;; The release the claims inside are about. BR2_PACKAGE_HELLO_SILT is
+  ;; declared by this pack, but the package infrastructure it relies on -
+  ;; generic-package, HELLO_SILT_PKGDIR, the local site method - is
+  ;; Buildroot's, and it is a different Buildroot in every release.
+  (requires
+    (buildroot "2025.02.16"))
+
+  (external "br2-external")
+
+  (provides
+    (feature hello-silt)))

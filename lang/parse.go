@@ -48,6 +48,12 @@ func ParseFile(src, path string) (*File, error) {
 				return nil, err
 			}
 			f.Capabilities = append(f.Capabilities, c)
+		case "pack":
+			d, err := parsePack(n)
+			if err != nil {
+				return nil, err
+			}
+			f.Packs = append(f.Packs, d)
 		case "tree":
 			d, err := parseTreeDecl(n)
 			if err != nil {
@@ -63,7 +69,7 @@ func ParseFile(src, path string) (*File, error) {
 		case "":
 			return nil, errf(n, "expected a list headed by a keyword")
 		default:
-			return nil, errf(n, "unknown top-level form %q; expected fragment, rules, image, capabilities or tree", n.Head())
+			return nil, errf(n, "unknown top-level form %q; expected fragment, rules, image, capabilities, tree or pack", n.Head())
 		}
 	}
 	return f, nil

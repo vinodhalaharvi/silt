@@ -225,3 +225,28 @@ func TestEqualConditionForm(t *testing.T) {
 	rejects(t, `(rules r (when (equal? buildroot:BR2_X) (y linux:CONFIG_Y)))`, "takes a symbol and a string")
 	rejects(t, `(rules r (when (equal? BR2_X "a") (y linux:CONFIG_Y)))`, "needs a tree")
 }
+
+func TestPackDeclaration(t *testing.T) {
+	f, err := ParseFile(`(pack silt-k3s
+	  (version "0.1.0")
+	  (doc "k3s as an appliance")
+	  (requires (silt ">=0.9") (buildroot "2025.02.16") (linux ">=6.1"))
+	  (external "br2-external")
+	  (provides (feature k3s) (profile container-host)))`, "silt.sx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := f.Packs[0]
+	if p.Name != "silt-k3s" || p.Version != "0.1.0" || p.External != "br2-external" {
+		t.Errorf("%+v", p)
+	}
+	if p.Requires["linux"] != ">=6.1" || p.Requires["buildroot"] != "2025.02.16" {
+		t.Errorf("requires: %v", p.Requires)
+	}
+	if len(p.Provides) != 2 || p.Provides[1] != (ID{Kind: Profile, Name: "container-host"}) {
+		t.Errorf("provides: %v", p.Provides)
+	}
+	rejects(t, `(pack demo (provides (feature f)))`, "needs a (version")
+	rejects(t, `(pack Demo (version "1"))`, "not a pack name")
+	rejects(t, `(pack demo (version "1") (provides (appliance router)))`, "not a fragment kind")
+}
