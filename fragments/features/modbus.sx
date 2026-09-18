@@ -1,0 +1,17 @@
+;; Modbus TCP, the protocol half of an industrial gateway.
+;;
+;; libmodbus is a library, not a daemon: this makes the protocol available to
+;; whatever you build on top, and carries the kernel side that a TCP server
+;; needs. Nothing board-specific, which is the point — this fragment should
+;; compose with any target.
+
+(fragment feature:modbus
+  (requires
+    (capability mmu))
+
+  (buildroot
+    (y buildroot:BR2_PACKAGE_LIBMODBUS))
+
+  (linux
+    ;; Modbus TCP is a TCP server on 502. INET implies NET.
+    (y linux:CONFIG_INET)))

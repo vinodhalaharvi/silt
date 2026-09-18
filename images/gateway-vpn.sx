@@ -1,0 +1,8 @@
+;; Translator behind a WireGuard tunnel, derived rather than repeated.
+;;
+;; The target, profile, both protocol features, the opaque values and the
+;; release pin all come from gateway-translator. This file adds one feature.
+(image gateway-vpn
+  (compose
+    image:gateway-translator
+    feature:vpn))

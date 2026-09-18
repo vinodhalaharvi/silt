@@ -1,0 +1,26 @@
+;; WireGuard, nftables and dnsmasq — the network edge of a gateway.
+;;
+;; The kernel options here are the reason this fragment is interesting: WireGuard
+;; is in-kernel since 5.6 and nftables needs its own netfilter subsystem, and
+;; neither Buildroot package can say so. BR2_PACKAGE_NFTABLES declares
+;; BR2_USE_WCHAR, BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_12, libmnl and libnftnl —
+;; all within its own tree, and nothing at all about the kernel.
+
+(fragment feature:vpn
+  (requires
+    (capability mmu))
+
+  (buildroot
+    (y buildroot:BR2_PACKAGE_WIREGUARD_TOOLS)
+    (y buildroot:BR2_PACKAGE_NFTABLES)
+    (y buildroot:BR2_PACKAGE_DNSMASQ))
+
+  (linux
+    ;; wireguard-tools drives an in-kernel interface; without this it installs
+    ;; and does nothing.
+    (y linux:CONFIG_WIREGUARD)
+    ;; nftables without nf_tables is a userspace tool with no backend.
+    (y linux:CONFIG_NF_TABLES)
+    (y linux:CONFIG_NETFILTER)
+    ;; dnsmasq hands out addresses on an interface it must be able to bind.
+    (y linux:CONFIG_INET)))

@@ -1,0 +1,15 @@
+;; MQTT broker and client, the other half of a protocol translator.
+;;
+;; mosquitto is the broker; paho-mqtt-c is the client library, so an
+;; application on the device can publish as well as receive.
+
+(fragment feature:mqtt
+  (requires
+    (capability mmu))
+
+  (buildroot
+    (y buildroot:BR2_PACKAGE_MOSQUITTO)
+    (y buildroot:BR2_PACKAGE_PAHO_MQTT_C))
+
+  (linux
+    (y linux:CONFIG_INET)))
