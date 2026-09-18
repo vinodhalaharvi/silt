@@ -1,0 +1,23 @@
+;; WireGuard: a tunnel in the kernel, with one userspace tool.
+;;
+;; CONFIG_WIREGUARD selects NET_UDP_TUNNEL, DST_CACHE and its own crypto
+;; (drivers/net/Kconfig:74), so stating those would restate what kbuild's
+;; select machinery already does. It depends on NET && INET, which any image
+;; with feature:networking already has.
+;;
+;; wireguard-tools needs headers 3.10+, which is every kernel this library
+;; targets; the package is wg(8) and wg-quick(8), and the kernel driver is
+;; what actually moves packets.
+
+(fragment feature:wireguard
+
+  (doc "WireGuard tunnel: the kernel driver and wg(8)")
+
+  (requires
+    (capability mmu))
+
+  (buildroot
+    (y BR2_PACKAGE_WIREGUARD_TOOLS))
+
+  (linux
+    (y CONFIG_WIREGUARD)))

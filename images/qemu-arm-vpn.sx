@@ -1,0 +1,13 @@
+;; A VPN appliance on the QEMU machine, so it can be booted and asserted
+;; without hardware. The same feature composes onto target:odroidc2 unchanged,
+;; which is the point of it being a feature rather than a board's business.
+
+(image qemu-arm-vpn
+
+  (compose
+    target:qemu-aarch64-virt
+    profile:standard
+    feature:networking
+    feature:wireguard)
+
+  (verified-against (buildroot "2025.02.16")))
