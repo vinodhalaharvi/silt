@@ -110,3 +110,34 @@ func TestPinIsInheritedWhenUnstated(t *testing.T) {
 		t.Fatalf("pin not inherited: %v", flat.VerifiedAgainst)
 	}
 }
+
+// A base and its derivative normally live in separate files, which is what
+// broke: loading only the fragment directory and the one named image meant the
+// base was never in the library.
+//
+// The library-level behaviour is covered here; the loader that gathers sibling
+// files is in cmd/silt.
+func TestDeriveAcrossFiles(t *testing.T) {
+	l := NewLibrary()
+	for i, src := range []string{
+		dtgt, dprof, dfeat, dfeat2,
+		`(image base (compose target:t profile:p feature:a)
+		   (opaque (value buildroot:BR2_GLOBAL_PATCH_DIR "board/x")))`,
+		`(image dev (compose image:base feature:b))`,
+	} {
+		f, err := lang.ParseFile(src, "f"+string(rune('0'+i))+".sx")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := l.Add(f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r, err := l.Compose(l.Images["dev"])
+	if err != nil {
+		t.Fatalf("a base in another file must still resolve: %v", err)
+	}
+	if len(r.Opaque) != 1 {
+		t.Errorf("the base's opaque value did not survive: %+v", r.Opaque)
+	}
+}

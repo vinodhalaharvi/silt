@@ -411,18 +411,11 @@ func cmdEmit(args []string) error {
 		return fmt.Errorf("emit needs an image file")
 	}
 
-	files, err := loadAll([]string{libDir})
+	files, err := loadWithSiblings(libDir, target)
 	if err != nil {
 		return err
 	}
 	lib := compose.NewLibrary()
-	if brDir != "" {
-		tree, err := loadTree(brDir)
-		if err != nil {
-			return err
-		}
-		lib.Tree = tree
-	}
 	if brDir != "" {
 		tree, err := loadTree(brDir)
 		if err != nil {
@@ -1141,7 +1134,7 @@ func composeWithTree(args []string) (*compose.Result, *kconfig.Tree, string, err
 	if err != nil {
 		return nil, nil, "", err
 	}
-	files, err := loadAll([]string{libDir})
+	files, err := loadWithSiblings(libDir, target)
 	if err != nil {
 		return nil, nil, "", err
 	}
@@ -1168,4 +1161,47 @@ func composeWithTree(args []string) (*compose.Result, *kconfig.Tree, string, err
 		return nil, nil, "", err
 	}
 	return res, tree, imf.Images[0].Name, nil
+}
+
+// loadWithSiblings builds a library from the fragment directory plus every
+// other .sx file beside the target image.
+//
+// An image deriving from another is the normal case, and the two live in
+// separate files — images/customer-base.sx and images/customer-dev.sx. Loading
+// only the fragment directory and the one named file meant a base was never in
+// the library, so every cross-file derivation failed with "no such image".
+//
+// The target itself is excluded here and read by the caller, because adding it
+// twice is a redefinition.
+func loadWithSiblings(libDir, target string) ([]*lang.File, error) {
+	files, err := loadAll([]string{libDir})
+	if err != nil {
+		return nil, err
+	}
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		absTarget = target
+	}
+	siblings, err := expand([]string{filepath.Dir(target)})
+	if err != nil {
+		// A target outside any directory we can walk is not an error; the
+		// caller still reads it directly.
+		return files, nil
+	}
+	for _, p := range siblings {
+		abs, err := filepath.Abs(p)
+		if err == nil && abs == absTarget {
+			continue
+		}
+		src, err := os.ReadFile(p)
+		if err != nil {
+			return nil, err
+		}
+		f, err := lang.ParseFile(string(src), p)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, f)
+	}
+	return files, nil
 }
