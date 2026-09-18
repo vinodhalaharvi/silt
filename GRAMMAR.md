@@ -147,7 +147,14 @@ one thing.
 
 `provides` is an interface and is checked both ways: everything promised must be
 defined, and a fragment the pack does not declare is an error, because a consumer can
-compose it and the pack does not know it maintains it. `requires` names releases —
+compose it and the pack does not know it maintains it. `(path SYMBOL "rel")` is a value that names a file the pack carries, relative to the
+pack root. It is only valid inside a pack with an `(external ...)` tree: the loader
+checks the file exists, rewrites the value to
+`$(BR2_EXTERNAL_NAME_PATH)/rel`, which Buildroot expands, and the solution hash covers
+what the file contains. `(value SYMBOL "board/x/post.sh")` remains a string that nobody
+checks — which is how a patch directory for MIPS got into an ARM image.
+
+`requires` names releases —
 `(buildroot "2025.02.16")`, `(linux ">=6.1")` — and is checked against whatever trees
 the run was given; exact versions and `>=` are understood and nothing else, since a
 constraint nobody enforces reads as a promise.
@@ -280,7 +287,7 @@ implementation-faithful and spec-faithful — expressible over the same imported
 
 ## The complete keyword set
 
-Forty-six authored, plus nine that only the importer emits. The documentation
+Forty-seven authored, plus nine that only the importer emits. The documentation
 previously claimed seven, which counted only the constraint forms and was wrong.
 
 | group | keywords |
@@ -289,7 +296,7 @@ previously claimed seven, which counted only the constraint forms and was wrong.
 | fragment | `doc` `provides` `requires` `capability` |
 | capability decl | `symbol` |
 | scope | `buildroot` `linux` |
-| constraint | `y` `m` `n` `at-least` `prefer` `value` `when` |
+| constraint | `y` `m` `n` `at-least` `prefer` `value` `path` `when` |
 | tree | `tree` `scope` `kind` `prefix` `consumed-by` `source` |
 | pack | `pack` `version` `external` |
 | condition | `set?` `equal?` `and` `or` `not` |

@@ -69,6 +69,9 @@ func Load(dir string) (*Pack, error) {
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
+	if err := p.resolvePaths(); err != nil {
+		return nil, err
+	}
 	if p.Decl.External != "" {
 		ext, err := filepath.Abs(filepath.Join(dir, p.Decl.External))
 		if err != nil {
@@ -81,6 +84,65 @@ func Load(dir string) (*Pack, error) {
 		p.External = ext
 	}
 	return p, nil
+}
+
+// resolvePaths turns every (path X "rel") in the pack's fragments into the
+// form Buildroot expands, and records where the file actually is.
+//
+// Relative to the pack root, because that is the unit someone publishes: a
+// fragment saying "overlay" means this pack's overlay wherever the pack is
+// checked out. Buildroot expands $(BR2_EXTERNAL_NAME_PATH) in a config value,
+// so the emitted defconfig names no machine's directory layout and the same
+// file works on the VM and in CI.
+func (p *Pack) resolvePaths() error {
+	name, err := p.externalName()
+	if err != nil {
+		return err
+	}
+	for _, f := range p.Files {
+		for _, fr := range f.Fragments {
+			for sc := range fr.Constraints {
+				for i := range fr.Constraints[sc] {
+					c := &fr.Constraints[sc][i]
+					if !c.IsPath {
+						continue
+					}
+					if name == "" {
+						return fmt.Errorf("%s: %s names a path, which needs the pack to have "+
+							"an (external ...) tree for Buildroot to resolve it against",
+							c.Pos.Short(), c.Sym)
+					}
+					abs := filepath.Join(p.Decl.Dir, c.Value)
+					if _, err := os.Stat(abs); err != nil {
+						return fmt.Errorf("%s: %s names %s, which the pack does not contain",
+							c.Pos.Short(), c.Sym, c.Value)
+					}
+					c.Resolved = abs
+					c.Value = fmt.Sprintf("$(BR2_EXTERNAL_%s_PATH)/%s", name, filepath.ToSlash(c.Value))
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// externalName reads the name from the br2-external tree's external.desc,
+// which is what Buildroot builds BR2_EXTERNAL_<NAME>_PATH from.
+func (p *Pack) externalName() (string, error) {
+	if p.Decl.External == "" {
+		return "", nil
+	}
+	data, err := os.ReadFile(filepath.Join(p.Decl.Dir, p.Decl.External, "external.desc"))
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "name:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "name:")), nil
+		}
+	}
+	return "", fmt.Errorf("%s/external.desc has no name:", p.Decl.External)
 }
 
 // Problem is something wrong with a pack itself, rather than with an image

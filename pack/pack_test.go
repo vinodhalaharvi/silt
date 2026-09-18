@@ -153,3 +153,46 @@ func TestHelloSiltPack(t *testing.T) {
 		t.Errorf("provides: %v", p.Decl.Provides)
 	}
 }
+
+// A (path ...) names a file the pack carries. It is checked at load, which is
+// before anything composes or builds, and rewritten into the form Buildroot
+// expands so the emitted defconfig names no machine's directory layout.
+func TestPathsResolveAgainstThePack(t *testing.T) {
+	dir := packDir(t, `(pack demo (version "1") (external "br2-external")
+	  (provides (feature widget)))`,
+		`(fragment feature:widget (buildroot (path BR2_ROOTFS_OVERLAY "overlay")))`)
+	write(t, dir, "br2-external/external.desc", "name: DEMO\ndesc: demo\n")
+	write(t, dir, "overlay/etc/hello", "hi\n")
+
+	p, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := p.Files[1].Fragments[0].Constraints["buildroot"][0]
+	if c.Value != "$(BR2_EXTERNAL_DEMO_PATH)/overlay" {
+		t.Errorf("value: %q", c.Value)
+	}
+	if c.Resolved != filepath.Join(dir, "overlay") {
+		t.Errorf("resolved: %q", c.Resolved)
+	}
+
+	// A path the pack does not contain is the whole point: the symbol is
+	// real, the value looks fine, and every other check passes.
+	missing := packDir(t, `(pack demo (version "1") (external "br2-external")
+	  (provides (feature widget)))`,
+		`(fragment feature:widget (buildroot (path BR2_ROOTFS_OVERLAY "overlay")))`)
+	write(t, missing, "br2-external/external.desc", "name: DEMO\n")
+	if _, err := Load(missing); err == nil || !strings.Contains(err.Error(), "does not contain") {
+		t.Fatalf("a missing overlay should be an error: %v", err)
+	}
+
+	// Without an external tree there is nothing for Buildroot to resolve the
+	// path against, so it is refused rather than emitted as someone's
+	// absolute path.
+	noext := packDir(t, `(pack demo (version "1") (provides (feature widget)))`,
+		`(fragment feature:widget (buildroot (path BR2_ROOTFS_OVERLAY "overlay")))`)
+	write(t, noext, "overlay/etc/hello", "hi\n")
+	if _, err := Load(noext); err == nil || !strings.Contains(err.Error(), "external") {
+		t.Fatalf("a path with no external tree: %v", err)
+	}
+}

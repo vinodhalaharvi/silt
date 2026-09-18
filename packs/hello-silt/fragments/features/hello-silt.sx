@@ -13,4 +13,10 @@
     (capability mmu))
 
   (buildroot
-    (y BR2_PACKAGE_HELLO_SILT)))
+    (y BR2_PACKAGE_HELLO_SILT)
+
+    ;; A file the pack carries, not a string that happens to look like one.
+    ;; Silt checks it exists before anything builds, rewrites it into the
+    ;; $(BR2_EXTERNAL_SILT_PATH)/... form Buildroot expands, and hashes what
+    ;; is in it: an overlay that changed is a different configuration.
+    (path BR2_ROOTFS_OVERLAY "overlay")))

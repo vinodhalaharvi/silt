@@ -2,6 +2,7 @@ package emit
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -346,4 +347,42 @@ func strip(s string) string {
 		}
 	}
 	return strings.Join(out, "\n")
+}
+
+// Files a pack carries are configuration: the same symbols with a different
+// overlay make a different image, and a solution hash that ignored the
+// overlay would call the two builds the same.
+func TestSolutionHashCoversCarriedFiles(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "overlay", "etc"), 0o755)
+	file := filepath.Join(dir, "overlay", "etc", "release")
+	os.WriteFile(file, []byte("one\n"), 0o644)
+
+	r := build(t, []string{
+		`(fragment target:t (buildroot (y BR2_aarch64)) (provides (capability mmu)))`,
+		`(fragment profile:p (requires (capability mmu)) (buildroot (value BR2_ROOTFS_OVERLAY "x")))`,
+	}, `(image i (compose target:t profile:p))`)
+	for sc := range r.Constraints {
+		for i := range r.Constraints[sc] {
+			if r.Constraints[sc][i].Sym.Name == "BR2_ROOTFS_OVERLAY" {
+				r.Constraints[sc][i].IsPath = true
+				r.Constraints[sc][i].Resolved = filepath.Join(dir, "overlay")
+			}
+		}
+	}
+	versions := map[string]string{"buildroot": "2025.02.16"}
+	before := SolutionHash(r, versions, nil)
+
+	os.WriteFile(file, []byte("two\n"), 0o644)
+	if SolutionHash(r, versions, nil) == before {
+		t.Error("changing a carried file must change the hash")
+	}
+	os.WriteFile(file, []byte("one\n"), 0o644)
+	if SolutionHash(r, versions, nil) != before {
+		t.Error("the same contents must hash the same")
+	}
+	os.Remove(file)
+	if SolutionHash(r, versions, nil) == before {
+		t.Error("a file that vanished must change the hash")
+	}
 }

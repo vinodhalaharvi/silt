@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -39,6 +41,13 @@ func Solution(r *compose.Result, versions, env map[string]string) string {
 			fmt.Fprintf(&b, "env %s=%s\n", k, v)
 		}
 	}
+	// Files the fragments carry are configuration too: an overlay that
+	// changed produces a different image from the same symbols, and a
+	// solution hash that ignored it would say the two builds were the same.
+	for _, c := range pathConstraints(r) {
+		fmt.Fprintf(&b, "file %s %s\n", c.Sym, hashPath(c.Resolved))
+	}
+
 	// The configuration itself, comments excluded: a header naming the
 	// emitting tool is not part of what was configured, and including the
 	// hash's own line would make it self-referential.
@@ -75,4 +84,49 @@ func sortedKeys(m map[string]string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// pathConstraints are the stated (path ...) values, sorted by symbol.
+func pathConstraints(r *compose.Result) []lang.Constraint {
+	var out []lang.Constraint
+	for _, cs := range r.Constraints {
+		for _, c := range cs {
+			if c.IsPath && !c.Soft {
+				out = append(out, c)
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Sym.String() < out[j].Sym.String() })
+	return out
+}
+
+// hashPath is the content address of a file, or of a directory tree taken as
+// its sorted list of paths and contents. A missing file hashes as "missing"
+// rather than being skipped: two runs where one has the overlay and one does
+// not are not the same configuration.
+func hashPath(path string) string {
+	if path == "" {
+		return "unresolved"
+	}
+	h := sha256.New()
+	err := filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(path, p)
+		fmt.Fprintf(h, "%s %v %o\n", filepath.ToSlash(rel), info.IsDir(), info.Mode().Perm())
+		if info.IsDir() {
+			return nil
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		h.Write(data)
+		return nil
+	})
+	if err != nil {
+		return "missing"
+	}
+	return hex.EncodeToString(h.Sum(nil)[:12])
 }

@@ -282,6 +282,24 @@ func parseConstraint(n *sexpr.Node, sc Scope, from string) (Constraint, error) {
 		}
 		return Constraint{Sym: s, Value: args[1].Text, IsValue: true, Pos: n.Pos, From: from}, nil
 
+	case "path":
+		// A value that names a file. The file is the pack's, and saying so
+		// is what lets Silt check it exists and hash what it contains: a
+		// symbol pointing at a missing overlay passes every check there was,
+		// and an overlay that changed is a different configuration.
+		if len(args) != 2 || args[1].Kind != sexpr.KindString {
+			return Constraint{}, errf(n, `(path SYMBOL "relative/path") takes a symbol and a path`)
+		}
+		s, err := sym(0)
+		if err != nil {
+			return Constraint{}, err
+		}
+		rel := args[1].Text
+		if strings.HasPrefix(rel, "/") || strings.HasPrefix(rel, "..") {
+			return Constraint{}, errf(n, "path %q must be inside the pack: relative, and not upwards", rel)
+		}
+		return Constraint{Sym: s, Value: rel, IsValue: true, IsPath: true, Pos: n.Pos, From: from}, nil
+
 	case "require", "set":
 		return Constraint{}, errf(n, "unknown form %q; see GRAMMAR.md", h)
 	case "":

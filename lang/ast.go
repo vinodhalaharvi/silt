@@ -62,8 +62,15 @@ type Constraint struct {
 	Soft    bool // (prefer ...): yields to hard constraints
 	Value   string
 	IsValue bool // (value X "s"): passed through, emptiness modelled
-	Pos     sexpr.Pos
-	From    string // fragment or image this came from
+	// IsPath marks (path X "rel"): a value naming a file the pack carries,
+	// rather than a string. Value holds the path as written, relative to the
+	// pack root, until the pack loader rewrites it into the
+	// $(BR2_EXTERNAL_NAME_PATH)/... form Buildroot expands; Resolved is where
+	// it actually is, so the file can be checked and hashed.
+	IsPath   bool
+	Resolved string
+	Pos      sexpr.Pos
+	From     string // fragment or image this came from
 }
 
 // Guarded is (when condition consequent...). It lowers to an implication and

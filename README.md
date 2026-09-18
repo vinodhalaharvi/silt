@@ -333,6 +333,17 @@ ok  qemu-arm-boot      18 buildroot symbols checked against buildroot 2025.02.16
   (provides (feature hello-silt)))
 ```
 
+A pack can carry files as well as symbols:
+
+```lisp
+(path BR2_ROOTFS_OVERLAY "overlay")
+```
+
+which is checked to exist before anything builds, emitted as
+`BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_SILT_PATH)/overlay"` so the defconfig names no
+machine's directory layout, and hashed into the solution — an overlay that
+changed is a different configuration, even with identical symbols.
+
 That declaration is the interface, and it is checked both ways: everything
 promised must exist, and a fragment the pack does not declare is an error —
 a consumer can compose it, and the pack does not know it maintains it. `--pack`

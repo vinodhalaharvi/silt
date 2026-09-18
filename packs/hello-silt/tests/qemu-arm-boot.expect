@@ -7,6 +7,7 @@
 uname -m	aarch64
 cat /etc/os-release	Buildroot
 hello-silt	hello from silt
+cat /etc/silt-release	hello-silt pack 0.1.0
 ls /usr/bin/hello-silt	/usr/bin/hello-silt
 mount	on / type ext4
 ip link show eth0	eth0
