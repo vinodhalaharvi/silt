@@ -1,0 +1,1 @@
+source "$BR2_EXTERNAL_SILT_PATH/package/hello-silt/Config.in"

@@ -1,0 +1,5 @@
+config BR2_PACKAGE_HELLO_SILT
+	bool "hello-silt"
+	help
+	  Tiny program that proves a Silt-composed image built and booted.
+	  It prints one line and exits; ci/boot-test.sh asserts that line.

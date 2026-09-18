@@ -1,0 +1,16 @@
+;; The package that proves a composed image built and booted.
+;;
+;; It lives in Silt's own br2-external tree, so every command that touches an
+;; image composing this feature needs --external br2-external. Buildroot's
+;; checkout stays as it was cloned, which is what keeps `verified-against`
+;; meaning anything.
+
+(fragment feature:hello-silt
+
+  (doc "Prints one line, which ci/boot-test.sh asserts over the serial console")
+
+  (requires
+    (capability mmu))
+
+  (buildroot
+    (y BR2_PACKAGE_HELLO_SILT)))

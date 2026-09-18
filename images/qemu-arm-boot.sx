@@ -1,0 +1,16 @@
+;; The image ci/boot-test.sh builds and boots.
+;;
+;; qemu-arm-dev with one line added. That is the point: the boot test is not a
+;; separate configuration maintained alongside the real ones, it is a real one
+;; with a witness in it. If this boots and qemu-arm-dev does not, the
+;; difference is one fragment.
+
+(image qemu-arm-boot
+
+  (compose
+    target:qemu-aarch64-virt
+    profile:minimal
+    feature:networking
+    feature:hello-silt)
+
+  (verified-against (buildroot "2025.02.16")))

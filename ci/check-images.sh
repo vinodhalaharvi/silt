@@ -16,6 +16,10 @@ silt=${2:-bin/silt}
 linux=${3:-}
 lxflag=()
 [[ -n $linux ]] && lxflag=(--linux "$linux")
+# Silt's own packages live in a br2-external tree, so images that compose
+# them need it wherever the Buildroot tree is loaded.
+extflag=()
+[[ -d br2-external ]] && extflag=(--external br2-external)
 
 expect_fail=(edge-camera)
 
@@ -28,7 +32,7 @@ for img in images/*.sx; do
 	done
 
 	set +e
-	out=$("$silt" check --buildroot "$br" "${lxflag[@]}" fragments "$img" 2>&1)
+	out=$("$silt" check --buildroot "$br" "${lxflag[@]}" "${extflag[@]}" fragments "$img" 2>&1)
 	rc=$?
 	set -e
 

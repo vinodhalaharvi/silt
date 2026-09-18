@@ -288,6 +288,47 @@ with `(verified-against (buildroot "2025.02.16"))`, and a mismatch is reported
 before anything else — the findings only mean something for the tree they were
 checked on.
 
+## Building and booting it
+
+Everything above checks configuration: that a symbol exists, that kbuild keeps
+it, that two trees agree. None of it can catch a setting which is real, spelled
+correctly, passes every check and does nothing — `BR2_TARGET_UBOOT_BOARDNAME`
+under the Kconfig build system was exactly that. Only a boot can.
+
+```console
+$ ci/boot-test.sh images/qemu-arm-boot.sx --buildroot ~/buildroot
++ silt emit images/qemu-arm-boot.sx -o out-boot --buildroot ~/buildroot --external br2-external
+solution 1f5006a8a88f3dae5025920d
++ make -C ~/buildroot O=out-boot/build BR2_EXTERNAL=... defconfig BR2_DEFCONFIG=out-boot/defconfig
++ make -C ~/buildroot O=out-boot/build
++ qemu-system-aarch64 -M virt -cpu cortex-a53 -nographic ...
+ok qemu-arm-boot booted and passed 6 assertions
+```
+
+The QEMU invocation is not invented: it is read from the `readme.txt` of the
+board Buildroot itself ships, so it stays matched to the release in use. The
+assertions live in `ci/boot/<image>.expect` and are about what the fragments
+claimed — `hello-silt` prints its line because `feature:hello-silt` stated the
+symbol that builds it.
+
+Two images, run on demand rather than on every push: a build is tens of minutes,
+and a test nobody waits for is a test nobody runs. `qemu-arm-boot` is
+`qemu-arm-dev` with one fragment added, so if it boots and `qemu-arm-dev` does
+not, the difference is that fragment.
+
+Silt's own packages live in `br2-external/`, never in the Buildroot checkout,
+and any command takes `--external DIR` to import them:
+
+```console
+$ silt check --buildroot ~/buildroot --external br2-external
+ok  qemu-arm-boot      18 buildroot symbols checked against buildroot 2025.02.16
+```
+
+A checkout with a package added to `package/Config.in` is no longer the release
+it claims to be, and every `verified-against` pin here is about a release. The
+generated `.br2-external.in.*` files come from Buildroot's own
+`support/scripts/br2-external`, not from a reimplementation of its format.
+
 ## Asking the model
 
 `silt check` answers conservatively — it reports only explicit contradictions,
@@ -421,6 +462,9 @@ fragments/profiles/   userspace policy
 fragments/features/   one capability, spanning both Kconfig trees
 fragments/rules/      cross-tree implications
 images/               compositions
+br2-external/         Silt's own packages, kept out of the Buildroot checkout
+ci/                   image checks and the build-and-boot test
+tools/                one-off migration scripts
 GRAMMAR.md            the complete syntax, in EBNF
 DESIGN.md             architecture, loss surface, the ladder
 EXAMPLES.md           the language by demonstration

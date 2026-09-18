@@ -1,0 +1,8 @@
+# glibc and systemd, where qemu-arm-boot is musl and BusyBox init. The two
+# differ by one fragment and produce different userspaces; both booting is the
+# claim the whole project rests on.
+
+uname -m	aarch64
+cat /etc/os-release	Buildroot
+systemctl is-system-running --wait	running
+mount	on / type ext4
