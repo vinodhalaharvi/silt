@@ -2,6 +2,7 @@ package kconfig
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -351,5 +352,90 @@ config STACKPROTECTOR
 	// which is the honest answer, since only a compiler knows.
 	if got := tr.Symbols["STACKPROTECTOR"].Depends.String(); got != "$(cc-option,-fstack-protector-strong)" {
 		t.Errorf("macro call: %s", got)
+	}
+}
+
+// A br2-external tree's Config.in is sourced by absolute path, from a file
+// Buildroot generates. Joining an absolute path to the tree root produced
+// /home/user/buildroot/home/user/silt/br2-external, which does not exist, and
+// the importer's tolerance for missing generated files turned that into
+// silence: every external symbol vanished and silt check called them unknown.
+func TestAbsoluteSourcePathsAreNotJoinedToTheRoot(t *testing.T) {
+	root, elsewhere := t.TempDir(), t.TempDir()
+	os.WriteFile(filepath.Join(elsewhere, "Config.in"),
+		[]byte("config BR2_FROM_ELSEWHERE\n\tbool \"elsewhere\"\n"), 0o644)
+	os.WriteFile(filepath.Join(root, "Config.in"),
+		[]byte("source \""+filepath.Join(elsewhere, "Config.in")+"\"\n"), 0o644)
+	tr, err := Load("Config.in", Options{Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tr.Symbols["BR2_FROM_ELSEWHERE"] == nil {
+		t.Error("a symbol sourced by absolute path is missing")
+	}
+
+	// A source line that names nothing is a typo, and staying quiet about it
+	// is how a whole tree can go missing. Only the generated br2-external
+	// files, which Buildroot sources before anything creates them, are
+	// allowed to be absent.
+	os.WriteFile(filepath.Join(root, "Config.in"), []byte("source \"missing/Config.in\"\n"), 0o644)
+	if _, err := Load("Config.in", Options{Root: root}); err == nil {
+		t.Error("a missing source file should be an error")
+	}
+	os.WriteFile(filepath.Join(root, "Config.in"), []byte("source \"$BR2_BASE_DIR/.br2-external.in.paths\"\n"), 0o644)
+	if _, err := Load("Config.in", Options{Root: root, Env: map[string]string{"BR2_BASE_DIR": root}}); err != nil {
+		t.Errorf("an ungenerated br2-external file should be tolerated: %v", err)
+	}
+}
+
+// The whole path, against a real Buildroot: run its own generator over Silt's
+// br2-external tree and import the result.
+func TestExternalTreeImports(t *testing.T) {
+	root, ext := os.Getenv("SILT_BUILDROOT"), os.Getenv("SILT_EXTERNAL")
+	if root == "" || ext == "" {
+		t.Skip("set SILT_BUILDROOT and SILT_EXTERNAL")
+	}
+	base := t.TempDir()
+	env, err := BuildrootEnv(root, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	add, err := PrepareExternal(root, base, []string{ext})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range add {
+		env[k] = v
+	}
+	if env["BR2_EXTERNAL_SILT_PATH"] == "" {
+		t.Fatal("BR2_EXTERNAL_SILT_PATH was not exported; the tree's Config.in cannot be found without it")
+	}
+	tr, err := Load("Config.in", Options{Root: root, Env: env})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := tr.Symbols["BR2_PACKAGE_HELLO_SILT"]
+	if s == nil || s.Type != Bool || s.Prompt == "" {
+		t.Fatalf("the external package's symbol did not import: %+v", s)
+	}
+	t.Logf("%d symbols including %s from %s", len(tr.Symbols), s.Name, s.File)
+
+	// Without the external tree the same symbol must not exist, or the test
+	// above would pass on a tree that ignores externals entirely.
+	plain, err := BuildrootEnv(root, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if add, err := PrepareExternal(root, plain["BASE_DIR"], nil); err == nil {
+		for k, v := range add {
+			plain[k] = v
+		}
+	}
+	tr2, err := Load("Config.in", Options{Root: root, Env: plain})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tr2.Symbols["BR2_PACKAGE_HELLO_SILT"] != nil {
+		t.Error("the symbol exists without the external tree: something else is defining it")
 	}
 }

@@ -99,6 +99,11 @@ jobs:
           mv linux.tmp/linux-* linux
           rm -rf linux.tar.gz linux.tmp
 
+      - name: check the br2-external tree imports
+        run: >
+          SILT_BUILDROOT="$PWD/buildroot" SILT_EXTERNAL="$PWD/br2-external"
+          go test ./kconfig -v -run External
+
       - name: check CONFIG_* claims against the kernel
         run: SILT_LINUX="$PWD/linux" go test ./verify -v -run Linux
 

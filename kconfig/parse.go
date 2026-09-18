@@ -76,7 +76,7 @@ type scope struct {
 // makes a choice group's at-least-one clause fire unconditionally, which
 // forces unrelated symbols false at decision level zero.
 func (p *parser) file(rel string, outer *Expr) error {
-	abs := filepath.Join(p.opts.Root, rel)
+	abs := resolve(p.opts.Root, rel)
 	key := abs + "|" + outer.String()
 	if p.seen[key] {
 		return nil // legitimately re-sourced under the same condition
@@ -288,8 +288,11 @@ func (p *parser) lines(file string, lines []string, outer *Expr) error {
 					file, i+1, path)
 			}
 			if err := p.file(path, guard()); err != nil {
-				// Generated files (br2-external) legitimately may not exist.
-				if os.IsNotExist(err) || strings.Contains(err.Error(), "no such file") {
+				// Buildroot sources the br2-external files unconditionally,
+				// and they do not exist until something generates them.
+				// Anything else missing is a typo, and skipping it silently
+				// is how a source line stops meaning anything.
+				if missing(err) && strings.HasPrefix(filepath.Base(path), ".br2-external") {
 					continue
 				}
 				return err
@@ -363,6 +366,21 @@ func expandVars(s string, env map[string]string) string {
 		s = strings.ReplaceAll(s, "$"+k, v)
 	}
 	return s
+}
+
+// resolve joins a source path to the tree root, unless it is already
+// absolute. A br2-external tree is sourced by absolute path, and joining that
+// to the root produced /home/user/buildroot/home/user/silt/br2-external,
+// which does not exist — so every external package silently vanished.
+func resolve(root, path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(root, path)
+}
+
+func missing(err error) bool {
+	return os.IsNotExist(err) || strings.Contains(err.Error(), "no such file")
 }
 
 func parseSelect(rest string) (string, *Expr, error) {

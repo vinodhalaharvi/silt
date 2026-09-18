@@ -28,6 +28,7 @@ const usage = `silt — composable S-expressions over Kconfig
 
   silt check [PATH...]              parse and validate; report problems
   silt check --buildroot DIR        also verify every claim against that tree
+        [--external DIR]            with a br2-external tree (any command)
         [--linux DIR]               and every CONFIG_* claim against a kernel tree
   silt emit IMAGE.sx [-o DIR]       compose and write defconfig + linux.config
         [--buildroot DIR]           let rules see select-implied symbols
@@ -51,31 +52,47 @@ const usage = `silt — composable S-expressions over Kconfig
 Fragments are loaded from ./fragments by default; override with -L DIR.
 `
 
+// externalTrees are the br2-external trees to import alongside Buildroot,
+// from --external, which every command accepts. A global because it is a
+// property of the tree being imported rather than of any one command: an
+// image that states a symbol from an external tree needs it wherever the
+// tree is loaded.
+var externalTrees []string
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
 	}
+	args := os.Args[2:]
+	for {
+		rest, dir := takeFlag(args, "--external")
+		if dir == "" {
+			break
+		}
+		externalTrees = append(externalTrees, dir)
+		args = rest
+	}
 	var err error
 	switch os.Args[1] {
 	case "check":
-		err = cmdCheck(os.Args[2:])
+		err = cmdCheck(args)
 	case "import":
-		err = cmdImport(os.Args[2:])
+		err = cmdImport(args)
 	case "fixpoint":
-		err = cmdFixpoint(os.Args[2:])
+		err = cmdFixpoint(args)
 	case "emit":
-		err = cmdEmit(os.Args[2:])
+		err = cmdEmit(args)
 	case "fmt":
-		err = cmdFmt(os.Args[2:])
+		err = cmdFmt(args)
 	case "hash":
-		err = cmdHash(os.Args[2:])
+		err = cmdHash(args)
 	case "why":
-		err = cmdWhy(os.Args[2:])
+		err = cmdWhy(args)
 	case "solve":
-		err = cmdSolve(os.Args[2:])
+		err = cmdSolve(args)
 	case "complete":
-		err = cmdComplete(os.Args[2:])
+		err = cmdComplete(args)
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 		return
@@ -727,7 +744,7 @@ func solutionInputs(brDir, lxDir string, decls map[string]lang.TreeDecl, r *comp
 			return nil, nil, err
 		}
 		versions[string(lang.Buildroot)] = v
-		if e, err := kconfig.BuildrootEnv(brDir, filepath.Join(brDir, "output")); err == nil {
+		if e, err := buildrootEnv(brDir); err == nil {
 			env = e
 		}
 	}
@@ -858,13 +875,36 @@ func valueOf(c lang.Constraint) string {
 // loadTree imports a Buildroot tree, with the environment supplied explicitly.
 // The shape of the Kconfig tree depends on it (DESIGN.md §14.2), so reading it
 // implicitly would make the import depend on invisible state.
+// buildrootEnv is the environment a Buildroot import needs on this host, with
+// any br2-external trees generated into a scratch directory first. The
+// generated files are what Buildroot's own Config.in sources, so this is the
+// only way an external tree's symbols exist at all.
+func buildrootEnv(dir string) (map[string]string, error) {
+	env, err := kconfig.BuildrootEnv(dir, filepath.Join(dir, "output"))
+	if err != nil {
+		return nil, err
+	}
+	base, err := os.MkdirTemp("", "silt-external-")
+	if err != nil {
+		return nil, err
+	}
+	add, err := kconfig.PrepareExternal(dir, base, externalTrees)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range add {
+		env[k] = v
+	}
+	return env, nil
+}
+
 func loadTree(dir string) (*kconfig.Tree, error) {
 	ver, err := kconfig.TreeVersion(dir)
 	if err != nil {
 		return nil, fmt.Errorf("%s does not look like a Buildroot tree: %w", dir, err)
 	}
 	_ = ver
-	env, err := kconfig.BuildrootEnv(dir, filepath.Join(dir, "output"))
+	env, err := buildrootEnv(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -909,7 +949,7 @@ func cmdComplete(args []string) error {
 	if err != nil {
 		return err
 	}
-	env, err := kconfig.BuildrootEnv(brDir, filepath.Join(brDir, "output"))
+	env, err := buildrootEnv(brDir)
 	if err != nil {
 		return err
 	}

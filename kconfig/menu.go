@@ -126,7 +126,7 @@ type menuParser struct {
 // importer, a file is not keyed on its guard: sourcing the same file twice
 // declares its symbols twice, which is exactly what kbuild does.
 func (p *menuParser) file(rel string, parent *Entry) error {
-	data, err := os.ReadFile(filepath.Join(p.opts.Root, rel))
+	data, err := os.ReadFile(resolve(p.opts.Root, rel))
 	if err != nil {
 		return fmt.Errorf("%s: %w", rel, err)
 	}
@@ -207,7 +207,7 @@ func (p *menuParser) lines(file string, lines []string, top *Entry) error {
 				return fmt.Errorf("%s:%d: source path %q needs an environment value not provided", file, i+1, path)
 			}
 			if err := p.file(path, stack[len(stack)-1]); err != nil {
-				if os.IsNotExist(err) || strings.Contains(err.Error(), "no such file") {
+				if missing(err) && strings.HasPrefix(filepath.Base(path), ".br2-external") {
 					continue
 				}
 				return err
