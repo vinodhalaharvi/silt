@@ -196,3 +196,43 @@ func TestPathsResolveAgainstThePack(t *testing.T) {
 		t.Fatalf("a path with no external tree: %v", err)
 	}
 }
+
+// The board pack in this repository, checked like any other. It is the one
+// written as though by a stranger: it carries its own board files rather than
+// pointing into somebody's Buildroot checkout.
+func TestNanoPiPack(t *testing.T) {
+	p, err := Load("../packs/nanopi-r2s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if probs := p.Check(map[string]string{"buildroot": "2025.02.16"}); len(probs) != 0 {
+		t.Fatalf("%v", probs)
+	}
+	var paths []lang.Constraint
+	for _, f := range p.Files {
+		for _, fr := range f.Fragments {
+			for _, c := range fr.Constraints["buildroot"] {
+				if c.IsPath {
+					paths = append(paths, c)
+				}
+			}
+		}
+	}
+	if len(paths) != 2 {
+		t.Fatalf("expected the post-build script and the genimage config: %v", paths)
+	}
+	for _, c := range paths {
+		if !strings.Contains(c.Value, "$(BR2_EXTERNAL_NANOPI_R2S_PATH)/board/") {
+			t.Errorf("%s should be emitted through the external path: %q", c.Sym, c.Value)
+		}
+		if _, err := os.Stat(c.Resolved); err != nil {
+			t.Errorf("%s: %v", c.Sym, err)
+		}
+	}
+	// One of them sits inside a longer value, which is why (as ...) exists.
+	for _, c := range paths {
+		if c.Sym.Name == "BR2_ROOTFS_POST_SCRIPT_ARGS" && !strings.HasPrefix(c.Value, "-c ") {
+			t.Errorf("the genimage config is passed as an argument: %q", c.Value)
+		}
+	}
+}

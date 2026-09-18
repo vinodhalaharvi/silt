@@ -1,0 +1,15 @@
+;; The board pack composed with this repository's own userspace.
+;;
+;; Nothing in packs/nanopi-r2s knows about profile:minimal, and nothing in
+;; profile:minimal knows about the R2S. That is the whole claim: a board from
+;; one place and a userspace from another compose, and the composition is
+;; checked before anyone waits an hour for a build.
+
+(image nanopi-r2s-minimal
+
+  (compose
+    target:nanopi-r2s
+    profile:minimal
+    feature:networking)
+
+  (verified-against (buildroot "2025.02.16")))

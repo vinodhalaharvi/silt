@@ -70,20 +70,10 @@ func main() {
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
 	}
-	args := os.Args[2:]
-	for {
-		rest, dir := takeFlag(args, "--external")
-		if dir == "" {
-			break
-		}
-		externalTrees = append(externalTrees, dir)
-		args = rest
-	}
-	for {
-		rest, dir := takeFlag(args, "--pack")
-		if dir == "" {
-			break
-		}
+	args, externals := takeFlags(os.Args[2:], "--external")
+	externalTrees = append(externalTrees, externals...)
+	args, packDirs := takeFlags(args, "--pack")
+	for _, dir := range packDirs {
 		p, err := pack.Load(dir)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -97,7 +87,6 @@ func main() {
 			// mistake --pack exists to prevent.
 			externalTrees = append(externalTrees, p.External)
 		}
-		args = rest
 	}
 	var err error
 	switch os.Args[1] {
@@ -638,19 +627,30 @@ func cmdHash(args []string) error {
 	return nil
 }
 
-// takeFlag removes a flag and its value from an argument list.
+// takeFlag removes a flag and its value from an argument list, returning the
+// last value given.
 func takeFlag(args []string, flag string) ([]string, string) {
-	var out []string
-	value := ""
+	rest, values := takeFlags(args, flag)
+	if len(values) == 0 {
+		return rest, ""
+	}
+	return rest, values[len(values)-1]
+}
+
+// takeFlags removes every occurrence of a repeatable flag. --pack and
+// --external are repeatable, and reading them one at a time in a loop lost
+// all but the last: the loop consumed every occurrence on its first pass.
+func takeFlags(args []string, flag string) ([]string, []string) {
+	var out, values []string
 	for i := 0; i < len(args); i++ {
 		if args[i] == flag && i+1 < len(args) {
-			value = args[i+1]
+			values = append(values, args[i+1])
 			i++
 			continue
 		}
 		out = append(out, args[i])
 	}
-	return out, value
+	return out, values
 }
 
 // cmdSolutionHash prints the content address of a composed image: the

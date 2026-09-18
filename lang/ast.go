@@ -69,6 +69,12 @@ type Constraint struct {
 	// it actually is, so the file can be checked and hashed.
 	IsPath   bool
 	Resolved string
+	// Template is how the resolved path appears in the emitted value, with
+	// {} standing for the path. It exists because some symbols take a path
+	// inside a longer string: BR2_ROOTFS_POST_SCRIPT_ARGS is
+	// "-c <the genimage config>", and a value that merely contains a path is
+	// exactly as unchecked as one that is a path.
+	Template string
 	Pos      sexpr.Pos
 	From     string // fragment or image this came from
 }

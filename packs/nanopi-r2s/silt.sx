@@ -1,0 +1,19 @@
+;; A board pack, written as though by someone who owns the board and not the
+;; rest of this repository.
+;;
+;; It carries its own board files, because a pack that referred to
+;; board/friendlyarm/nanopi-r2s/ inside somebody's Buildroot checkout would
+;; only work for people whose checkout has it — which is to say, for this
+;; release of Buildroot and no other.
+
+(pack nanopi-r2s
+  (version "0.1.0")
+  (doc "FriendlyARM NanoPi R2S (Rockchip RK3328), from Buildroot's own defconfig")
+
+  (requires
+    (buildroot "2025.02.16"))
+
+  (external "br2-external")
+
+  (provides
+    (target nanopi-r2s)))

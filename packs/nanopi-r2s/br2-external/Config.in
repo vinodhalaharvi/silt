@@ -1,0 +1,2 @@
+# No packages: this pack is board material only. Buildroot requires the file
+# to exist, and br2-external refuses a tree without it.

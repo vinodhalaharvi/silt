@@ -287,8 +287,8 @@ func parseConstraint(n *sexpr.Node, sc Scope, from string) (Constraint, error) {
 		// is what lets Silt check it exists and hash what it contains: a
 		// symbol pointing at a missing overlay passes every check there was,
 		// and an overlay that changed is a different configuration.
-		if len(args) != 2 || args[1].Kind != sexpr.KindString {
-			return Constraint{}, errf(n, `(path SYMBOL "relative/path") takes a symbol and a path`)
+		if len(args) < 2 || args[1].Kind != sexpr.KindString {
+			return Constraint{}, errf(n, `(path SYMBOL "relative/path" [(as "...{}...")]) takes a symbol and a path`)
 		}
 		s, err := sym(0)
 		if err != nil {
@@ -298,7 +298,21 @@ func parseConstraint(n *sexpr.Node, sc Scope, from string) (Constraint, error) {
 		if strings.HasPrefix(rel, "/") || strings.HasPrefix(rel, "..") {
 			return Constraint{}, errf(n, "path %q must be inside the pack: relative, and not upwards", rel)
 		}
-		return Constraint{Sym: s, Value: rel, IsValue: true, IsPath: true, Pos: n.Pos, From: from}, nil
+		c := Constraint{Sym: s, Value: rel, IsValue: true, IsPath: true, Template: "{}", Pos: n.Pos, From: from}
+		for _, opt := range args[2:] {
+			if opt.Head() != "as" {
+				return Constraint{}, errf(opt, `unknown path clause %q; only (as "...{}...") exists`, opt.Head())
+			}
+			s, err := oneString(opt)
+			if err != nil {
+				return Constraint{}, err
+			}
+			if !strings.Contains(s, "{}") {
+				return Constraint{}, errf(opt, `(as %q) must contain {} where the path goes`, s)
+			}
+			c.Template = s
+		}
+		return c, nil
 
 	case "require", "set":
 		return Constraint{}, errf(n, "unknown form %q; see GRAMMAR.md", h)

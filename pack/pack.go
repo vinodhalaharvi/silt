@@ -118,7 +118,12 @@ func (p *Pack) resolvePaths() error {
 							c.Pos.Short(), c.Sym, c.Value)
 					}
 					c.Resolved = abs
-					c.Value = fmt.Sprintf("$(BR2_EXTERNAL_%s_PATH)/%s", name, filepath.ToSlash(c.Value))
+					ref := fmt.Sprintf("$(BR2_EXTERNAL_%s_PATH)/%s", name, filepath.ToSlash(c.Value))
+					tmpl := c.Template
+					if tmpl == "" {
+						tmpl = "{}"
+					}
+					c.Value = strings.ReplaceAll(tmpl, "{}", ref)
 				}
 			}
 		}

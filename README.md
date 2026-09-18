@@ -333,6 +333,17 @@ ok  qemu-arm-boot      18 buildroot symbols checked against buildroot 2025.02.16
   (provides (feature hello-silt)))
 ```
 
+`packs/nanopi-r2s` is the same shape with no packages in it at all: a board,
+imported from Buildroot's own defconfig, carrying the four files that defconfig
+pointed at. Composed with this repository's `profile:minimal`, which knows
+nothing about the board, and checked before anyone waits for a build:
+
+```console
+$ silt check --buildroot ~/buildroot --pack packs/nanopi-r2s
+ok  pack nanopi-r2s     0.1.0, 1 fragment(s), br2-external
+ok  nanopi-r2s-minimal  48 buildroot symbols checked against buildroot 2025.02.16
+```
+
 A pack can carry files as well as symbols:
 
 ```lisp

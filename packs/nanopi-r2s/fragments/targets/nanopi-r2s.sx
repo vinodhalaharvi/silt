@@ -1,0 +1,64 @@
+;; Imported by silt import from configs/friendlyarm_nanopi_r2s_defconfig, buildroot 2025.02.16.
+;; The target/profile split is a first cut by rule; the rule is noted on
+;; every line. Move lines between the two fragments freely.
+
+(fragment target:nanopi-r2s
+  (doc "FriendlyARM NanoPi R2S: RK3328, ATF, U-Boot, in-tree DTS")
+
+  ;; mmu is derived: kbuild's .config of the source defconfig has BR2_USE_MMU.
+  ;; The rest is from the board's documentation, which is the only place it
+  ;; could come from: microSD, and a serial console on the three-pin header.
+  ;; No camera connector, and the R2S has no wireless part, so neither is
+  ;; claimed and a feature needing one will refuse to compose onto it.
+  (provides
+    (capability mmu)
+    (capability sdcard)
+    (capability serial-console))
+
+  (buildroot
+    (y BR2_aarch64)                                            ; :1 defined under arch/
+    (y BR2_ARM_FPU_VFPV4)                                      ; :2 defined under arch/
+    (y BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_12)             ; :3 kernel headers follow the kernel
+    (value BR2_TARGET_GENERIC_HOSTNAME "rk3328-nanopi-r2s")    ; :4 names the board
+    (value BR2_TARGET_GENERIC_ISSUE "Welcome to Nanopi R2S RK3328") ; :5 names the board
+    ;; Files this pack carries. (path ...) checks they exist, emits them as
+    ;; $(BR2_EXTERNAL_NANOPI_R2S_PATH)/... for Buildroot to expand, and hashes
+    ;; what is in them: a changed genimage layout is a different image.
+    (path BR2_ROOTFS_POST_BUILD_SCRIPT "board/post-build.sh")
+    ;; Buildroot's own script, not the pack's: it is part of the release, and
+    ;; the (verified-against ...) pin is what makes naming it safe.
+    (value BR2_ROOTFS_POST_IMAGE_SCRIPT "support/scripts/genimage.sh")
+    (path BR2_ROOTFS_POST_SCRIPT_ARGS "board/genimage.cfg" (as "-c {}"))
+    (y BR2_LINUX_KERNEL)                                       ; :9 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_CUSTOM_VERSION)                        ; :10 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE "6.12.13")    ; :11 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG)               ; :12 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_DTS_SUPPORT)                           ; :13 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_INTREE_DTS_NAME "rockchip/rk3328-nanopi-r2s") ; :14 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_INSTALL_TARGET)                        ; :15 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL)                    ; :16 defined under linux/ (kernel)
+    (y BR2_TARGET_ARM_TRUSTED_FIRMWARE)                        ; :20 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_ARM_TRUSTED_FIRMWARE_CUSTOM_VERSION)         ; :21 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_ARM_TRUSTED_FIRMWARE_CUSTOM_VERSION_VALUE "v2.12") ; :22 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_ARM_TRUSTED_FIRMWARE_PLATFORM "rk3328")  ; :23 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_ARM_TRUSTED_FIRMWARE_IMAGES "")          ; :24 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_ARM_TRUSTED_FIRMWARE_NEEDS_ARM32_TOOLCHAIN)  ; :25 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT)                                       ; :26 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_BUILD_SYSTEM_KCONFIG)                  ; :27 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_CUSTOM_VERSION)                        ; :28 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_UBOOT_CUSTOM_VERSION_VALUE "2024.10")    ; :29 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_UBOOT_BOARD_DEFCONFIG "nanopi-r2s-rk3328") ; :30 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_DTC)                             ; :31 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_PYLIBFDT)                        ; :32 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_PYELFTOOLS)                      ; :33 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_OPENSSL)                         ; :34 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_GNUTLS)                          ; :35 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_ATF_BL31)                        ; :36 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_ATF_BL31_ELF)                    ; :37 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_FORMAT_CUSTOM)                         ; :38 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_UBOOT_FORMAT_CUSTOM_NAME "u-boot.itb")   ; :39 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_SPL)                                   ; :40 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_UBOOT_SPL_NAME "idbloader.img")          ; :41 defined under boot/ (bootloader or firmware)
+    (y BR2_PACKAGE_HOST_GENIMAGE)                              ; :42 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_UBOOT_TOOLS)                           ; :43 host tool, typically for boot media
+  ))
