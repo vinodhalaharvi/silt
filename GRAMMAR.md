@@ -63,11 +63,12 @@ Six things can appear at the top of a file. A file holding more than one
 ```ebnf
 fragment        = "(" "fragment" fragment-id { fragment-clause } ")" ;
 
-fragment-clause = doc | provides | requires | scope ;
+fragment-clause = doc | provides | requires | forbids | scope ;
 
 doc             = "(" "doc" string ")" ;
 provides        = "(" "provides" { capability } ")" ;
 requires        = "(" "requires" { capability } ")" ;
+forbids         = "(" "forbids" { capability } ")" ;
 capability      = "(" "capability" name ")" ;
 ```
 
@@ -293,7 +294,7 @@ previously claimed seven, which counted only the constraint forms and was wrong.
 | group | keywords |
 | --- | --- |
 | top level | `fragment` `rules` `image` `capabilities` |
-| fragment | `doc` `provides` `requires` `capability` |
+| fragment | `doc` `provides` `requires` `forbids` `capability` |
 | capability decl | `symbol` |
 | scope | `buildroot` `linux` |
 | constraint | `y` `m` `n` `at-least` `prefer` `value` `path` `when` |

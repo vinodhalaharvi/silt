@@ -45,4 +45,17 @@
   ;; satisfies it with BusyBox udhcpc and profile:standard with
   ;; systemd-networkd. A feature that named either one broke on the other.
   (capability dhcp-client
-    (doc "Something in the image configures the primary interface over DHCP.")))
+    (doc "Something in the image configures the primary interface over DHCP."))
+
+  ;; Forbidding needs every implementation named, not one. A capability with
+  ;; one symbol bound and three implementations in the tree gives an absence
+  ;; claim that reads as verified and is not.
+  (capability remote-shell
+    (doc "Something in the image accepts an interactive login over the network.")
+    (symbol buildroot:BR2_PACKAGE_DROPBEAR)
+    (symbol buildroot:BR2_PACKAGE_OPENSSH))
+
+  (capability compiler
+    (doc "The image carries a compiler or assembler usable on the target.")
+    (symbol buildroot:BR2_PACKAGE_GCC_FINAL)
+    (symbol buildroot:BR2_PACKAGE_BINUTILS)))

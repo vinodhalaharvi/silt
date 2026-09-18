@@ -115,7 +115,16 @@ type CapabilityDecl struct {
 	Name   string
 	Doc    string
 	Symbol SymbolID // optional symbol this capability corresponds to
-	Pos    sexpr.Pos
+	// Symbols are every symbol whose presence means the capability is
+	// available. Repeating (symbol ...) appends here.
+	//
+	// One symbol is enough to say what a capability corresponds to. Forbidding
+	// needs all of them: "nothing that provides a remote shell" is only
+	// checkable if dropbear, openssh and busybox's telnetd are all named.
+	// A capability with one symbol bound and three implementations in the tree
+	// gives an absence claim that reads as verified and is not.
+	Symbols []SymbolID
+	Pos     sexpr.Pos
 }
 
 // Capabilities is a declaration block, one per library.
@@ -126,10 +135,16 @@ type Capabilities struct {
 
 // Fragment is a target, profile or feature.
 type Fragment struct {
-	ID          ID
-	Doc         string
-	Provides    []Capability
-	Requires    []Capability
+	ID       ID
+	Doc      string
+	Provides []Capability
+	Requires []Capability
+	// Forbids is the third relation. provides and requires say what a system
+	// can do; forbids says what it must not be able to do, which is the claim
+	// a hardened appliance actually makes. It is not a synonym for (n SYMBOL):
+	// the point is an absence checkable against everything, rather than one
+	// symbol named by hand.
+	Forbids     []Capability
 	Constraints map[Scope][]Constraint
 	Guards      []Guarded
 	Version     string // (linux (custom-version "..."))

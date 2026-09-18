@@ -130,6 +130,19 @@ func parseFragment(n *sexpr.Node) (*Fragment, error) {
 					"only targets and profiles may, or composition becomes order-dependent", id)
 			}
 			fr.Provides = append(fr.Provides, caps...)
+		case "forbids":
+			caps, err := parseCapabilities(cl)
+			if err != nil {
+				return nil, err
+			}
+			// Any fragment may forbid. A target can rule out what its hardware
+			// cannot support; a profile can rule out what its policy excludes;
+			// a feature can rule out what would break it. Unlike provides,
+			// there is no order dependence to create — forbidding is a
+			// property of the composition, not something another fragment can
+			// satisfy.
+			fr.Forbids = append(fr.Forbids, caps...)
+
 		case "requires":
 			caps, err := parseCapabilities(cl)
 			if err != nil {
@@ -490,7 +503,10 @@ func parseCapabilityDecls(n *sexpr.Node) (*Capabilities, error) {
 				if err != nil {
 					return nil, err
 				}
-				d.Symbol = id
+				if d.Symbol == (SymbolID{}) {
+					d.Symbol = id
+				}
+				d.Symbols = append(d.Symbols, id)
 			default:
 				return nil, errf(opt, "unknown capability clause %q", opt.Head())
 			}

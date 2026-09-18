@@ -193,6 +193,10 @@ type Result struct {
 	// Selected maps a symbol Kconfig will enable via select to the symbol that
 	// selects it. Populated only when the library carries a tree.
 	Selected map[string]string
+	// Forbidden records the absence claims this composition makes, so the
+	// predicted configuration can be checked against them.
+	Forbidden map[string]lang.Capability
+	forbidder map[string]lang.ID
 	// Trees is the registry the image was composed against.
 	Trees map[string]lang.TreeDecl
 	tree  *kconfig.Tree
@@ -267,10 +271,44 @@ func (l *Library) Compose(im *lang.Image) (*Result, error) {
 
 	// Capabilities: a profile or feature that needs something no target
 	// provides fails here, in milliseconds, rather than partway into a build.
+	// Forbidden capabilities are checked before required ones, because a
+	// composition that violates an absence claim is wrong whatever else it
+	// satisfies.
+	forbidden := map[string]lang.Capability{}
+	forbidder := map[string]lang.ID{}
+	for _, fr := range r.Fragments {
+		for _, no := range fr.Forbids {
+			if err := l.checkDeclared(no, fr.ID, "forbids"); err != nil {
+				return nil, err
+			}
+			forbidden[no.Name] = no
+			forbidder[no.Name] = fr.ID
+		}
+	}
+	for _, fr := range r.Fragments {
+		for _, yes := range fr.Provides {
+			if no, bad := forbidden[yes.Name]; bad {
+				return nil, fmt.Errorf(
+					"%s: %s provides capability %q, which %s forbids\n  forbidden at %s",
+					yes.Pos.Short(), fr.ID, yes.Name, forbidder[yes.Name], no.Pos.Short())
+			}
+		}
+	}
+	r.Forbidden = forbidden
+	r.forbidder = forbidder
+
 	for _, fr := range r.Fragments {
 		for _, want := range fr.Requires {
 			if err := l.checkDeclared(want, fr.ID, "requires"); err != nil {
 				return nil, err
+			}
+			// Requiring what the composition forbids is a contradiction worth
+			// naming as one, rather than letting it surface as a missing
+			// provider.
+			if no, bad := forbidden[want.Name]; bad {
+				return nil, fmt.Errorf(
+					"%s: %s requires capability %q, which %s forbids\n  forbidden at %s",
+					want.Pos.Short(), fr.ID, want.Name, forbidder[want.Name], no.Pos.Short())
 			}
 			if _, ok := r.Capabilities[want.Name]; !ok {
 				return nil, fmt.Errorf("%s: capability %q required by %s is not provided by %s\n  %s provides: %s",
