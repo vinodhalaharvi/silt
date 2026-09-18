@@ -1,0 +1,11 @@
+;; The base every customer image derives from. Hardware and userspace, nothing
+;; optional.
+(image customer-base
+  (compose
+    target:qemu-aarch64-virt
+    profile:minimal
+    feature:networking)
+  (opaque
+    (value buildroot:BR2_ROOTFS_POST_IMAGE_SCRIPT "board/qemu/post-image.sh")
+    (value buildroot:BR2_ROOTFS_POST_SCRIPT_ARGS  "$(BR2_DEFCONFIG)"))
+  (verified-against (buildroot "2025.02.16")))

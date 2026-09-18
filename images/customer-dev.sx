@@ -1,0 +1,7 @@
+;; The same system with a way in. One line of difference: the target, the
+;; profile, the networking feature, the opaque values and the release pin all
+;; come from the base rather than being repeated.
+(image customer-dev
+  (compose
+    image:customer-base
+    feature:ssh))
