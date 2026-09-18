@@ -27,6 +27,17 @@
   (capability wifi-sdio
     (doc "The target has an SDIO-attached wireless chipset."))
 
+  ;; Userspace outcomes a profile decides, which packages may need to exist
+  ;; at all: k3s ships systemd units and is built against glibc, and neither
+  ;; is a property of a board.
+  (capability systemd-init
+    (doc "PID 1 is systemd, so a package may ship units and expect them run.")
+    (symbol buildroot:BR2_INIT_SYSTEMD))
+
+  (capability glibc
+    (doc "The C library is glibc: binaries built against it will run.")
+    (symbol buildroot:BR2_TOOLCHAIN_USES_GLIBC))
+
   (capability csi-camera
     (doc "The target has a CSI camera interface."))
 

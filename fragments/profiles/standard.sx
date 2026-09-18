@@ -26,4 +26,6 @@
   ;; second client means two daemons racing for one lease — dhcpcd lost, loudly,
   ;; on every boot before this.
   (provides
-    (capability dhcp-client)))
+    (capability dhcp-client)
+    (capability systemd-init)
+    (capability glibc)))

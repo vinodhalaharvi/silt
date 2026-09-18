@@ -1,0 +1,78 @@
+;; k3s: what it needs of Buildroot, of userspace, and of the kernel.
+;;
+;; The kernel list is not from memory. It is k3s's own contrib/util/check-config.sh
+;; at 4c6e5fd, the script k3s tells people to run on a machine that will not
+;; start pods, transcribed symbol for symbol. `silt check --linux DIR` verifies
+;; every one of them exists in the kernel being configured, which is the check
+;; that does not exist anywhere else: today the way you learn one is wrong is
+;; that a pod stays Pending, an hour into a build.
+
+(fragment feature:k3s
+
+  (doc "Lightweight Kubernetes: API server, kubelet, containerd, flannel, CoreDNS in one binary")
+
+  ;; k3s ships systemd units and is built against glibc. Neither is a
+  ;; property of a board, so they are required of the profile rather than
+  ;; stated here: composing this onto profile:minimal, which is musl and
+  ;; BusyBox init, fails at the composition rather than at the build.
+  (requires
+    (capability mmu)
+    (capability systemd-init)
+    (capability glibc))
+
+  (buildroot
+    (y BR2_PACKAGE_K3S))
+
+  ;; The rootfs has to hold a 60MB binary and the container images it unpacks,
+  ;; so 2G is a realistic minimum — but a feature cannot say that. Stating
+  ;; the size here conflicted with profile:standard, correctly: the size is
+  ;; the image's to choose, and Silt has no way to express "at least this
+  ;; much" about a value. So the image overrides it and this says why.
+
+  (linux
+    ;; The options check-config.sh does not mention, because on a distribution
+    ;; kernel they are already on: everything below hangs off these, and
+    ;; `silt complete --linux` reported twenty of the symbols below being
+    ;; dropped by kbuild until they were stated.
+    (y CONFIG_NET) (y CONFIG_INET) (y CONFIG_NETFILTER)
+    (y CONFIG_NETFILTER_ADVANCED)
+    (y CONFIG_NETFILTER_XTABLES)
+    (y CONFIG_NF_CONNTRACK)
+    (y CONFIG_IP_NF_IPTABLES)
+    (y CONFIG_NETFILTER_NETLINK)
+    (y CONFIG_HUGETLBFS)
+
+    ;; Generally necessary, from check-config.sh's own `flags` list.
+    (y CONFIG_NAMESPACES) (y CONFIG_NET_NS) (y CONFIG_PID_NS)
+    (y CONFIG_IPC_NS) (y CONFIG_UTS_NS)
+    (y CONFIG_CGROUPS) (y CONFIG_CGROUP_PIDS) (y CONFIG_CGROUP_CPUACCT)
+    (y CONFIG_CGROUP_DEVICE) (y CONFIG_CGROUP_FREEZER) (y CONFIG_CGROUP_SCHED)
+    (y CONFIG_CPUSETS) (y CONFIG_MEMCG)
+    (y CONFIG_SECCOMP) (y CONFIG_KEYS)
+    (y CONFIG_VETH) (y CONFIG_BRIDGE) (y CONFIG_BRIDGE_NETFILTER)
+    (y CONFIG_IP_NF_FILTER) (y CONFIG_IP_NF_TARGET_MASQUERADE)
+    (y CONFIG_IP_NF_TARGET_REJECT)
+    (y CONFIG_NETFILTER_XT_MATCH_ADDRTYPE) (y CONFIG_NETFILTER_XT_MATCH_CONNTRACK)
+    (y CONFIG_NETFILTER_XT_MATCH_IPVS) (y CONFIG_NETFILTER_XT_MATCH_COMMENT)
+    (y CONFIG_NETFILTER_XT_MATCH_MULTIPORT) (y CONFIG_NETFILTER_XT_MATCH_STATISTIC)
+    (y CONFIG_IP_NF_NAT) (y CONFIG_NF_NAT)
+    (y CONFIG_POSIX_MQUEUE)
+
+    ;; Storage and the overlay driver containerd uses.
+    (y CONFIG_OVERLAY_FS)
+    (y CONFIG_EXT4_FS) (y CONFIG_EXT4_FS_POSIX_ACL) (y CONFIG_EXT4_FS_SECURITY)
+
+    ;; flannel's default backend.
+    (y CONFIG_VXLAN)
+
+    ;; Optional in check-config.sh, but kube-proxy's ipvs mode and the
+    ;; scheduler's CPU accounting want them, and an appliance has no one
+    ;; to turn them on later.
+    (y CONFIG_BLK_CGROUP) (y CONFIG_BLK_DEV_THROTTLING)
+    (y CONFIG_CGROUP_PERF) (y CONFIG_CGROUP_HUGETLB)
+    (y CONFIG_NET_CLS_CGROUP) (y CONFIG_CGROUP_NET_PRIO)
+    (y CONFIG_CFS_BANDWIDTH) (y CONFIG_FAIR_GROUP_SCHED)
+    (y CONFIG_IP_SET) (y CONFIG_IP_VS) (y CONFIG_IP_VS_NFCT)
+    (y CONFIG_IP_VS_PROTO_TCP) (y CONFIG_IP_VS_PROTO_UDP) (y CONFIG_IP_VS_RR)
+    (y CONFIG_IP_NF_TARGET_REDIRECT)
+    (y CONFIG_USER_NS)))

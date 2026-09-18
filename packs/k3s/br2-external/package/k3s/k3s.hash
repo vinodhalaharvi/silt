@@ -1,0 +1,5 @@
+# Upstream, from the release's own sha256sum-<arch>.txt:
+# https://github.com/k3s-io/k3s/releases/download/v1.31.14%2Bk3s1/sha256sum-arm64.txt
+sha256  ce16d95de12a85ddf2e72359401dd50dae396cc7725e26f09e2bbb78dae4e555  k3s-arm64
+# https://github.com/k3s-io/k3s/releases/download/v1.31.14%2Bk3s1/sha256sum-amd64.txt
+sha256  660c48d525e5fa2c2ddd889a25ce2c18c961e3046cc083cbde8557a8ff1ddb46  k3s

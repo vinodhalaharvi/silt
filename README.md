@@ -333,6 +333,15 @@ ok  qemu-arm-boot      18 buildroot symbols checked against buildroot 2025.02.16
   (provides (feature hello-silt)))
 ```
 
+`packs/k3s` is the case the cross-tree argument was made for: a package Buildroot
+does not ship, a userspace k3s cannot choose for itself, and fifty kernel options
+in another tree in another format. The kernel list is k3s's own
+`contrib/util/check-config.sh`, transcribed symbol for symbol, and
+`silt complete --linux` reported twenty of them being dropped by kbuild — every
+one hanging off a `CONFIG_NETFILTER*` parent the script never mentions, because
+on a distribution kernel it is already on. That is the hour-into-a-build
+discovery, made in a second.
+
 `packs/nanopi-r2s` is the same shape with no packages in it at all: a board,
 imported from Buildroot's own defconfig, carrying the four files that defconfig
 pointed at. Composed with this repository's `profile:minimal`, which knows

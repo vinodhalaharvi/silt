@@ -1,0 +1,1 @@
+source "$BR2_EXTERNAL_K3S_PATH/package/k3s/Config.in"

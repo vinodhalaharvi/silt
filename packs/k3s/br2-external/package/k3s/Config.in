@@ -1,0 +1,24 @@
+config BR2_PACKAGE_K3S_ARCH_SUPPORTS
+	bool
+	default y if BR2_aarch64
+	default y if BR2_x86_64
+
+config BR2_PACKAGE_K3S
+	bool "k3s"
+	depends on BR2_PACKAGE_K3S_ARCH_SUPPORTS
+	depends on BR2_TOOLCHAIN_USES_GLIBC
+	depends on BR2_INIT_SYSTEMD
+	depends on BR2_USE_MMU
+	help
+	  Lightweight Kubernetes: a single binary containing the API server,
+	  kubelet, containerd, runc, flannel and CoreDNS.
+
+	  The upstream release binary is installed as is; k3s is not built
+	  from source here. It is roughly 60MB, so a rootfs of at least 1GB
+	  and 2GB of RAM are realistic minimums.
+
+	  https://k3s.io
+
+comment "k3s needs a glibc toolchain, systemd and an MMU"
+	depends on BR2_PACKAGE_K3S_ARCH_SUPPORTS
+	depends on !BR2_TOOLCHAIN_USES_GLIBC || !BR2_INIT_SYSTEMD || !BR2_USE_MMU

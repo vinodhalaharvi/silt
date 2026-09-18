@@ -1,0 +1,23 @@
+;; Kubernetes as an appliance, on the QEMU machine everything else here boots.
+;;
+;; Three packs' worth of parts and none of them know about each other: the
+;; target is Buildroot's QEMU board, the profile is this repository's glibc and
+;; systemd userspace, and feature:k3s comes from packs/k3s with its own package
+;; and its own kernel options. What makes it composable is that k3s states what
+;; it needs of userspace as capabilities rather than deciding it.
+
+(image qemu-arm-k3s
+
+  (compose
+    target:qemu-aarch64-virt
+    profile:standard
+    feature:networking
+    feature:k3s)
+
+  ;; feature:k3s cannot ask for this: a value has no "at least", and stating
+  ;; a size in the feature conflicts with the profile that already chose one.
+  ;; 60MB of binary plus the images it unpacks needs the room.
+  (override
+    (value buildroot:BR2_TARGET_ROOTFS_EXT2_SIZE "2G"))
+
+  (verified-against (buildroot "2025.02.16")))

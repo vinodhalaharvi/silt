@@ -83,6 +83,11 @@ fi
 readme="$br/board/qemu/aarch64-virt/readme.txt"
 [[ -f $readme ]] || { echo "no board readme at $readme" >&2; exit 2; }
 qemu=$(grep -o 'qemu-system-[^#]*' "$readme" | head -1 | sed "s#output/images#$out/build/images#g")
+# An image may need more of the machine than the board's readme assumes: k3s
+# wants 2GB and two cores, and the readme is written for the smallest system
+# that boots. The extras live next to the assertions.
+extra="${expect%.expect}.qemu"
+[[ -f $extra ]] && qemu="$qemu $(tr -d '\n' < "$extra")"
 [[ -n $qemu ]] || { echo "no qemu command found in $readme" >&2; exit 2; }
 echo "+ $qemu"
 [[ $dry -eq 1 ]] && exit 0

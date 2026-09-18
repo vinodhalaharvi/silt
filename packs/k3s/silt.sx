@@ -1,0 +1,20 @@
+;; k3s as an appliance.
+;;
+;; The pack that makes the cross-tree argument concrete: k3s needs a package
+;; Buildroot does not ship, a userspace it cannot choose for itself, and about
+;; forty kernel options in a different tree, in a different format, checked by
+;; nothing. Getting one of those forty wrong is discovered when a pod will not
+;; start, an hour into a build.
+
+(pack k3s
+  (version "0.1.0")
+  (doc "k3s: the package, the kernel options it needs, and what it requires of userspace")
+
+  (requires
+    (buildroot "2025.02.16")
+    (linux ">=6.1"))
+
+  (external "br2-external")
+
+  (provides
+    (feature k3s)))

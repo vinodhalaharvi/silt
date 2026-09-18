@@ -1,0 +1,8 @@
+# k3s takes a while to come up: it unpacks its images, generates certificates
+# and waits for the API server. The timeout on ci/boot-test.sh needs raising
+# well past the default for this one.
+
+k3s --version	k3s version v1.31.14
+systemctl is-active k3s	active
+kubectl get nodes	Ready
+kubectl get pods -A	coredns
