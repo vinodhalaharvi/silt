@@ -40,6 +40,7 @@ const usage = `silt — composable S-expressions over Kconfig
                                     content address of a composed image: its
                                     configuration, its trees and the host
   silt why SYMBOL IMAGE.sx          why a symbol has the value it has
+        [--buildroot DIR]           also answer for symbols no fragment states
   silt solve IMAGE.sx --buildroot DIR
                                     ask the Kconfig model whether it can exist
   silt complete IMAGE.sx --buildroot DIR
@@ -296,8 +297,21 @@ func cmdCheck(args []string) error {
 			versions = append(versions, string(sc)+" "+ver)
 		}
 
+		// check is conservative: unstated is unknown, never false, so it
+		// catches contradictions but never "you did not say enough". The
+		// evaluator catches exactly that, by predicting what kbuild would
+		// write and comparing it with what the image asked for. Running both
+		// under one command means CI notices a dropped line the day it
+		// appears rather than at the next build.
+		if dropped, err := predictionDrops(res, brDir, tree); err != nil {
+			rep.Findings = append(rep.Findings, verify.Finding{
+				Pos: im.Pos.Short(), Message: "could not predict: " + err.Error()})
+		} else {
+			rep.Findings = append(rep.Findings, dropped...)
+		}
+
 		if rep.OK() {
-			fmt.Printf("ok  %-18s %s symbols checked against %s\n",
+			fmt.Printf("ok  %-18s %s symbols checked against %s, prediction agrees\n",
 				im.Name, strings.Join(against, ", "), strings.Join(versions, ", "))
 			continue
 		}
@@ -313,6 +327,64 @@ func cmdCheck(args []string) error {
 	fmt.Printf("ok  %d files, %d fragments, %d rule blocks, %d images\n",
 		len(files), nf, nr, len(images))
 	return nil
+}
+
+// predictionDrops reports symbols an image states that the predicted
+// configuration does not agree with.
+//
+// This is the silent drop, caught before a build rather than after: kbuild
+// deletes a symbol whose dependencies are unmet rather than writing
+// "# X is not set", so a fragment can ask for something and get nothing with
+// exit 0 and no output. Absent satisfies n and nothing else.
+func predictionDrops(res *compose.Result, brDir string, tree *kconfig.Tree) ([]verify.Finding, error) {
+	env, err := buildrootEnv(brDir)
+	if err != nil {
+		return nil, err
+	}
+	menu, err := kconfig.LoadMenu("Config.in", kconfig.Options{Root: brDir, Env: env})
+	if err != nil {
+		return nil, err
+	}
+	paths := map[string]string{}
+	for _, tr := range emit.Trees(res) {
+		paths[tr] = emit.FileName(tr)
+	}
+	def, err := emit.BuildrootDefconfig(res, paths)
+	if err != nil {
+		return nil, err
+	}
+	assign, err := kconfig.ReadAssignments(strings.NewReader(def))
+	if err != nil {
+		return nil, err
+	}
+	cfg := menu.Evaluate(assign).Config()
+
+	var out []verify.Finding
+	for _, c := range res.Constraints[lang.Buildroot] {
+		if c.Soft || c.IsValue {
+			continue
+		}
+		if _, known := tree.Symbols[c.Sym.Name]; !known {
+			continue // verify already reports unknown symbols
+		}
+		got, present := cfg[c.Sym.Name]
+		want := c.Want.String()
+		if !present {
+			got = "absent"
+		}
+		if want == "n" && (!present || got == "n") {
+			continue
+		}
+		if got == want {
+			continue
+		}
+		out = append(out, verify.Finding{
+			Pos: c.Pos.Short(), Symbol: c.Sym.Name,
+			Message: fmt.Sprintf("%s: asked for %s, kbuild would write %s", c.Sym, want, got),
+			Detail:  "stated by " + c.From,
+		})
+	}
+	return out, nil
 }
 
 // otherScopes lists the trees an image configures beyond Buildroot, sorted.
@@ -818,12 +890,25 @@ func solutionInputs(brDir, lxDir string, decls map[string]lang.TreeDecl, r *comp
 // rule-derived symbols; symbols that only a solved model would settle are
 // reported as such rather than guessed at.
 func cmdWhy(args []string) error {
-	if len(args) != 2 {
-		return fmt.Errorf("usage: silt why SYMBOL IMAGE.sx")
+	var rest []string
+	var brDir string
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--buildroot" {
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("--buildroot needs a directory")
+			}
+			brDir = args[i]
+			continue
+		}
+		rest = append(rest, args[i])
 	}
-	sym, target := args[0], args[1]
+	if len(rest) != 2 {
+		return fmt.Errorf("usage: silt why SYMBOL IMAGE.sx [--buildroot DIR]")
+	}
+	sym, target := rest[0], rest[1]
 
-	files, err := loadAll([]string{"fragments"})
+	files, err := loadWithSiblings("fragments", target)
 	if err != nil {
 		return err
 	}
@@ -871,9 +956,46 @@ func cmdWhy(args []string) error {
 			return nil
 		}
 	}
-	fmt.Printf("%s is not stated by any composed fragment and no rule derives it.\n", sym)
-	fmt.Printf("Its value would be decided by Kconfig defaults, which needs the\n")
-	fmt.Printf("importer and the solver (Rungs 4-7).\n")
+	// Nothing in the composition mentions it, which is the common case: an
+	// image states twenty symbols and kbuild writes four hundred. The
+	// evaluator decided every one of them and can say why.
+	if brDir == "" {
+		fmt.Printf("%s is not stated by any composed fragment and no rule derives it.\n", sym)
+		fmt.Printf("Pass --buildroot DIR and silt will ask the evaluator why kbuild\n")
+		fmt.Printf("gives it the value it does.\n")
+		return nil
+	}
+	return whyFromEvaluator(r, brDir, sym)
+}
+
+// whyFromEvaluator answers for a symbol no fragment mentions, by asking the
+// same evaluation that predicts the configuration.
+func whyFromEvaluator(res *compose.Result, brDir, sym string) error {
+	env, err := buildrootEnv(brDir)
+	if err != nil {
+		return err
+	}
+	menu, err := kconfig.LoadMenu("Config.in", kconfig.Options{Root: brDir, Env: env})
+	if err != nil {
+		return err
+	}
+	paths := map[string]string{}
+	for _, tr := range emit.Trees(res) {
+		paths[tr] = emit.FileName(tr)
+	}
+	def, err := emit.BuildrootDefconfig(res, paths)
+	if err != nil {
+		return err
+	}
+	assign, err := kconfig.ReadAssignments(strings.NewReader(def))
+	if err != nil {
+		return err
+	}
+	name := sym
+	if i := strings.IndexByte(name, ':'); i >= 0 {
+		name = name[i+1:]
+	}
+	fmt.Print(menu.Evaluate(assign).Why(name).Format())
 	return nil
 }
 
