@@ -37,6 +37,9 @@ endef
 define K3S_INSTALL_INIT_SYSTEMD
 	$(INSTALL) -D -m 0644 $(K3S_PKGDIR)/k3s.service \
 		$(TARGET_DIR)/usr/lib/systemd/system/k3s.service
+	mkdir -p $(TARGET_DIR)/etc/systemd/system/multi-user.target.wants
+	ln -sf ../../../../usr/lib/systemd/system/k3s.service \
+		$(TARGET_DIR)/etc/systemd/system/multi-user.target.wants/k3s.service
 endef
 
 $(eval $(generic-package))
