@@ -1,0 +1,1 @@
+source "$BR2_EXTERNAL_WASM_RUNTIME_PATH/package/wasmtime/Config.in"

@@ -1,0 +1,24 @@
+[Unit]
+Description=WebAssembly component
+After=network-online.target
+
+[Service]
+EnvironmentFile=/etc/default/wasm-component
+ExecStart=/usr/bin/wasmtime run ${GRANT_DIRS} ${GRANT_NET} ${GRANT_ENV} ${COMPONENT}
+
+# The component gets no more of the host than systemd gives this unit, which
+# is the second half of the sandbox: wasmtime confines the guest, systemd
+# confines wasmtime.
+DynamicUser=no
+User=root
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ReadWritePaths=/var/lib/component
+
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target

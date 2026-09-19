@@ -1,0 +1,29 @@
+;; Wasmtime, and one component run under grants the image states.
+;;
+;; The grants are the appliance's security policy and they live in
+;; /etc/default/wasm-component as wasmtime CLI flags. That is not a
+;; workaround: wasmtime denies by default, and every flag is a widening.
+;; As of wasmtime 48 the runtime's own default configuration denies creating
+;; TCP and UDP sockets, and filesystem permissions are per-directory and
+;; either read-only or read-write.
+;;
+;; Because the file is carried with path-append, its contents are in the
+;; solution hash. So "this image grants read access to one directory and no
+;; network" is content-addressed, and an image whose grants were widened is a
+;; different image by identity, not just by content.
+
+(fragment feature:wasm-runtime
+
+  (doc "Wasmtime plus a component, run under explicit grants")
+
+  (requires
+    (capability mmu)
+    (capability glibc)        ; the release binaries link against glibc
+    (capability systemd-init))
+
+  (buildroot
+    (y BR2_PACKAGE_WASMTIME)
+
+    ;; The runtime's configuration, the unit, the component, and the symlink
+    ;; that enables it.
+    (path-append BR2_ROOTFS_OVERLAY "files")))

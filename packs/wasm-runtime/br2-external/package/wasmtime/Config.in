@@ -1,0 +1,51 @@
+config BR2_PACKAGE_WASMTIME_ARCH_SUPPORTS
+	bool
+	default y if BR2_aarch64
+	default y if BR2_x86_64
+
+config BR2_PACKAGE_WASMTIME
+	bool "wasmtime"
+	depends on BR2_PACKAGE_WASMTIME_ARCH_SUPPORTS
+	depends on BR2_TOOLCHAIN_USES_GLIBC
+	depends on !BR2_STATIC_LIBS
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	help
+	  A WebAssembly runtime, from the Bytecode Alliance. Installed from
+	  the upstream release binary rather than built: wasmtime is a large
+	  Rust program with its own compiler backend, and building it from
+	  source means a Rust toolchain and an hour, to produce the binary
+	  upstream already publishes.
+
+	  The release carries two binaries. wasmtime is 59MB and includes
+	  Cranelift, which compiles WebAssembly to native code. wasmtime-min
+	  is 4MB and is the size-optimised build. Which one is installed is
+	  the choice below, and it is a real one: an appliance that runs a
+	  component every few seconds does not need a JIT compiler.
+
+	  https://wasmtime.dev
+
+if BR2_PACKAGE_WASMTIME
+
+choice
+	prompt "wasmtime build"
+	default BR2_PACKAGE_WASMTIME_MIN
+
+config BR2_PACKAGE_WASMTIME_MIN
+	bool "wasmtime-min (4MB)"
+	help
+	  The size-optimised build. Right for an appliance running known
+	  components on a schedule.
+
+config BR2_PACKAGE_WASMTIME_FULL
+	bool "wasmtime (59MB)"
+	help
+	  The full build, including the Cranelift compiler. Right where
+	  component start-up latency or throughput matters.
+
+endchoice
+
+endif
+
+comment "wasmtime needs a glibc toolchain with threads and shared libraries"
+	depends on BR2_PACKAGE_WASMTIME_ARCH_SUPPORTS
+	depends on !BR2_TOOLCHAIN_USES_GLIBC || BR2_STATIC_LIBS || !BR2_TOOLCHAIN_HAS_THREADS

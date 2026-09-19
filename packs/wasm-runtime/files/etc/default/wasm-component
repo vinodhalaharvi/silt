@@ -1,0 +1,19 @@
+# The appliance's security policy, as wasmtime flags.
+#
+# wasmtime denies by default: a component gets no filesystem, no network, no
+# environment and no clock beyond what is granted here. Every line below is a
+# widening, and the file's contents are in the image's solution hash — so
+# widening a grant changes the appliance's identity, which is the point.
+
+COMPONENT=/opt/components/hello.wasm
+
+# Filesystem: host path :: guest path. Nothing else is visible, and the
+# component cannot name a path outside what is mapped.
+GRANT_DIRS=--dir /var/lib/component::/data
+
+# Network: denied. Remove the =n to grant it, and think about why first.
+GRANT_NET=-S inherit-network=n
+
+# Environment: nothing inherited. A component that needs a value gets it
+# named explicitly, which is also what makes it auditable.
+GRANT_ENV=

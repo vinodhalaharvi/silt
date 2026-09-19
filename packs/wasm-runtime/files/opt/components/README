@@ -1,0 +1,12 @@
+Components go here.
+
+hello.wasm is not in this repository: a component is code, and which component
+an appliance runs is a deployment decision rather than a property of the
+image. Build one and drop it in, and the overlay carries it — at which point
+its contents are in the solution hash, and "which logic shipped on which
+device" has an answer.
+
+    wat2wasm hello.wat -o packs/wasm-runtime/files/opt/components/hello.wasm
+
+The unit refuses to start without it rather than starting and doing nothing,
+which is the same reasoning as the model placeholder in packs/inference.

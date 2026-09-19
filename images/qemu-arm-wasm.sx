@@ -1,0 +1,18 @@
+;; An appliance that can be extended without a shell.
+;;
+;; profile:hardened forbids remote-shell and compiler, so there is no way to
+;; put new native code on this box. New behaviour arrives as a component,
+;; which runs under the grants in /etc/default/wasm-component and can do
+;; nothing else. That is the whole argument: extensibility and a locked-down
+;; image are usually a trade, and components are the one mechanism where they
+;; are not.
+
+(image qemu-arm-wasm
+
+  (compose
+    target:qemu-aarch64-virt
+    profile:standard
+    feature:networking
+    feature:wasm-runtime)
+
+  (verified-against (buildroot "2025.02.16")))

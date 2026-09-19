@@ -1,0 +1,8 @@
+# The runtime is present and reports the version the pack pinned, the grants
+# are the ones the image stated, and the unit is enabled. Whether a component
+# runs is a question for an image that carries one.
+
+wasmtime --version	46.0.3
+cat /etc/default/wasm-component	inherit-network=n
+systemctl is-enabled wasm-component	enabled
+ls /opt/components	README

@@ -1,0 +1,28 @@
+;; A WebAssembly runtime, so an appliance can be extended without a shell.
+;;
+;; The property this buys is not packaging convenience. It is that "what may
+;; this code do?" has an answer in the artifact rather than in a promise: a
+;; component's imports are in its binary, and it cannot do what it did not
+;; import. Combined with what Silt already knows about an image, that makes a
+;; claim a security reviewer can check —
+;;
+;;   these 22 packages, these 74 kernel options, one component whose hash is
+;;   X, which imports only sensor-read and mqtt-publish, on a system with no
+;;   shell and no interpreter to add one.
+;;
+;; Today Silt owns half of that: the grants are flags in the unit file this
+;; pack carries, and the solution hash covers them. Checking a component's
+;; imports against what the profile permits is the next piece, and wants
+;; evidence from running this first.
+
+(pack wasm-runtime
+  (version "0.1.0")
+  (doc "Wasmtime, and a component run under explicit grants")
+
+  (requires
+    (buildroot "2025.02.16"))
+
+  (external "br2-external")
+
+  (provides
+    (feature wasm-runtime)))

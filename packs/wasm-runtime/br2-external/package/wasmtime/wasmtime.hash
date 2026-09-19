@@ -1,0 +1,4 @@
+# Upstream release binaries, hashes computed from the published tarballs:
+# https://github.com/bytecodealliance/wasmtime/releases/tag/v46.0.3
+sha256  99aa698281ce7c18cb174899df86296d730bf39d6e4826ae6e56a773e0cbe53f  wasmtime-v46.0.3-aarch64-linux.tar.xz
+sha256  a13087bea96394e183a205d653e7337d50b596aca3090d496330efc770a54121  wasmtime-v46.0.3-x86_64-linux.tar.xz
