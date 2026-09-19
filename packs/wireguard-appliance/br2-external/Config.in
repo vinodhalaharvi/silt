@@ -1,0 +1,3 @@
+# No packages: this pack is three files and two systemd units. The binaries
+# it uses — wg, ip, mkfs.ext4 — come from Buildroot packages the fragment
+# states. The file exists because br2-external requires it.

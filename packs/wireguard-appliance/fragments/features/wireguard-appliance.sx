@@ -1,0 +1,41 @@
+;; Provisioning, and no login prompt.
+;;
+;; Two problems one pack solves, because both are files rather than symbols.
+;;
+;; The login prompt: profile:locked sets BR2_TARGET_GENERIC_GETTY=n, and a
+;; boot showed the prompt anyway. That symbol governs Buildroot's own getty
+;; setup; under systemd the console login is serial-getty@.service, generated
+;; from systemd's presets against the console on the kernel command line, and
+;; no Kconfig symbol reaches it. The overlay masks it — a symlink to /dev/null,
+;; systemd's own way of saying a unit can never start — along with getty@ and
+;; console-getty. Boot messages still print, which is the point: they are the
+;; evidence, and they are how anyone diagnoses a board that will not come up.
+;;
+;; The provisioning: the appliance formats its state partition if blank,
+;; generates a keypair if it has none, brings up wg0 and prints the public key
+;; on the console. Nothing can connect until a peer is added, which is the one
+;; step a deployment must do and the one step that cannot be done in advance.
+
+(fragment feature:wireguard-appliance
+
+  (doc "First-boot WireGuard provisioning on a state partition, and no console login")
+
+  (requires
+    (capability mmu)
+    (capability systemd-init))
+
+  (buildroot
+    ;; blkid and mountpoint, to tell a blank disk from a provisioned one and
+    ;; an already-mounted directory from an empty one. Busybox has both but
+    ;; not reliably enough to depend on across configurations.
+    (y BR2_PACKAGE_UTIL_LINUX)
+    (y BR2_PACKAGE_UTIL_LINUX_BINARIES)
+
+    ;; mkfs.ext4 for the state partition on first boot.
+    (y BR2_PACKAGE_E2FSPROGS)
+
+    ;; ip(8). wg-quick is deliberately not used: it is a bash script, and
+    ;; bash is a shell this appliance has no reason to carry.
+    (y BR2_PACKAGE_IPROUTE2)
+
+    (path-append BR2_ROOTFS_OVERLAY "files")))

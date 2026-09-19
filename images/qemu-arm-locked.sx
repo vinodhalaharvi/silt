@@ -1,9 +1,16 @@
 ;; The VPN appliance with nothing to log into.
 ;;
-;; Same target and same feature as qemu-arm-vpn; only the profile differs.
-;; What that costs: there is no console login, so the only way to see inside
-;; is to mount the image. What it buys is in ci/boot/qemu-arm-locked.expect,
-;; which is the only place any claim about this image is made.
+;; feature:wireguard puts the driver and wg(8) in the image;
+;; feature:wireguard-appliance is what makes it an appliance rather than a
+;; box with WireGuard available — it generates a keypair on first boot, brings
+;; up wg0 and prints the public key, because a machine with no login has no
+;; other way to tell you its identity.
+;;
+;; The first boot of this image without that feature found something: the
+;; password was locked, so login failed with "bad salt", but the prompt was
+;; still there. BR2_TARGET_GENERIC_GETTY=n governs Buildroot's getty and not
+;; systemd's, and no Kconfig symbol reaches serial-getty@.service. The pack
+;; masks it.
 
 (image qemu-arm-locked
 
@@ -11,6 +18,7 @@
     target:qemu-aarch64-virt
     profile:locked
     feature:networking
-    feature:wireguard)
+    feature:wireguard
+    feature:wireguard-appliance)
 
   (verified-against (buildroot "2025.02.16")))

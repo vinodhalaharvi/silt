@@ -1,0 +1,29 @@
+;; What turns "WireGuard is installed" into "this is a VPN appliance".
+;;
+;; A box nobody can log into that also does nothing is a brick with good
+;; provenance. This pack makes the appliance alive on first boot: it formats
+;; its state partition if it is blank, generates a keypair if there is none,
+;; brings up wg0, and prints the public key on the console. There are no
+;; peers until someone adds one, which is the only part a deployment has to
+;; supply.
+;;
+;; It also masks the login prompt, which profile:locked could not do on its
+;; own. BR2_TARGET_GENERIC_GETTY=n governs Buildroot's own getty setup; under
+;; systemd the console login comes from serial-getty@.service, generated from
+;; systemd's presets and the console named on the kernel command line, and no
+;; Kconfig symbol reaches it. A boot found that: the password was locked, so
+;; login failed with "bad salt", but the prompt was still there. Masking is a
+;; symlink to /dev/null, which is systemd's own mechanism for "this unit can
+;; never start".
+
+(pack wireguard-appliance
+  (version "0.1.0")
+  (doc "First-boot provisioning for a WireGuard appliance, and no console login")
+
+  (requires
+    (buildroot "2025.02.16"))
+
+  (external "br2-external")
+
+  (provides
+    (feature wireguard-appliance)))

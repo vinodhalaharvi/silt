@@ -1,0 +1,18 @@
+[Unit]
+Description=WireGuard appliance provisioning
+After=network-pre.target
+Wants=network-pre.target
+DefaultDependencies=no
+After=sysinit.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/wg-appliance/provision.sh
+
+# The console, so the public key is readable on a machine with no login.
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

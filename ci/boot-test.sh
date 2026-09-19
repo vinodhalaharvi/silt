@@ -90,6 +90,17 @@ fi
 readme="$br/board/qemu/aarch64-virt/readme.txt"
 [[ -f $readme ]] || { echo "no board readme at $readme" >&2; exit 2; }
 qemu=$(grep -o 'qemu-system-[^#]*' "$readme" | head -1 | sed "s#output/images#$out/build/images#g")
+
+# An appliance that keeps state needs somewhere to keep it: the root
+# filesystem is read-only, so a private key on it would be lost, and one on a
+# tmpfs would be regenerated every boot — a new identity each time, and every
+# peer that trusted the old one invalidated. A second disk, created empty and
+# formatted by the appliance on first boot.
+if [[ -f ${expect%.expect}.state ]]; then
+	state="$out/state.img"
+	[[ -f $state ]] || qemu-img create -f raw "$state" "$(cat "${expect%.expect}.state")" >/dev/null
+	qemu="$qemu -drive file=$state,if=none,format=raw,id=hd1 -device virtio-blk-device,drive=hd1"
+fi
 # An image may need more of the machine than the board's readme assumes: k3s
 # wants 2GB and two cores, and the readme is written for the smallest system
 # that boots. The extras live next to the assertions.

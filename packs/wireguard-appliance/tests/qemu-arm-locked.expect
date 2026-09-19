@@ -1,0 +1,7 @@
+# This image has no login, so these are read from the boot log rather than
+# typed. ci/boot-test.sh --no-login records the console; the assertions below
+# are what that log must contain.
+
+Reached target Multi-User System	Multi-User
+wg-appliance: generating a keypair	keypair
+WireGuard appliance ready	public key:
