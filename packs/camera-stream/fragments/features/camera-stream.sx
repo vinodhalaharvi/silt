@@ -1,0 +1,32 @@
+;; The appliance's one job: encode a video source and send it to one peer.
+;;
+;; It carries three files and states no symbols of its own. The pipeline is a
+;; systemd unit, its destination is /etc/default/camera-stream, and the unit
+;; is enabled by a symlink in the overlay — because installing a unit and
+;; enabling it are two different things, which a k3s image learned the hard
+;; way by booting with its service never started.
+;;
+;; There is no transport here. The unit sends to whatever address the config
+;; names and the kernel routes it: a LAN address on the bench, a WireGuard
+;; address in the field. Compose feature:wireguard alongside and neither
+;; fragment needs to know about the other.
+
+(fragment feature:camera-stream
+
+  (doc "H.264 over RTP/UDP to one peer, as a systemd service")
+
+  ;; It cannot require feature:gstreamer: only targets and profiles provide
+  ;; capabilities, because a feature providing one would make composition
+  ;; order-dependent. So the image names both features, and this says which
+  ;; elements the unit expects to find.
+  (requires
+    (capability mmu)
+    (capability systemd-init))
+
+  (buildroot
+    ;; The unit, its defaults, and the symlink that enables it. (path ...)
+    ;; checks the directory exists before anything builds, emits it as
+    ;; $(BR2_EXTERNAL_CAMERA_STREAM_PATH)/files for Buildroot to expand, and
+    ;; hashes its contents into the solution — a changed pipeline is a
+    ;; different appliance.
+    (path-append BR2_ROOTFS_OVERLAY "files")))

@@ -1,0 +1,17 @@
+;; The same appliance on real hardware, streaming over WireGuard.
+;;
+;; Three features, none of which knows about the others: gstreamer encodes,
+;; camera-stream sends to an address, wireguard is what that address routes
+;; through. The pipeline has no idea it is inside a tunnel.
+
+(image odroid-c2-camera
+
+  (compose
+    target:odroidc2
+    profile:standard
+    feature:networking
+    feature:wireguard
+    feature:gstreamer
+    feature:camera-stream)
+
+  (verified-against (buildroot "2025.02.16")))

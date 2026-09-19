@@ -285,17 +285,18 @@ func parseConstraint(n *sexpr.Node, sc Scope, from string) (Constraint, error) {
 		}
 		return Constraint{Sym: s, Want: t, Soft: true, Pos: n.Pos, From: from}, nil
 
-	case "value":
+	case "value", "value-append":
 		if len(args) != 2 || args[1].Kind != sexpr.KindString {
-			return Constraint{}, errf(n, `(value SYMBOL "string") takes a symbol and a string`)
+			return Constraint{}, errf(n, `(%s SYMBOL "string") takes a symbol and a string`, h)
 		}
 		s, err := sym(0)
 		if err != nil {
 			return Constraint{}, err
 		}
-		return Constraint{Sym: s, Value: args[1].Text, IsValue: true, Pos: n.Pos, From: from}, nil
+		return Constraint{Sym: s, Value: args[1].Text, IsValue: true,
+			List: h == "value-append", Pos: n.Pos, From: from}, nil
 
-	case "path":
+	case "path", "path-append":
 		// A value that names a file. The file is the pack's, and saying so
 		// is what lets Silt check it exists and hash what it contains: a
 		// symbol pointing at a missing overlay passes every check there was,
@@ -311,7 +312,8 @@ func parseConstraint(n *sexpr.Node, sc Scope, from string) (Constraint, error) {
 		if strings.HasPrefix(rel, "/") || strings.HasPrefix(rel, "..") {
 			return Constraint{}, errf(n, "path %q must be inside the pack: relative, and not upwards", rel)
 		}
-		c := Constraint{Sym: s, Value: rel, IsValue: true, IsPath: true, Template: "{}", Pos: n.Pos, From: from}
+		c := Constraint{Sym: s, Value: rel, IsValue: true, IsPath: true, Template: "{}",
+			List: h == "path-append", Pos: n.Pos, From: from}
 		for _, opt := range args[2:] {
 			if opt.Head() != "as" {
 				return Constraint{}, errf(opt, `unknown path clause %q; only (as "...{}...") exists`, opt.Head())

@@ -1,0 +1,39 @@
+;; TensorFlow Lite, and a model carried with the image.
+;;
+;; tensorflow-lite is a CPU runtime, which is the point for now: it needs no
+;; vendor BSP, no proprietary toolkit and no NPU, so the pack shape can be
+;; proven on QEMU or an Odroid before an RK3588 exists. When one does, the
+;; runtime symbol changes and everything else here stays.
+;;
+;; It depends on glibc, shared libraries and C++ (package/tensorflow-lite/
+;; Config.in), which is why this requires capability glibc rather than
+;; stating a toolchain: deciding userspace is the profile's job.
+
+(fragment feature:inference
+
+  (doc "TensorFlow Lite plus a model the image carries")
+
+  (requires
+    (capability mmu)
+    (capability glibc)
+    (capability systemd-init))
+
+  (buildroot
+    ;; The runtime is C++, and nothing else in these images needs a C++
+    ;; toolchain, so it would not otherwise be built. The prediction in
+    ;; silt check found this before any build: "asked for y, kbuild would
+    ;; write absent".
+    ;;
+    ;; BR2_INSTALL_LIBSTDCPP is the wrong symbol to state — it has no prompt
+    ;; and is selected by whichever toolchain provides C++. Stating a derived
+    ;; symbol asks kbuild for something only its select machinery may set,
+    ;; and it stays absent. The user-visible one is the internal toolchain's
+    ;; C++ option (package/gcc/Config.in.host:86), which selects it.
+    (y BR2_TOOLCHAIN_BUILDROOT_CXX)
+
+    (y BR2_PACKAGE_TENSORFLOW_LITE)
+
+    ;; The model, the service that runs it, and the symlink that enables it.
+    ;; path-append rather than path: BR2_ROOTFS_OVERLAY is a list, and a
+    ;; board or another feature may be carrying one too.
+    (path-append BR2_ROOTFS_OVERLAY "files")))

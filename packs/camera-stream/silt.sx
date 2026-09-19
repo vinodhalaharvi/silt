@@ -1,0 +1,23 @@
+;; A camera that streams H.264 over RTP/UDP to one peer, and does nothing else.
+;;
+;; It carries the pipeline as a systemd unit and its destination as a config
+;; file, because both are files rather than symbols and a pack is the only
+;; place a fragment can own a file.
+;;
+;; The transport is deliberately absent: the unit sends to whatever address
+;; /etc/default/camera-stream names, and the kernel routes it. A LAN address
+;; on the bench, a WireGuard address in the field. Neither this pack nor
+;; feature:wireguard knows about the other.
+
+(pack camera-stream
+  (version "0.1.0")
+  (doc "H.264 over RTP/UDP to one peer: a pipeline, a unit, and a destination")
+
+  (requires
+    (buildroot "2025.02.16"))
+
+  (external "br2-external")
+
+  (provides
+    (feature gstreamer)
+    (feature camera-stream)))

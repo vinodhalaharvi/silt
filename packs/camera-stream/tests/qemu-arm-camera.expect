@@ -1,0 +1,9 @@
+# Assertions for ci/boot-test.sh. They check the appliance is assembled, not
+# that a picture arrived — that needs a second machine watching, which the
+# boot test has no way to be.
+
+gst-inspect-1.0 x264enc	x264enc
+gst-inspect-1.0 rtph264pay	rtph264pay
+gst-inspect-1.0 udpsink	udpsink
+systemctl is-enabled camera-stream	enabled
+cat /etc/default/camera-stream	PEER=

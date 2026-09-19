@@ -1,0 +1,25 @@
+# Where the stream goes, and what it looks like. This is the one file a
+# deployment edits; everything else in the image is the same for every unit.
+#
+# PEER is an address the appliance can route to. On a bench that is a machine
+# on the LAN; in the field it is the other end of a WireGuard tunnel, and
+# nothing here changes — the kernel decides which interface carries it.
+
+PEER=192.168.68.10
+PORT=5000
+
+# videotestsrc is moving colour bars and needs no hardware, which is what
+# makes this testable under QEMU. Swap it for:
+#   v4l2src device=/dev/video0
+# once there is a camera.
+SOURCE=videotestsrc is-live=true
+
+WIDTH=1280
+HEIGHT=720
+FPS=30
+BITRATE=2000
+
+# WireGuard's tunnel MTU is 1420, so RTP packets are kept under it. Without
+# this they fragment inside the tunnel and the picture stutters; on a LAN it
+# costs nothing.
+RTP_MTU=1300

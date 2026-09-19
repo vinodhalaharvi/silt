@@ -1,0 +1,24 @@
+;; A vision appliance: a camera pipeline, an inference runtime with a carried
+;; model, and a tunnel to send the result through.
+;;
+;; Four features from two packs, and none of them knows about the others.
+;; gstreamer encodes, camera-stream sends to an address, inference runs a
+;; model, wireguard is what that address routes through. Both packs carry an
+;; overlay, and BR2_ROOTFS_OVERLAY takes both because Buildroot reads it as a
+;; list — which Silt only learned when these two were first composed.
+;;
+;; Everything here runs on QEMU with no camera and no NPU: videotestsrc for
+;; the source, tensorflow-lite on the CPU for the runtime. The RK3588 version
+;; changes the target and the runtime symbol and nothing else.
+
+(image qemu-arm-vision
+
+  (compose
+    target:qemu-aarch64-virt
+    profile:standard
+    feature:networking
+    feature:gstreamer
+    feature:camera-stream
+    feature:inference)
+
+  (verified-against (buildroot "2025.02.16")))

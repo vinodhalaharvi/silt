@@ -45,7 +45,11 @@ func Solution(r *compose.Result, versions, env map[string]string) string {
 	// changed produces a different image from the same symbols, and a
 	// solution hash that ignored it would say the two builds were the same.
 	for _, c := range pathConstraints(r) {
-		fmt.Fprintf(&b, "file %s %s\n", c.Sym, hashPath(c.Resolved))
+		// A list-valued symbol resolves to several directories; each is
+		// hashed, so changing any one of them changes the solution.
+		for _, path := range strings.Fields(c.Resolved) {
+			fmt.Fprintf(&b, "file %s %s\n", c.Sym, hashPath(path))
+		}
 	}
 
 	// The configuration itself, comments excluded: a header naming the

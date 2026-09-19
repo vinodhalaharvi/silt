@@ -1,0 +1,12 @@
+[Unit]
+Description=On-device inference
+After=network-online.target
+
+[Service]
+EnvironmentFile=/etc/default/inference
+ExecStart=/opt/inference/run.sh
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target

@@ -15,7 +15,7 @@
     (value BR2_TARGET_GENERIC_HOSTNAME "odroidc2")             ; :3 names the board
     (value BR2_TARGET_GENERIC_GETTY_PORT "ttyAML0")            ; :4 serial console is hardware
     (y BR2_TARGET_GENERIC_GETTY_BAUDRATE_115200)               ; :5 serial console is hardware
-    (value BR2_ROOTFS_OVERLAY "board/hardkernel/odroidc2/rootfs_overlay") ; :6 board integration hook
+    (value-append BR2_ROOTFS_OVERLAY "board/hardkernel/odroidc2/rootfs_overlay") ; :6 board integration hook
     (value BR2_ROOTFS_POST_IMAGE_SCRIPT "board/hardkernel/odroidc2/post-image.sh") ; :7 board integration hook
     (y BR2_LINUX_KERNEL)                                       ; :8 defined under linux/ (kernel)
     (y BR2_LINUX_KERNEL_CUSTOM_VERSION)                        ; :9 defined under linux/ (kernel)

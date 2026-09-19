@@ -1,0 +1,14 @@
+# What the service runs the model against, and where it puts the result.
+#
+# This is deployment data, not configuration in Silt's sense: it changes per
+# site and per camera, and it is the one file an installer edits.
+
+MODEL=/opt/inference/model.tflite
+
+# The source to infer over. A file loops forever, which is what makes this
+# testable with no camera; v4l2src is what a deployment uses.
+SOURCE=videotestsrc pattern=ball is-live=true
+
+# How often to run, in frames. Every frame is rarely what anyone wants on a
+# CPU runtime.
+EVERY=15

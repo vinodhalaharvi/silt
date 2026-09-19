@@ -1,0 +1,25 @@
+[Unit]
+Description=H.264 over RTP to one peer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/default/camera-stream
+
+# tune=zerolatency stops x264 buffering frames, which is where seconds of
+# delay come from otherwise. config-interval=1 resends the stream parameters
+# every second so a receiver can join a stream already in progress rather
+# than showing grey until the next keyframe.
+ExecStart=/usr/bin/gst-launch-1.0 -e \
+  ${SOURCE} \
+  ! video/x-raw,width=${WIDTH},height=${HEIGHT},framerate=${FPS}/1 \
+  ! videoconvert \
+  ! x264enc tune=zerolatency bitrate=${BITRATE} key-int-max=${FPS} \
+  ! rtph264pay mtu=${RTP_MTU} config-interval=1 pt=96 \
+  ! udpsink host=${PEER} port=${PORT}
+
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,39 @@
+;; GStreamer, cut down to one pipeline's worth.
+;;
+;; The plugin sets are enormous taken whole — gst1-plugins-good alone is a
+;; hundred plugins. Buildroot exposes each as its own symbol, so this states
+;; the elements the pipeline actually names and nothing else. Every symbol
+;; here appears in:
+;;
+;;   videotestsrc ! videoconvert ! x264enc ! rtph264pay ! udpsink
+;;   ^base          ^base          ^ugly     ^good        ^good
+;;
+;; If an element is not in that line, it is not in the image.
+
+(fragment feature:gstreamer
+
+  (doc "GStreamer with the elements for an H.264-over-RTP sender")
+
+  (requires
+    (capability mmu))
+
+  (buildroot
+    (y BR2_PACKAGE_GSTREAMER1)
+
+    ;; base: the source and the format conversion before the encoder
+    (y BR2_PACKAGE_GST1_PLUGINS_BASE)
+    (y BR2_PACKAGE_GST1_PLUGINS_BASE_PLUGIN_VIDEOTESTSRC)
+    (y BR2_PACKAGE_GST1_PLUGINS_BASE_PLUGIN_VIDEOCONVERTSCALE)
+    (y BR2_PACKAGE_GST1_PLUGINS_BASE_PLUGIN_APP)
+
+    ;; good: RTP payloading and the UDP sink. RTPMANAGER is what lets a
+    ;; receiver join a stream already in progress.
+    (y BR2_PACKAGE_GST1_PLUGINS_GOOD)
+    (y BR2_PACKAGE_GST1_PLUGINS_GOOD_PLUGIN_RTP)
+    (y BR2_PACKAGE_GST1_PLUGINS_GOOD_PLUGIN_RTPMANAGER)
+    (y BR2_PACKAGE_GST1_PLUGINS_GOOD_PLUGIN_UDP)
+
+    ;; ugly: x264enc. It selects BR2_PACKAGE_X264 itself, so stating that
+    ;; here would restate what kbuild's select machinery already does.
+    (y BR2_PACKAGE_GST1_PLUGINS_UGLY)
+    (y BR2_PACKAGE_GST1_PLUGINS_UGLY_PLUGIN_X264)))

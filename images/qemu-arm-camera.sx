@@ -1,0 +1,18 @@
+;; A camera appliance on the QEMU machine, so the pipeline can be proven
+;; before there is a camera or a tunnel.
+;;
+;; videotestsrc is moving colour bars, so this streams without hardware:
+;; point /etc/default/camera-stream at a machine on the LAN and open
+;; rtp://@:5000 in VLC. When it works, swapping in v4l2src and a WireGuard
+;; address changes the destination and nothing else.
+
+(image qemu-arm-camera
+
+  (compose
+    target:qemu-aarch64-virt
+    profile:standard
+    feature:networking
+    feature:gstreamer
+    feature:camera-stream)
+
+  (verified-against (buildroot "2025.02.16")))

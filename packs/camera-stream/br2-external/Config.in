@@ -1,0 +1,3 @@
+# No packages: this pack is a pipeline, a unit file and a destination. Every
+# binary it needs is Buildroot's own. The file exists because br2-external
+# requires it.

@@ -109,7 +109,12 @@ tristate    = "y" | "m" | "n" ;
 
 soft        = "(" "prefer" tristate symbol ")" ;
 
-value       = "(" "value" symbol string ")" ;
+value       = "(" "value" symbol string ")"
+            | "(" "value-append" symbol string ")" ;
+
+path        = "(" "path" symbol string [ as ] ")"
+            | "(" "path-append" symbol string [ as ] ")" ;
+as          = "(" "as" string ")" ;
 
 guarded     = "(" "when" condition { constraint } ")" ;
 
@@ -148,7 +153,16 @@ one thing.
 
 `provides` is an interface and is checked both ways: everything promised must be
 defined, and a fragment the pack does not declare is an error, because a consumer can
-compose it and the pack does not know it maintains it. `(path SYMBOL "rel")` is a value that names a file the pack carries, relative to the
+compose it and the pack does not know it maintains it. Some Buildroot symbols are read as space-separated **lists**: `BR2_ROOTFS_OVERLAY`
+("Specify a list of directories", `system/Config.in:637`), `BR2_GLOBAL_PATCH_DIR`, and
+the `*_CONFIG_FRAGMENT_FILES` symbols. Two fragments each contributing one entry is the
+ordinary case there, and `value`/`path` would call it a conflict — which stopped a board
+carrying an overlay from composing with any pack that carried files. `value-append` and
+`path-append` join instead, in composition order, skipping duplicates. Mixing the forms
+on one symbol is still a conflict: appending is a claim about the symbol, not a way to
+silence a disagreement.
+
+`(path SYMBOL "rel")` is a value that names a file the pack carries, relative to the
 pack root. It is only valid inside a pack with an `(external ...)` tree: the loader
 checks the file exists, rewrites the value to
 `$(BR2_EXTERNAL_NAME_PATH)/rel`, which Buildroot expands, and the solution hash covers
@@ -304,7 +318,7 @@ previously claimed seven, which counted only the constraint forms and was wrong.
 | fragment | `doc` `provides` `requires` `forbids` `capability` |
 | capability decl | `symbol` |
 | scope | `buildroot` `linux` |
-| constraint | `y` `m` `n` `at-least` `prefer` `value` `path` `when` |
+| constraint | `y` `m` `n` `at-least` `prefer` `value` `value-append` `path` `path-append` `when` |
 | tree | `tree` `scope` `kind` `prefix` `consumed-by` `source` |
 | pack | `pack` `version` `external` |
 | condition | `set?` `equal?` `and` `or` `not` |

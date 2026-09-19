@@ -341,6 +341,15 @@ func (l *Library) Compose(im *lang.Image) (*Result, error) {
 	add := func(sc lang.Scope, c lang.Constraint) error {
 		key := c.Sym
 		if prev, ok := seen[key]; ok {
+			// A list-valued symbol takes both contributions rather than
+			// choosing between them. Buildroot reads BR2_ROOTFS_OVERLAY and
+			// its kin as space-separated lists, so a board carrying an
+			// overlay and a feature carrying one are not in conflict: they
+			// are two entries.
+			if prev.List && c.List {
+				seen[key] = appendList(prev, c)
+				return nil
+			}
 			if conflicts(prev, c) {
 				return Conflict{Symbol: c.Sym.String(), A: prev, B: c}
 			}
@@ -439,6 +448,27 @@ func conflicts(a, b lang.Constraint) bool {
 	default:
 		return a.Want != b.Want
 	}
+}
+
+// appendList joins two contributions to a list-valued symbol, in the order
+// they were composed, skipping a duplicate. The merged constraint keeps the
+// first one's position, since an error has to point somewhere, and its From
+// names both.
+func appendList(prev, c lang.Constraint) lang.Constraint {
+	for _, part := range strings.Fields(prev.Value) {
+		if part == c.Value {
+			return prev
+		}
+	}
+	merged := prev
+	merged.Value = prev.Value + " " + c.Value
+	merged.From = prev.From + ", " + c.From
+	// Both directories stay resolved, space-separated like the value itself,
+	// so the solution hash covers what is in each of them. Buildroot reads
+	// these symbols as space-separated lists, so a path with a space in it
+	// was never going to work here either.
+	merged.Resolved = strings.TrimSpace(prev.Resolved + " " + c.Resolved)
+	return merged
 }
 
 // stronger reports whether c is a tighter requirement than prev.

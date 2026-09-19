@@ -1,0 +1,14 @@
+This is not a model.
+
+A real one is 4 to 50MB of weights with a licence, a training provenance and
+an input tensor shape, and none of those belong in a git repository shared by
+several appliances. Drop yours in beside this file as model.tflite and the
+overlay carries it; the solution hash then covers its contents, which is the
+whole point — "which model shipped on which device" gets an answer rather
+than a spreadsheet.
+
+  cp ~/models/yolov5n-int8.tflite packs/inference/files/opt/inference/model.tflite
+  silt hash --solution images/qemu-arm-vision.sx --buildroot ~/buildroot --pack packs/inference
+
+inference.service refuses to start while only this placeholder is present,
+which is better than starting and quietly inferring nothing.

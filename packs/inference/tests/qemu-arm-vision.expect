@@ -1,0 +1,8 @@
+# The runtime is present, the service reached its ready line, and the model
+# is the placeholder — which is what a repository without a real model
+# should assert. With a model dropped in, the last line becomes a size.
+
+ls /usr/lib	libtensorflow-lite
+systemctl is-enabled inference	enabled
+cat /etc/default/inference	MODEL=
+journalctl -u inference --no-pager	inference:

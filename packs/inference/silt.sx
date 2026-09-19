@@ -1,0 +1,25 @@
+;; Inference on the device: a runtime, a model, and a service that runs one
+;; against the other.
+;;
+;; The model is the interesting part. It is a file with a version, a licence,
+;; a training provenance and an input shape, and none of that is anything
+;; Kconfig knows about. What Silt can do is carry it, check it exists before
+;; anything builds, and put its contents in the solution hash — so "which
+;; model shipped on which device" has an answer that is not a spreadsheet.
+;;
+;; What Silt cannot do, and this pack does not pretend to: say the model is
+;; accurate, that its operators are supported by the runtime, or that the
+;; numbers match a workstation. Those are the customer's problem. They are
+;; easier to solve on a base that can be explained.
+
+(pack inference
+  (version "0.1.0")
+  (doc "TensorFlow Lite and a carried model, run as a service")
+
+  (requires
+    (buildroot "2025.02.16"))
+
+  (external "br2-external")
+
+  (provides
+    (feature inference)))

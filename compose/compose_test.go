@@ -200,3 +200,49 @@ func TestCapabilityRedeclarationRejected(t *testing.T) {
 		t.Fatal("expected a redeclaration error")
 	}
 }
+
+// Buildroot reads BR2_ROOTFS_OVERLAY and its kin as space-separated lists, so
+// a board carrying an overlay and a feature carrying one are not in conflict.
+// Before value-append existed they were, and target:odroidc2 could not compose
+// with any pack that carried files.
+func TestListValuedSymbolsAppend(t *testing.T) {
+	r, err := run(t, []string{
+		`(fragment target:t (provides (capability mmu))
+		   (buildroot (y BR2_aarch64) (value-append BR2_ROOTFS_OVERLAY "board/x/overlay")))`,
+		`(fragment profile:p (requires (capability mmu))
+		   (buildroot (value-append BR2_ROOTFS_OVERLAY "profile/overlay")))`,
+	}, `(image i (compose target:t profile:p))`)
+	if err != nil {
+		t.Fatalf("two contributions to a list must compose: %v", err)
+	}
+	c, ok := find(r, lang.Buildroot, "BR2_ROOTFS_OVERLAY")
+	if !ok || c.Value != "board/x/overlay profile/overlay" {
+		t.Fatalf("joined value: %q", c.Value)
+	}
+
+	// The same entry twice is one entry, not two.
+	r, err = run(t, []string{
+		`(fragment target:t (provides (capability mmu))
+		   (buildroot (y BR2_aarch64) (value-append BR2_ROOTFS_OVERLAY "same")))`,
+		`(fragment profile:p (requires (capability mmu))
+		   (buildroot (value-append BR2_ROOTFS_OVERLAY "same")))`,
+	}, `(image i (compose target:t profile:p))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := find(r, lang.Buildroot, "BR2_ROOTFS_OVERLAY"); c.Value != "same" {
+		t.Errorf("duplicate entry: %q", c.Value)
+	}
+
+	// Appending is a claim about the symbol: mixing the forms is still a
+	// conflict, so a list symbol stated plainly by one fragment and appended
+	// by another is reported rather than silently joined.
+	if _, err := run(t, []string{
+		`(fragment target:t (provides (capability mmu))
+		   (buildroot (y BR2_aarch64) (value BR2_ROOTFS_OVERLAY "board/x/overlay")))`,
+		`(fragment profile:p (requires (capability mmu))
+		   (buildroot (value-append BR2_ROOTFS_OVERLAY "profile/overlay")))`,
+	}, `(image i (compose target:t profile:p))`); err == nil {
+		t.Error("value and value-append on one symbol should conflict")
+	}
+}

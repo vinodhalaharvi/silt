@@ -79,8 +79,15 @@ type Constraint struct {
 	// "-c <the genimage config>", and a value that merely contains a path is
 	// exactly as unchecked as one that is a path.
 	Template string
-	Pos      sexpr.Pos
-	From     string // fragment or image this came from
+	// List marks a symbol Buildroot reads as a space-separated list rather
+	// than one value: BR2_ROOTFS_OVERLAY, BR2_GLOBAL_PATCH_DIR, the
+	// *_CONFIG_FRAGMENT_FILES symbols. Two fragments each contributing one
+	// is the normal case for those, and treating them as single values made
+	// a board that carries an overlay and a feature that carries one unable
+	// to compose at all.
+	List bool
+	Pos  sexpr.Pos
+	From string // fragment or image this came from
 }
 
 // Guarded is (when condition consequent...). It lowers to an implication and
