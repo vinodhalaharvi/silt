@@ -9,10 +9,15 @@
 # the private key has to live somewhere that survives a reboot; a tmpfs would
 # mean a new identity every boot, which invalidates every peer that trusts
 # this one.
+#
+# The disk is found rather than named. A first boot named /dev/vdb and QEMU
+# attached the two disks in the other order, so the kernel tried to mount the
+# blank state disk as root and panicked. Device names are an accident of
+# enumeration; what is stable is that the state disk is the one that is not
+# the root filesystem, and after the first format it carries the label wgdata.
 
 set -eu
 
-DATA_DEV=/dev/vdb
 DATA_DIR=/data
 WG_DIR=$DATA_DIR/wireguard
 IFACE=wg0
@@ -21,14 +26,40 @@ ADDR=10.9.0.1/24
 
 log() { echo "wg-appliance: $*"; }
 
-# 1. A blank disk has no filesystem. blkid says nothing about it, which is how
-#    this tells "never used" from "already has our data" without a flag file.
+# 1. Find the state disk. Once formatted it has the label wgdata, so a second
+#    boot finds it by name regardless of which letter the kernel gave it.
+DATA_DEV=$(blkid -L wgdata 2>/dev/null || true)
+
+if [ -z "$DATA_DEV" ]; then
+	# First boot: no labelled disk yet. The state disk is a virtio disk that
+	# is neither the root filesystem nor already carrying one — blkid says
+	# nothing at all about a disk that has never been formatted, which is how
+	# "blank" is told from "someone else's data" without guessing.
+	root_dev=$(findmnt -n -o SOURCE / || true)
+	for dev in /dev/vd[a-z]; do
+		[ -b "$dev" ] || continue
+		[ "$dev" = "$root_dev" ] && continue
+		blkid "$dev" >/dev/null 2>&1 && continue
+		DATA_DEV=$dev
+		break
+	done
+fi
+
+if [ -z "$DATA_DEV" ]; then
+	log "no state disk found: attach a blank second disk"
+	log "the appliance needs somewhere to keep its private key across reboots"
+	exit 1
+fi
+
 if ! blkid "$DATA_DEV" >/dev/null 2>&1; then
-	log "formatting $DATA_DEV"
+	log "formatting $DATA_DEV as the state partition"
 	mkfs.ext4 -q -L wgdata "$DATA_DEV"
 fi
 
-mkdir -p "$DATA_DIR"
+# The mount point is in the image, not made here: the root filesystem is
+# read-only, and a first boot failed with "mkdir: can't create directory
+# '/data': Read-only file system". A directory a read-only image needs has
+# to exist before the image is read-only.
 mountpoint -q "$DATA_DIR" || mount "$DATA_DEV" "$DATA_DIR"
 mkdir -p "$WG_DIR"
 

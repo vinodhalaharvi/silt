@@ -1,0 +1,7 @@
+This directory is the mount point for the appliance's state partition.
+
+It exists in the image because the root filesystem is read-only: a first boot
+without it failed with "mkdir: can't create directory '/data': Read-only file
+system". A directory a read-only image needs has to be there before the image
+becomes read-only, and an empty directory does not survive in git without a
+file in it.
