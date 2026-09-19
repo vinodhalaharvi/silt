@@ -1,0 +1,16 @@
+;; The VPN appliance with nothing to log into.
+;;
+;; Same target and same feature as qemu-arm-vpn; only the profile differs.
+;; What that costs: there is no console login, so the only way to see inside
+;; is to mount the image. What it buys is in ci/boot/qemu-arm-locked.expect,
+;; which is the only place any claim about this image is made.
+
+(image qemu-arm-locked
+
+  (compose
+    target:qemu-aarch64-virt
+    profile:locked
+    feature:networking
+    feature:wireguard)
+
+  (verified-against (buildroot "2025.02.16")))

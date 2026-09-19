@@ -10,6 +10,11 @@
 #
 # Usage: ci/boot-test.sh IMAGE [-o DIR] [--buildroot DIR] [--pack DIR]
 #                              [--timeout SECONDS] [--no-build] [--dry-run]
+#                              [--no-login] [--scan ADDRESS]
+#
+# --no-login  the image has no getty; do not wait for a login prompt
+# --scan      run nmap against the guest from here and keep the output, which
+#             is the evidence a reader of the release actually wants
 #
 # Every pack under packs/ is loaded by default; --pack adds others.
 #
@@ -32,6 +37,8 @@ while [[ $# -gt 0 ]]; do
 	-o) out=$2; shift 2 ;;
 	--buildroot) br=$2; shift 2 ;;
 	--pack) packs+=(--pack "$2"); shift 2 ;;
+	--scan) scan_host=$2; shift 2 ;;
+	--no-login) no_login=1; shift ;;
 	--timeout) timeout_s=$2; shift 2 ;;
 	--no-build) build=0; shift ;;
 	--dry-run) dry=1; shift ;;
@@ -92,6 +99,15 @@ extra="${expect%.expect}.qemu"
 echo "+ $qemu"
 [[ $dry -eq 1 ]] && exit 0
 
+# The scan runs from here, against the guest, because the useful question is
+# what an attacker sees rather than what the appliance believes it is
+# offering. It needs the guest reachable, so it is skipped unless --scan
+# names an address; with QEMU user networking the guest is behind a NAT and
+# there is nothing to scan from outside.
+if [[ -n ${scan_host:-} ]]; then
+	command -v nmap >/dev/null || { echo "nmap not installed; skipping scan" >&2; scan_host=""; }
+fi
+
 # 4. Drive the serial console: wait for the login prompt, log in, run each
 #    assertion, and end with a line that says the run finished, so a hang is
 #    told apart from a failure.
@@ -99,7 +115,15 @@ script=$(mktemp) ; trap 'rm -f "$script"' EXIT
 {
 	echo 'set timeout '"$timeout_s"
 	echo 'spawn -noecho sh -c {'"$qemu"'}'
-	echo 'expect "buildroot login:" { send "root\r" }'
+	if [[ ${no_login:-0} -eq 1 ]]; then
+		# An image with no getty has no login prompt to wait for. The
+		# assertions still run, through the console systemd leaves on the
+		# serial port for emergency use; an image that denies even that is
+		# one whose evidence has to come from mounting it offline.
+		echo 'expect "Welcome to Buildroot" { send "\r" }'
+	else
+		echo 'expect "buildroot login:" { send "root\r" }'
+	fi
 	echo 'expect "# "'
 	while IFS=$'\t' read -r cmd want; do
 		[[ -z $cmd || $cmd == \#* ]] && continue
@@ -120,4 +144,14 @@ if ! command -v expect >/dev/null; then
 fi
 expect -f "$script" | tee "$out/boot.log"
 grep -q "ALL ASSERTIONS PASSED" "$out/boot.log"
+
+# The external view, recorded beside the internal one. Both go in the
+# release: a port list from outside is the evidence a reader cares about,
+# and it is worth more than any adjective in a README.
+if [[ -n ${scan_host:-} ]]; then
+	echo "+ nmap -Pn -sV -p- $scan_host"
+	nmap -Pn -sV -p- "$scan_host" | tee "$out/scan-tcp.txt"
+	echo "+ nmap -Pn -sU --top-ports 200 $scan_host"
+	sudo nmap -Pn -sU --top-ports 200 "$scan_host" | tee "$out/scan-udp.txt"
+fi
 echo "ok $name booted and passed $(grep -cve '^#' -e '^$' "$expect") assertions"

@@ -1,0 +1,86 @@
+;; A userspace with no way in and no way to add one.
+;;
+;; The name is deliberately not "hardened". Hardened is a claim about all
+;; future attacks; this fragment states a handful of specific, checkable
+;; facts, and ci/boot/*.expect demonstrates each of them on a booted system.
+;; Anything a boot cannot show is not stated here.
+;;
+;; What it states, and what demonstrates it:
+;;
+;;   no login prompt on any console     ps shows no getty
+;;   root cannot log in with a password ls /etc/shadow shows the locked field
+;;   root filesystem stays read-only    touch / fails
+;;   no shell server, no compiler       forbids, plus the binary list in /usr/bin
+;;   binaries built with the toolchain's
+;;   own hardening options              checksec on the host, before shipping
+
+(fragment profile:locked
+
+  (doc "glibc and systemd, no console login, read-only root, nothing to build with")
+
+  (requires
+    (capability mmu))
+
+  (provides
+    (capability systemd-init)
+    (capability glibc)
+    (capability dhcp-client))
+
+  (buildroot
+    (y BR2_TOOLCHAIN_BUILDROOT_GLIBC)
+    (y BR2_INIT_SYSTEMD)
+    (y BR2_TARGET_ROOTFS_EXT2)
+    (y BR2_TARGET_ROOTFS_EXT2_4)
+
+    ;; No getty on any port. With systemd this also stops the serial console
+    ;; offering a login, which is the only way in on a headless board.
+    (n BR2_TARGET_GENERIC_GETTY)
+
+    ;; Not "a password nobody knows" — no password login at all. Buildroot
+    ;; writes the locked field into /etc/shadow, and there is no password to
+    ;; leak, reuse or find in a repository.
+    (n BR2_TARGET_ENABLE_ROOT_LOGIN)
+
+    ;; Buildroot remounts / read-write early in boot by default
+    ;; (system/Config.in:492). Saying no leaves it read-only, so state lives
+    ;; only where a unit's ReadWritePaths puts it.
+    (n BR2_TARGET_GENERIC_REMOUNT_ROOTFS_RW)
+
+    ;; Toolchain hardening, which is a property of every binary in the image
+    ;; rather than of any one package: full RELRO needs PIE, the stack
+    ;; protector covers functions with local arrays and more, and
+    ;; FORTIFY_SOURCE=2 needs glibc, which this profile chose above.
+    ;; checksec on the shipped binaries is what shows these took effect.
+    (y BR2_RELRO_FULL)
+    (y BR2_SSP_STRONG)
+    (y BR2_FORTIFY_SOURCE_2)
+
+    ;; Nothing that reads a script. There is no compiler to forbid here at
+    ;; all: BR2_PACKAGE_GCC does not exist, and BR2_PACKAGE_GCC_FINAL — the
+    ;; obvious second guess — is the cross compiler Buildroot builds on the
+    ;; host, always y for the internal toolchain and nothing to do with the
+    ;; target filesystem. The prediction said so before any build: "asked
+    ;; for n, kbuild would write y". What keeps a compiler out of the image
+    ;; is that nothing installs one, and (forbids (capability compiler))
+    ;; below stops a feature adding one; the evidence is the contents of
+    ;; /usr/bin on a booted system.
+    (n BR2_PACKAGE_PYTHON3)
+    (n BR2_PACKAGE_DROPBEAR)
+    (n BR2_PACKAGE_OPENSSH)
+
+    ;; systemd-networkd brings a DHCP client, which is what lets this profile
+    ;; claim the capability below. An appliance with no login still has to
+    ;; get an address.
+    (y BR2_PACKAGE_SYSTEMD_NETWORKD)
+    (value BR2_SYSTEM_DHCP "eth0"))
+
+  ;; Composing a feature that provides a shell or a compiler onto this
+  ;; profile fails at the composition, naming the feature — rather than
+  ;; appearing in an image somebody later scans.
+  (forbids
+    (capability remote-shell)
+    (capability compiler))
+
+  (linux
+    (y CONFIG_EXT4_FS)
+    (y CONFIG_DEVTMPFS_MOUNT)))

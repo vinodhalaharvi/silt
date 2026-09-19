@@ -1,0 +1,33 @@
+# Evidence, not claims.
+#
+# Every line here is a command run on the booted appliance and a string its
+# output must contain. The README quotes this file's results and says nothing
+# else: "no login prompt" is a fact a reader can reproduce, "hardened" is an
+# assertion about attacks nobody has tried yet.
+#
+# ci/boot-test.sh runs these over the serial console. Because this image has
+# no getty, it runs them through the QEMU monitor's console instead — see the
+# script's --no-login mode.
+
+# Nothing is listening except the tunnel. The scan that matters runs from the
+# host and is in boot-test.sh; this is the view from inside.
+ss -tulpn	51820
+
+# The root filesystem is read-only, so a write fails rather than succeeding
+# and being lost.
+touch /test	Read-only file system
+
+# No login prompt on any console.
+ps aux	!getty
+
+# Root has no password to guess, reuse or find in a repository: the locked
+# field, not a hash.
+cat /etc/shadow	root:*
+
+# The whole of /usr/bin, printed rather than grepped: a reader can see there
+# is no shell server, no interpreter and no compiler, instead of taking a
+# list of six absences on trust.
+ls /usr/bin	wg
+
+# The tunnel works, which is the point of the appliance and not incidental.
+wg --version	wireguard-tools
