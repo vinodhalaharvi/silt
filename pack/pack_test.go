@@ -157,12 +157,15 @@ func TestHelloSiltPack(t *testing.T) {
 // A (path ...) names a file the pack carries. It is checked at load, which is
 // before anything composes or builds, and rewritten into the form Buildroot
 // expands so the emitted defconfig names no machine's directory layout.
+//
+// The path is relative to the br2-external tree; see
+// TestPathsResolveAgainstTheExternalTree for why the base matters.
 func TestPathsResolveAgainstThePack(t *testing.T) {
 	dir := packDir(t, `(pack demo (version "1") (external "br2-external")
 	  (provides (feature widget)))`,
 		`(fragment feature:widget (buildroot (path BR2_ROOTFS_OVERLAY "overlay")))`)
 	write(t, dir, "br2-external/external.desc", "name: DEMO\ndesc: demo\n")
-	write(t, dir, "overlay/etc/hello", "hi\n")
+	write(t, dir, "br2-external/overlay/etc/hello", "hi\n")
 
 	p, err := Load(dir)
 	if err != nil {
@@ -172,7 +175,7 @@ func TestPathsResolveAgainstThePack(t *testing.T) {
 	if c.Value != "$(BR2_EXTERNAL_DEMO_PATH)/overlay" {
 		t.Errorf("value: %q", c.Value)
 	}
-	if c.Resolved != filepath.Join(dir, "overlay") {
+	if c.Resolved != filepath.Join(dir, "br2-external", "overlay") {
 		t.Errorf("resolved: %q", c.Resolved)
 	}
 
@@ -182,7 +185,7 @@ func TestPathsResolveAgainstThePack(t *testing.T) {
 	  (provides (feature widget)))`,
 		`(fragment feature:widget (buildroot (path BR2_ROOTFS_OVERLAY "overlay")))`)
 	write(t, missing, "br2-external/external.desc", "name: DEMO\n")
-	if _, err := Load(missing); err == nil || !strings.Contains(err.Error(), "does not contain") {
+	if _, err := Load(missing); err == nil || !strings.Contains(err.Error(), "is not in the pack's") {
 		t.Fatalf("a missing overlay should be an error: %v", err)
 	}
 
@@ -191,7 +194,7 @@ func TestPathsResolveAgainstThePack(t *testing.T) {
 	// absolute path.
 	noext := packDir(t, `(pack demo (version "1") (provides (feature widget)))`,
 		`(fragment feature:widget (buildroot (path BR2_ROOTFS_OVERLAY "overlay")))`)
-	write(t, noext, "overlay/etc/hello", "hi\n")
+	write(t, noext, "br2-external/overlay/etc/hello", "hi\n")
 	if _, err := Load(noext); err == nil || !strings.Contains(err.Error(), "external") {
 		t.Fatalf("a path with no external tree: %v", err)
 	}
@@ -234,5 +237,46 @@ func TestNanoPiPack(t *testing.T) {
 		if c.Sym.Name == "BR2_ROOTFS_POST_SCRIPT_ARGS" && !strings.HasPrefix(c.Value, "-c ") {
 			t.Errorf("the genimage config is passed as an argument: %q", c.Value)
 		}
+	}
+}
+
+// A carried path is resolved against the br2-external tree, because that is
+// what the emitted value names: Buildroot expands $(BR2_EXTERNAL_NAME_PATH)
+// to the directory holding external.desc and nothing else.
+//
+// Resolving against the pack root instead made the check and the build
+// disagree — the file existed where Silt looked and not where Buildroot
+// looked, so silt check passed and the build failed in target-finalize with
+// rsync unable to find the overlay. That is the disagreement (path ...)
+// exists to prevent, so this test pins the base.
+func TestPathsResolveAgainstTheExternalTree(t *testing.T) {
+	dir := packDir(t, `(pack demo (version "1") (external "br2-external")
+	  (provides (feature widget)))`,
+		`(fragment feature:widget (buildroot (path BR2_ROOTFS_OVERLAY "overlay")))`)
+	write(t, dir, "br2-external/external.desc", "name: DEMO\n")
+
+	// Where the pack root would put it: not enough any more.
+	write(t, dir, "overlay/etc/hello", "hi\n")
+	if _, err := Load(dir); err == nil {
+		t.Fatal("a path outside the external tree should be refused")
+	}
+
+	// Where $(BR2_EXTERNAL_DEMO_PATH) actually points.
+	write(t, dir, "br2-external/overlay/etc/hello", "hi\n")
+	p, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := p.Files[1].Fragments[0].Constraints["buildroot"][0]
+	if c.Value != "$(BR2_EXTERNAL_DEMO_PATH)/overlay" {
+		t.Errorf("value: %q", c.Value)
+	}
+	if c.Resolved != filepath.Join(dir, "br2-external", "overlay") {
+		t.Errorf("resolved: %q", c.Resolved)
+	}
+
+	// The two must name the same directory. Anything else is the bug above.
+	if filepath.Base(filepath.Dir(c.Resolved)) != "br2-external" {
+		t.Errorf("resolved outside the external tree: %q", c.Resolved)
 	}
 }

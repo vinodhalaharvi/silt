@@ -89,11 +89,14 @@ func Load(dir string) (*Pack, error) {
 // resolvePaths turns every (path X "rel") in the pack's fragments into the
 // form Buildroot expands, and records where the file actually is.
 //
-// Relative to the pack root, because that is the unit someone publishes: a
-// fragment saying "overlay" means this pack's overlay wherever the pack is
-// checked out. Buildroot expands $(BR2_EXTERNAL_NAME_PATH) in a config value,
-// so the emitted defconfig names no machine's directory layout and the same
-// file works on the VM and in CI.
+// Relative to the br2-external tree, because that is what the emitted value
+// names: Buildroot expands $(BR2_EXTERNAL_NAME_PATH) to the directory holding
+// external.desc, and nothing else. Resolving against the pack root instead
+// made the check and the build disagree — the file existed where Silt looked
+// and not where Buildroot looked, so every check passed and the build failed
+// in target-finalize with rsync unable to find the overlay. That is exactly
+// the disagreement (path ...) exists to prevent, so the two now use the same
+// base by construction.
 func (p *Pack) resolvePaths() error {
 	name, err := p.externalName()
 	if err != nil {
@@ -112,10 +115,10 @@ func (p *Pack) resolvePaths() error {
 							"an (external ...) tree for Buildroot to resolve it against",
 							c.Pos.Short(), c.Sym)
 					}
-					abs := filepath.Join(p.Decl.Dir, c.Value)
+					abs := filepath.Join(p.Decl.Dir, p.Decl.External, c.Value)
 					if _, err := os.Stat(abs); err != nil {
-						return fmt.Errorf("%s: %s names %s, which the pack does not contain",
-							c.Pos.Short(), c.Sym, c.Value)
+						return fmt.Errorf("%s: %s names %s, which is not in the pack's %s tree",
+							c.Pos.Short(), c.Sym, c.Value, p.Decl.External)
 					}
 					c.Resolved = abs
 					ref := fmt.Sprintf("$(BR2_EXTERNAL_%s_PATH)/%s", name, filepath.ToSlash(c.Value))

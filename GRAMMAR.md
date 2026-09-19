@@ -163,7 +163,10 @@ on one symbol is still a conflict: appending is a claim about the symbol, not a 
 silence a disagreement.
 
 `(path SYMBOL "rel")` is a value that names a file the pack carries, relative to the
-pack root. It is only valid inside a pack with an `(external ...)` tree: the loader
+pack's `br2-external` tree — the directory holding `external.desc`, which is exactly what
+`$(BR2_EXTERNAL_NAME_PATH)` expands to. The check and the emitted value therefore use the
+same base; resolving against the pack root instead let them disagree, and a build failed
+in `target-finalize` on an overlay `silt check` had just confirmed. It is only valid inside a pack with an `(external ...)` tree: the loader
 checks the file exists, rewrites the value to
 `$(BR2_EXTERNAL_NAME_PATH)/rel`, which Buildroot expands, and the solution hash covers
 what the file contains. `(value SYMBOL "board/x/post.sh")` remains a string that nobody

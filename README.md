@@ -359,7 +359,7 @@ A pack can carry files as well as symbols:
 (path BR2_ROOTFS_OVERLAY "overlay")
 ```
 
-which is checked to exist before anything builds, emitted as
+relative to the pack's br2-external tree, checked to exist before anything builds, emitted as
 `BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_SILT_PATH)/overlay"` so the defconfig names no
 machine's directory layout, and hashed into the solution — an overlay that
 changed is a different configuration, even with identical symbols.
