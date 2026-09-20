@@ -1,0 +1,20 @@
+;; A first component, carried into /opt/components/hello.wasm where the
+;; wasm-runtime pack's unit runs it at boot.
+;;
+;; The runtime and the component are separate packs on purpose: which
+;; component an appliance runs is a deployment decision, and the runtime pack
+;; says so. This is the deployment. Its policy is checked from the binary the
+;; same way the agent gateway's is: the vocabulary is WASI 0.2.6, vendored
+;; from wasi-cli, and an import it cannot name fails check.
+
+(pack hello-component
+  (version "0.1.0")
+  (doc "A component that counts its boots in the one directory it is granted")
+
+  (requires
+    (buildroot "2025.02.16"))
+
+  (external "br2-external")
+
+  (provides
+    (feature hello-component)))

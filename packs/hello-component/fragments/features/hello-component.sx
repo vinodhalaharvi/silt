@@ -1,0 +1,32 @@
+;; The component, carried into the image, and what it must not reach.
+;;
+;; The runtime grants no network (-S inherit-network=n in the wasm-runtime
+;; pack), and this policy says the binary imports none either. The two are
+;; different claims: the grant is what wasmtime enforces at run time, and the
+;; policy is what the artifact can even ask for, checked before it ships. A
+;; component that opens a socket fails silt check here rather than failing
+;; quietly on a device.
+
+(tree hello
+  (kind wasm-component)
+  (component "files/opt/components/hello.wasm")
+  (wit "wit"))
+
+(fragment feature:hello-component
+
+  (doc "The hello component at /opt/components/hello.wasm, with no network")
+
+  (requires
+    (capability systemd-init))
+
+  (buildroot
+    (path-append BR2_ROOTFS_OVERLAY "files"))
+
+  (scope hello
+    (n WASI__SOCKETS__NETWORK)
+    (n WASI__SOCKETS__INSTANCE_NETWORK)
+    (n WASI__SOCKETS__TCP)
+    (n WASI__SOCKETS__TCP_CREATE_SOCKET)
+    (n WASI__SOCKETS__UDP)
+    (n WASI__SOCKETS__UDP_CREATE_SOCKET)
+    (n WASI__SOCKETS__IP_NAME_LOOKUP)))

@@ -1,0 +1,15 @@
+[package]
+name = "hello"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "A first component: counts its boots in the one directory it is granted"
+
+# No dependencies: the standard library on wasm32-wasip2 is all this needs,
+# and nothing to fetch is nothing to audit.
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

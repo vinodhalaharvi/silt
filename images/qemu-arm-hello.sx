@@ -1,0 +1,14 @@
+;; A component running at boot, on an image you can log into.
+;;
+;; profile:standard, not locked, so the result can be read on the device:
+;; journalctl -u wasm-component shows the component's output, and the count
+;; in /var/lib/component/boots climbs with each reboot.
+
+(image qemu-arm-hello
+  (compose
+    target:qemu-aarch64-virt
+    profile:standard
+    feature:networking
+    feature:wasm-runtime
+    feature:hello-component)
+  (verified-against (buildroot "2025.02.16")))

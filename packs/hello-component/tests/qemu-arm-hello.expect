@@ -1,0 +1,8 @@
+# The component ran at boot under the grants the image stated: its output
+# is in the journal, and its counter exists in the only directory it can
+# write, which the unit's StateDirectory created. The count climbs with
+# each reboot; one boot shows it started.
+
+journalctl -u wasm-component --no-pager	hello from a wasm component: boot #
+cat /var/lib/component/boots	1
+systemctl is-enabled wasm-component	enabled
