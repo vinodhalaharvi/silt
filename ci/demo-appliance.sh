@@ -93,9 +93,11 @@ expect {
   "$marker" { }
   timeout   { send_user "\nTIMEOUT waiting for: $marker\n"; exit 1 }
 }
-# A few seconds more, so anything printed just after the marker lands in the
-# log rather than being cut off by the kill below.
-sleep 5
+# Keep reading for a few seconds after the marker, so anything printed just
+# after it lands in the log. sleep would not do: expect logs what it reads,
+# and it reads nothing while sleeping.
+set timeout 5
+expect timeout
 EOF
 	if [[ -n ${WITH_CAST:-} ]] && command -v asciinema >/dev/null; then
 		asciinema rec --overwrite -c "expect -f $script" "$ev/$(basename "${logfile%.txt}").cast" || true
@@ -117,15 +119,23 @@ if [[ $keep -eq 0 || ! -f $state ]]; then
 	echo "created a blank 64MB state disk, which is what a buyer starts with"
 fi
 
-boot_and_capture "$ev/boot-1.txt" "WireGuard appliance ready" || {
+# The marker is the key line itself. "WireGuard appliance ready" is printed
+# two lines earlier, and waiting for that one left a transcript that stopped
+# before the key — which is the one thing the next step needs.
+boot_and_capture "$ev/boot-1.txt" "public key:" || {
 	echo "the appliance did not finish provisioning; see $ev/boot-1.txt" >&2
+	tail -20 "$ev/boot-1.txt" >&2
 	exit 1
 }
 
 # What a buyer does next: read the key off the console, because there is no
 # other way to get it out of a machine with no login.
-pubkey=$(grep -o 'public key: .*' "$ev/boot-1.txt" | tail -1 | sed 's/public key: //' | tr -d '\r ')
-[[ -n $pubkey ]] || { echo "no public key in the first boot's output" >&2; exit 1; }
+pubkey=$(grep -o 'public key: .*' "$ev/boot-1.txt" | tail -1 | sed 's/public key: //' | tr -d '\r ' || true)
+[[ -n $pubkey ]] || {
+	echo "no public key in the first boot's output; the last of $ev/boot-1.txt:" >&2
+	tail -20 "$ev/boot-1.txt" >&2
+	exit 1
+}
 echo "appliance public key: $pubkey"
 
 grep -q "generating a keypair" "$ev/boot-1.txt" ||
@@ -198,7 +208,7 @@ done
 grep -q "applying peers" "$ev/boot-2.txt" ||
 	{ echo "the appliance did not take the peer; see $ev/boot-2.txt" >&2; exit 1; }
 
-pubkey2=$(grep -o 'public key: .*' "$ev/boot-2.txt" | tail -1 | sed 's/public key: //' | tr -d '\r ')
+pubkey2=$(grep -o 'public key: .*' "$ev/boot-2.txt" | tail -1 | sed 's/public key: //' | tr -d '\r ' || true)
 [[ $pubkey2 == "$pubkey" ]] ||
 	{ echo "the appliance changed identity across a reboot: $pubkey -> $pubkey2" >&2; exit 1; }
 echo "same public key across a reboot: $pubkey"
