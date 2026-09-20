@@ -1,6 +1,4 @@
-# Filled in by packs/agent-gateway/host/release.sh, which cross-compiles the
-# binary, packs the tarball and prints the line below. Buildroot refuses a
-# download that does not match it, so this file is what makes a fetched
-# binary as pinned as a committed one.
-#
-# sha256 <64 hex characters>  agent-gateway-host-0.1.0-aarch64.tar.xz
+# Written by packs/agent-gateway/host/release.sh. Buildroot refuses a
+# download that does not match, so this line is what ties the binary an
+# appliance runs to the source in this repository.
+sha256  b3c6e99009313ba32fa7174879f50904404aa04dafce5cc4578cd1c76b8e5a01  agent-gateway-host-0.1.0-aarch64.tar.xz
