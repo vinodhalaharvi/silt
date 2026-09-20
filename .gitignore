@@ -1,6 +1,7 @@
 # Build output
 /bin/
 /out/
+/out-*/
 *.test
 coverage.out
 
