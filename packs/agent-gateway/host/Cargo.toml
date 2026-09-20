@@ -1,0 +1,23 @@
+[package]
+name = "agent-gateway-host"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Serves the gateway component's tools over MCP, and nothing else"
+
+# wasmtime is pinned, not floated: it is the sandbox, and which version
+# enforced a boundary is part of what an appliance is.
+[dependencies]
+wasmtime = "43.0.2"
+wasmtime-wasi = "43.0.2"
+serde_json = "1"
+sha2 = "0.10"
+
+# Thin LTO, not fat: the fat build of a wasmtime-embedding binary takes
+# tens of minutes for a few percent of size, and the host is rebuilt on
+# every change to it.
+[profile.release]
+opt-level = "s"
+lto = "thin"
+codegen-units = 4
+strip = true
