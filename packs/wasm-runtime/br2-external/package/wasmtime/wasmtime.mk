@@ -23,16 +23,11 @@ endif
 WASMTIME_SOURCE = wasmtime-$(WASMTIME_VERSION)-$(WASMTIME_ARCH)-linux.tar.xz
 WASMTIME_STRIP_COMPONENTS = 1
 
-ifeq ($(BR2_PACKAGE_WASMTIME_FULL),y)
-WASMTIME_BIN = wasmtime
-else
-WASMTIME_BIN = wasmtime-min
-endif
 
 # Both builds install as /usr/bin/wasmtime: which one is in the image is a
 # build decision, and nothing on the appliance should have to know which.
 define WASMTIME_INSTALL_TARGET_CMDS
-	$(INSTALL) -D -m 0755 $(@D)/$(WASMTIME_BIN) $(TARGET_DIR)/usr/bin/wasmtime
+	$(INSTALL) -D -m 0755 $(@D)/wasmtime $(TARGET_DIR)/usr/bin/wasmtime
 endef
 
 $(eval $(generic-package))

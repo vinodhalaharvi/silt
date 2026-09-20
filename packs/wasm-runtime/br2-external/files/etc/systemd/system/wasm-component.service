@@ -15,7 +15,11 @@ ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 NoNewPrivileges=yes
-ReadWritePaths=/var/lib/component
+# StateDirectory creates /var/lib/component before the unit starts and
+# makes it writable under ProtectSystem=strict. ReadWritePaths alone named a
+# directory nothing created, and systemd refuses to start a unit whose
+# ReadWritePaths does not exist.
+StateDirectory=component
 
 Restart=on-failure
 RestartSec=10s

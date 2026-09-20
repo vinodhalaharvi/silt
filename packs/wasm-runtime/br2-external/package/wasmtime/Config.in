@@ -16,36 +16,13 @@ config BR2_PACKAGE_WASMTIME
 	  source means a Rust toolchain and an hour, to produce the binary
 	  upstream already publishes.
 
-	  The release carries two binaries. wasmtime is 59MB and includes
-	  Cranelift, which compiles WebAssembly to native code. wasmtime-min
-	  is 4MB and is the size-optimised build. Which one is installed is
-	  the choice below, and it is a real one: an appliance that runs a
-	  component every few seconds does not need a JIT compiler.
-
+	  The release carries two binaries, and only the full one, which
+	  includes the Cranelift compiler, can run a component. wasmtime-min
+	  (4MB) was this package's default until a component was first run
+	  under it: the release's min build has component support compiled
+	  out as well as the compiler, and fails with "support for components
+	  was not enabled at compile time" even on precompiled code. A choice
+	  one side of which cannot do this pack's job is a trap, so there is
+	  no choice. A small runtime for appliances is a program that embeds
+	  wasmtime with exactly the features it needs, not this binary.
 	  https://wasmtime.dev
-
-if BR2_PACKAGE_WASMTIME
-
-choice
-	prompt "wasmtime build"
-	default BR2_PACKAGE_WASMTIME_MIN
-
-config BR2_PACKAGE_WASMTIME_MIN
-	bool "wasmtime-min (4MB)"
-	help
-	  The size-optimised build. Right for an appliance running known
-	  components on a schedule.
-
-config BR2_PACKAGE_WASMTIME_FULL
-	bool "wasmtime (59MB)"
-	help
-	  The full build, including the Cranelift compiler. Right where
-	  component start-up latency or throughput matters.
-
-endchoice
-
-endif
-
-comment "wasmtime needs a glibc toolchain with threads and shared libraries"
-	depends on BR2_PACKAGE_WASMTIME_ARCH_SUPPORTS
-	depends on !BR2_TOOLCHAIN_USES_GLIBC || BR2_STATIC_LIBS || !BR2_TOOLCHAIN_HAS_THREADS

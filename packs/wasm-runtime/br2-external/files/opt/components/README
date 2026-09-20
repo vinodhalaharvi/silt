@@ -1,12 +1,15 @@
 Components go here.
 
-hello.wasm is not in this repository: a component is code, and which component
-an appliance runs is a deployment decision rather than a property of the
-image. Build one and drop it in, and the overlay carries it — at which point
-its contents are in the solution hash, and "which logic shipped on which
-device" has an answer.
+This pack carries the runtime and no component: which component an appliance
+runs is a deployment decision rather than a property of the runtime. A
+component arrives from another pack whose overlay puts it at
+/opt/components/hello.wasm, the path /etc/default/wasm-component names —
+packs/hello-component is the worked example — and from then on its bytes are
+in the solution hash, so "which logic shipped on which device" has an answer.
 
-    wat2wasm hello.wat -o packs/wasm-runtime/files/opt/components/hello.wasm
+It must be a component, not a core module: wasmtime runs components under
+WASI 0.2, and a core module built with wat2wasm is not one. Rust's
+wasm32-wasip2 target produces a component directly.
 
 The unit refuses to start without it rather than starting and doing nothing,
 which is the same reasoning as the model placeholder in packs/inference.
