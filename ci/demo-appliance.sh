@@ -11,21 +11,32 @@
 # is worse than no transcript, so every step that can fail exits non-zero when
 # it does.
 #
-#   Usage: ci/demo-appliance.sh OUTDIR [--keep]
+#   Usage: ci/demo-appliance.sh OUTDIR [--keep] [--mcp]
 #
 #     OUTDIR   a Buildroot output directory holding build/images/{Image,rootfs.ext2}
 #     --keep   leave the state disk in place (default: start from blank, which
 #              is what a buyer's first boot looks like)
+#     --mcp    also exercise the agent gateway over the tunnel, for an image
+#              built from images/qemu-arm-agent-vpn.sx
 #
 # Requirements on this machine: qemu-system-aarch64, expect, wireguard-tools,
 # and sudo for mount(8) and for the local end of the tunnel. asciinema if you
-# want a replayable cast as well as the plain transcript.
+# want a replayable cast as well as the plain transcript. --mcp also needs
+# curl and go, for the fake PLC the appliance reads.
 #
 set -euo pipefail
 
-out=${1:?usage: ci/demo-appliance.sh OUTDIR [--keep]}
+out=${1:?usage: ci/demo-appliance.sh OUTDIR [--keep] [--mcp]}
+shift
 keep=0
-[[ ${2:-} == "--keep" ]] && keep=1
+mcp=0
+for arg in "$@"; do
+	case $arg in
+	--keep) keep=1 ;;
+	--mcp)  mcp=1 ;;
+	*) echo "unknown argument: $arg" >&2; exit 2 ;;
+	esac
+done
 
 out=$(cd "$out" && pwd)
 images="$out/build/images"
@@ -44,6 +55,10 @@ need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 1; }; }
 need qemu-system-aarch64
 need expect
 need wg
+if [[ $mcp -eq 1 ]]; then
+	need curl
+	need go
+fi
 [[ -f $images/Image && -f $images/rootfs.ext2 ]] || {
 	echo "no image in $images — build it first" >&2; exit 1; }
 
@@ -167,6 +182,7 @@ boot_started=1
 rm -f "$script"
 
 cleanup() {
+	[[ ${plc_started:-0} -eq 1 ]] && kill "${plc_pid:-0}" 2>/dev/null
 	[[ $boot_started -eq 1 ]] || return 0
 	sudo ip link del wg-demo 2>/dev/null || true
 	pkill -f "qemu-system-aarch64.*$images/Image" 2>/dev/null || true
@@ -212,6 +228,53 @@ ping -c3 -W2 "$APPLIANCE_IP" | tee "$ev/ping.txt" ||
 sudo wg show wg-demo | tee "$ev/wg-show.txt"
 grep -q "latest handshake" "$ev/wg-show.txt" ||
 	{ echo "no handshake: the tunnel did not come up" >&2; exit 1; }
+
+# ------------------------------------------------- 4b. the agent gateway
+
+if [[ $mcp -eq 1 ]]; then
+	say "4b. an agent reading the plant, over the tunnel"
+
+	# The equipment, outside the appliance as equipment is. The guest
+	# reaches this machine at 10.0.2.2 on QEMU's user network, which is
+	# what /etc/default/agent-gateway names, so nothing is forwarded in.
+	go run "$(dirname "$0")/../tools/fake-plc" -addr 0.0.0.0:15020 \
+		> "$ev/fake-plc.txt" 2>&1 &
+	plc_pid=$!
+	plc_started=1
+	sleep 1
+
+	mcp_call() { # id, method, params-json
+		curl -s --max-time 10 -X POST "http://$APPLIANCE_IP:8080/mcp" \
+			-H 'Content-Type: application/json' \
+			-d "{\"jsonrpc\":\"2.0\",\"id\":$1,\"method\":\"$2\",\"params\":$3}"
+	}
+
+	# The gateway serves only on the tunnel, so reaching it at all is the
+	# first assertion: nothing on any other interface can.
+	mcp_call 1 tools/list '{}' | tee "$ev/mcp-tools.json"
+	echo
+	grep -q read_holding_registers "$ev/mcp-tools.json" ||
+		{ echo "the gateway offered no tools; see $ev/mcp-tools.json" >&2; exit 1; }
+
+	mcp_call 2 tools/call \
+		'{"name":"read_holding_registers","arguments":{"unit":1,"address":40001,"count":5}}' \
+		| tee "$ev/mcp-read.json"
+	echo
+	grep -q '40001,40002,40003,40004,40005' "$ev/mcp-read.json" ||
+		{ echo "the read did not reach the device; see $ev/mcp-read.json" >&2; exit 1; }
+
+	# The point of the product: there is no write tool, because the
+	# component imports no interface that could write, which silt check
+	# verified against the binary before this image was built.
+	mcp_call 3 tools/call \
+		'{"name":"write_holding_register","arguments":{"unit":1,"address":40001,"value":0}}' \
+		| tee "$ev/mcp-refusal.json"
+	echo
+	grep -q 'no such tool' "$ev/mcp-refusal.json" ||
+		{ echo "a write was not refused; see $ev/mcp-refusal.json" >&2; exit 1; }
+
+	echo "read over the tunnel, write refused by the component"
+fi
 
 # ------------------------------------------------------ 5. what is inside
 
