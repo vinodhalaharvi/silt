@@ -1,0 +1,30 @@
+;; The locked profile, as a pack, because locking a systemd console takes
+;; files and only packs carry files.
+;;
+;; BR2_TARGET_GENERIC_GETTY=n turns off Buildroot's getty and nothing else.
+;; With it off, Buildroot's systemd package leaves upstream systemd's defaults
+;; alone (package/systemd/systemd.mk:744), and those start a getty on tty1 by
+;; preset and on the kernel's console= by systemd-getty-generator. There is
+;; no Kconfig symbol for either. A boot of qemu-arm-agent showed the result:
+;; a locked image offering "buildroot login:" that could only fail.
+;;
+;; The fix was three symlinks to /dev/null, and it lived in the
+;; wireguard-appliance pack, so the one image composing that pack was locked
+;; and every other locked image was not. It lives here now, with the profile
+;; whose claim it makes true.
+
+(capabilities
+  (capability no-console-login
+    (doc "Nothing offers a login on any console: no getty on a tty, a serial line or /dev/console.")))
+
+(pack locked
+  (version "0.1.0")
+  (doc "glibc and systemd, no console login, read-only root, nothing to build with")
+
+  (requires
+    (buildroot "2025.02.16"))
+
+  (external "br2-external")
+
+  (provides
+    (profile locked)))

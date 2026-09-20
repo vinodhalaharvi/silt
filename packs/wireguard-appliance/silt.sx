@@ -7,18 +7,14 @@
 ;; peers until someone adds one, which is the only part a deployment has to
 ;; supply.
 ;;
-;; It also masks the login prompt, which profile:locked could not do on its
-;; own. BR2_TARGET_GENERIC_GETTY=n governs Buildroot's own getty setup; under
-;; systemd the console login comes from serial-getty@.service, generated from
-;; systemd's presets and the console named on the kernel command line, and no
-;; Kconfig symbol reaches it. A boot found that: the password was locked, so
-;; login failed with "bad salt", but the prompt was still there. Masking is a
-;; symlink to /dev/null, which is systemd's own mechanism for "this unit can
-;; never start".
+;; It needs an image with no console login, since printing the key is only
+;; safe when nothing else on the console answers, and it requires that from
+;; the profile rather than providing it: the getty masks this pack once
+;; carried now live in packs/locked with profile:locked.
 
 (pack wireguard-appliance
   (version "0.1.0")
-  (doc "First-boot provisioning for a WireGuard appliance, and no console login")
+  (doc "First-boot provisioning for a WireGuard appliance with no console login")
 
   (requires
     (buildroot "2025.02.16"))

@@ -373,7 +373,7 @@ previously claimed seven, which counted only the constraint forms and was wrong.
 | pack | `pack` `version` `external` |
 | condition | `set?` `equal?` `and` `or` `not` |
 | tree option | `custom-version` |
-| image | `compose` `override` `opaque` `unmanaged` `delegate` `environment` `verified-against` |
+| image | `compose` `override` `opaque` `unmanaged` `delegate` `environment` `verified-against` `expect-problems` `repair-policy` |
 | delegation | `custom-config-file` `config-fragment-files` |
 | policy | `repair-policy` `minimize` `keep` `baseline` |
 | imported (generated) | `symbol` `type` `depends` `selects` `implies` `default` `choice` `source` |

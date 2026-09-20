@@ -31,7 +31,8 @@ const usage = `silt — composable S-expressions over Kconfig
   silt check [PATH...]              parse and validate; report problems
   silt check --buildroot DIR        also verify every claim against that tree
         [--external DIR]            with a br2-external tree (any command)
-        [--pack DIR]                with a pack: fragments and its tree (any command)
+        [--pack DIR]                with a pack: fragments and its tree (any command);
+                                    default: every pack under ./packs
         [--linux DIR]               and every CONFIG_* claim against a kernel tree
   silt emit IMAGE.sx [-o DIR]       compose and write defconfig + linux.config
         [--buildroot DIR]           let rules see select-implied symbols

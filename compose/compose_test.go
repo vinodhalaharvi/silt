@@ -246,3 +246,24 @@ func TestListValuedSymbolsAppend(t *testing.T) {
 		t.Error("value and value-append on one symbol should conflict")
 	}
 }
+
+// A missing capability is named against everything that could have provided
+// it. The message used to blame the target alone, which for a capability only
+// a profile provides sent the reader to the one fragment that could never
+// have fixed it.
+func TestMissingCapabilityNamesTargetAndProfile(t *testing.T) {
+	decls := `(capabilities
+	  (capability mmu (doc "m")) (capability virtio (doc "v"))
+	  (capability quiet-console (doc "nothing answers on the console")))`
+	feature := `(fragment feature:f (requires (capability quiet-console)))`
+	quiet := `(fragment profile:q (requires (capability mmu)) (provides (capability quiet-console)))`
+	l := lib(t, decls, target, profile, quiet, feature)
+
+	_, err := composeSrc(t, l, `(image i (compose target:t profile:p feature:f))`)
+	if err == nil || !strings.Contains(err.Error(), "(target:t, profile:p)") {
+		t.Fatalf("got %v", err)
+	}
+	if _, err := composeSrc(t, l, `(image i (compose target:t profile:q feature:f))`); err != nil {
+		t.Fatalf("a profile providing it should satisfy it: %v", err)
+	}
+}

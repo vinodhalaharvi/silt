@@ -9,8 +9,9 @@
 ;; The first boot of this image without that feature found something: the
 ;; password was locked, so login failed with "bad salt", but the prompt was
 ;; still there. BR2_TARGET_GENERIC_GETTY=n governs Buildroot's getty and not
-;; systemd's, and no Kconfig symbol reaches serial-getty@.service. The pack
-;; masks it.
+;; systemd's, and no Kconfig symbol reaches serial-getty@.service.
+;; profile:locked masks it now, in packs/locked, so every locked image is
+;; locked rather than only this one.
 
 (image qemu-arm-locked
 

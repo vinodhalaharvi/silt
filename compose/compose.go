@@ -328,10 +328,14 @@ func (l *Library) Compose(im *lang.Image) (*Result, error) {
 					"%s: %s requires capability %q, which %s forbids\n  forbidden at %s",
 					want.Pos.Short(), fr.ID, want.Name, forbidder[want.Name], no.Pos.Short())
 			}
+			// Named by what could have provided it, not just the target:
+			// profiles provide capabilities too, and no-console-login is one
+			// only a profile can. Blaming the target sent the reader to the
+			// one fragment that could never have fixed it.
 			if _, ok := r.Capabilities[want.Name]; !ok {
-				return nil, fmt.Errorf("%s: capability %q required by %s is not provided by %s\n  %s provides: %s",
-					want.Pos.Short(), want.Name, fr.ID, targetOf(r.Fragments),
-					targetOf(r.Fragments), strings.Join(sortedKeys(r.Capabilities), ", "))
+				return nil, fmt.Errorf("%s: capability %q required by %s is not provided by anything this image composes (%s)\n  provided: %s",
+					want.Pos.Short(), want.Name, fr.ID, providersOf(r.Fragments),
+					strings.Join(sortedKeys(r.Capabilities), ", "))
 			}
 		}
 	}
@@ -480,6 +484,21 @@ func stronger(c, prev lang.Constraint) bool {
 		return true
 	}
 	return false
+}
+
+// providersOf names the composed fragments that can provide capabilities:
+// the target and the profile.
+func providersOf(frs []*lang.Fragment) string {
+	var out []string
+	for _, f := range frs {
+		if f.ID.Kind == lang.Target || f.ID.Kind == lang.Profile {
+			out = append(out, f.ID.String())
+		}
+	}
+	if len(out) == 0 {
+		return "no target or profile"
+	}
+	return strings.Join(out, ", ")
 }
 
 func targetOf(frs []*lang.Fragment) string {

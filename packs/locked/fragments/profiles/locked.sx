@@ -22,6 +22,7 @@
     (capability mmu))
 
   (provides
+    (capability no-console-login)
     (capability systemd-init)
     (capability glibc)
     (capability dhcp-client))
@@ -32,9 +33,15 @@
     (y BR2_TARGET_ROOTFS_EXT2)
     (y BR2_TARGET_ROOTFS_EXT2_4)
 
-    ;; No getty on any port. With systemd this also stops the serial console
-    ;; offering a login, which is the only way in on a headless board.
+    ;; No Buildroot getty on any port. On its own this is not enough with
+    ;; systemd, whose own defaults still start one on tty1 and on the
+    ;; kernel's console; the overlay below masks those, and together they
+    ;; make no-console-login true.
     (n BR2_TARGET_GENERIC_GETTY)
+    ;; getty@, serial-getty@ and console-getty masked by symlinks to
+    ;; /dev/null: systemd's own mechanism for "this unit does not exist",
+    ;; which no preset, generator or later unit file can re-enable.
+    (path-append BR2_ROOTFS_OVERLAY "files")
 
     ;; Not "a password nobody knows" — no password login at all. Buildroot
     ;; writes the locked field into /etc/shadow, and there is no password to

@@ -1,28 +1,27 @@
-;; Provisioning, and no login prompt.
+;; Provisioning, for an appliance with no login prompt.
 ;;
-;; Two problems one pack solves, because both are files rather than symbols.
+;; The appliance formats its state partition if blank, generates a keypair if
+;; it has none, brings up wg0 and prints the public key on the console.
+;; Nothing can connect until a peer is added, which is the one step a
+;; deployment must do and the one step that cannot be done in advance.
 ;;
-;; The login prompt: profile:locked sets BR2_TARGET_GENERIC_GETTY=n, and a
-;; boot showed the prompt anyway. That symbol governs Buildroot's own getty
-;; setup; under systemd the console login is serial-getty@.service, generated
-;; from systemd's presets against the console on the kernel command line, and
-;; no Kconfig symbol reaches it. The overlay masks it — a symlink to /dev/null,
-;; systemd's own way of saying a unit can never start — along with getty@ and
-;; console-getty. Boot messages still print, which is the point: they are the
-;; evidence, and they are how anyone diagnoses a board that will not come up.
-;;
-;; The provisioning: the appliance formats its state partition if blank,
-;; generates a keypair if it has none, brings up wg0 and prints the public key
-;; on the console. Nothing can connect until a peer is added, which is the one
-;; step a deployment must do and the one step that cannot be done in advance.
+;; Printing the key on the console is the only way this appliance says who it
+;; is, and that is only safe because nothing else on the console answers. So
+;; the feature requires no-console-login rather than providing it: this pack
+;; used to mask the getty units itself, which made the one image composing it
+;; locked and left every other locked image offering a prompt. The masks now
+;; live with profile:locked, which is the only thing that provides the
+;; capability, and composing this feature under a profile that offers a login
+;; is a check failure rather than a quiet regression.
 
 (fragment feature:wireguard-appliance
 
-  (doc "First-boot WireGuard provisioning on a state partition, and no console login")
+  (doc "First-boot WireGuard provisioning on a state partition, for an image with no console login")
 
   (requires
     (capability mmu)
-    (capability systemd-init))
+    (capability systemd-init)
+    (capability no-console-login))
 
   (buildroot
     ;; blkid and mountpoint, to tell a blank disk from a provisioned one and
