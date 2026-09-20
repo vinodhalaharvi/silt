@@ -41,14 +41,30 @@ impl Guest for Gateway {
         vec![Tool {
             name: READ_HOLDING.to_string(),
             description: "Read holding registers from a Modbus device. Read-only: \
-                          this gateway cannot write."
+                          this gateway cannot write. Addresses are protocol \
+                          addresses, 0-based and passed to the device unchanged: \
+                          documentation that says 40001 means address 0 here, and \
+                          40108 means 107. Do not subtract or add an offset."
                 .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "unit":    { "type": "integer", "minimum": 0, "maximum": 255 },
-                    "address": { "type": "integer", "minimum": 0, "maximum": 65535 },
-                    "count":   { "type": "integer", "minimum": 1, "maximum": MAX_REGISTERS }
+                    "unit": {
+                        "type": "integer", "minimum": 0, "maximum": 255,
+                        "description": "Modbus unit (slave) id. Behind a TCP-to-RTU \
+                                        gateway this selects a device on the serial segment."
+                    },
+                    "address": {
+                        "type": "integer", "minimum": 0, "maximum": 65535,
+                        "description": "Protocol address, 0-based, sent to the device as \
+                                        given. NOT 4xxxx notation: 40001 in documentation \
+                                        is address 0 here."
+                    },
+                    "count": {
+                        "type": "integer", "minimum": 1, "maximum": MAX_REGISTERS,
+                        "description": "How many consecutive registers to read. Modbus \
+                                        caps a single read at 125."
+                    }
                 },
                 "required": ["unit", "address", "count"],
                 "additionalProperties": false
@@ -77,9 +93,13 @@ fn read_registers(arguments: &str) -> Result<String, String> {
         return Err("address + count runs past register 65535".to_string());
     }
     let values = read_holding(args.unit, args.address, args.count)?;
+    // The answer says which addressing it used. A caller that assumed 4xxxx
+    // notation read a different part of the map and got a plausible-looking
+    // answer; saying so in the reply is what lets it notice.
     Ok(serde_json::json!({
         "unit": args.unit,
         "address": args.address,
+        "addressing": "protocol, 0-based",
         "values": values,
     })
     .to_string())

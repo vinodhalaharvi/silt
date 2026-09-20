@@ -4,6 +4,14 @@ Description=Agent gateway: the gateway component's tools, over MCP
 # LISTEN names that address, so there is nothing to bind to before it runs.
 After=wg-appliance.service network-online.target
 Wants=network-online.target
+# Requires, not just After: the tunnel is the only thing standing between
+# this port and whoever can route to it, so a gateway that came up while
+# provisioning failed would be serving the plant's registers on an
+# interface with no peers and no key exchange behind it. A first boot did
+# exactly that — peers.conf was malformed, wg-appliance failed, and the
+# gateway started anyway, because wg0 and its address are created before
+# peers are applied. Refusing to run is the safe direction to fail in.
+Requires=wg-appliance.service
 
 [Service]
 EnvironmentFile=/etc/default/agent-gateway
