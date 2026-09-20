@@ -47,13 +47,27 @@ func Trees(res *compose.Result) []lang.TreeDecl {
 // component checked here and absent from the image would be a claim about a
 // file nothing ships; a component shipped from somewhere else would be
 // unchecked. Only a file the composition carries is the file the image has.
-func Carried(res *compose.Result, abs string) bool {
+//
+// Both sides are made absolute before comparing. A (path ...) resolves
+// against the pack directory as it was given, so --pack packs/x leaves it
+// relative, while component paths are absolute; comparing the two as given
+// found every component uncarried whenever the pack was named relatively,
+// which is how it is usually named.
+func Carried(res *compose.Result, file string) bool {
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		return false
+	}
 	for _, cs := range res.Constraints {
 		for _, c := range cs {
 			if !c.IsPath || c.Soft {
 				continue
 			}
-			for _, root := range strings.Fields(c.Resolved) {
+			for _, r := range strings.Fields(c.Resolved) {
+				root, err := filepath.Abs(r)
+				if err != nil {
+					continue
+				}
 				rel, err := filepath.Rel(root, abs)
 				if err == nil && rel != ".." && !strings.HasPrefix(rel, "../") {
 					return true

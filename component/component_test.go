@@ -194,3 +194,35 @@ func TestAgainstWasmTools(t *testing.T) {
 		}
 	}
 }
+
+// A WIT directory is one package, and only one of its files needs to say
+// which. WASI's own cli package does exactly this: stdio.wit and
+// environment.wit have no package line. The first scanner assumed every file
+// declared its own and rejected the real WASI definitions.
+func TestVocabularyDirectoryPackage(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Named so the headerless file sorts first: inheritance must not depend
+	// on the declaring file having been read already.
+	write("a-stdio.wit", "@since(version = 0.2.0)\ninterface stdout {\n  f: func();\n}\n")
+	write("b-command.wit", "package wasi:cli@0.2.6;\n\ninterface exit {\n  g: func();\n}\n")
+	v, err := Vocabulary([]string{dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v["WASI__CLI__STDOUT"].Name != "wasi:cli/stdout" || v["WASI__CLI__EXIT"].Name != "wasi:cli/exit" {
+		t.Fatalf("got %v", v)
+	}
+
+	// Two files claiming different packages for one directory is not a
+	// package WIT would accept, and guessing which one wins would be wrong.
+	write("c-other.wit", "package wasi:io@0.2.6;\n")
+	if _, err := Vocabulary([]string{dir}); err == nil || !strings.Contains(err.Error(), "same directory") {
+		t.Fatalf("got %v", err)
+	}
+}

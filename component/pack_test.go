@@ -287,3 +287,25 @@ func TestComponentLineMatchesSha256sum(t *testing.T) {
 		t.Fatalf("solution lacks %q:\n%s", want, s)
 	}
 }
+
+// --pack packs/x is how a pack is usually named, and leaves (path ...)
+// relative while component paths are absolute. The first Carried compared
+// them as given and found every component uncarried; the other tests all
+// used absolute temp dirs and could not see it.
+func TestCarriedWithRelativePackPath(t *testing.T) {
+	p := fixture{tree: gatewayTree, fragments: carried + readOnly}.build(t)
+	abs := p.Decl.Dir
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(filepath.Dir(abs)); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(wd)
+	rel, err := pack.Load(filepath.Base(abs))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expect(t, check(t, compose1(t, rel, image)))
+}

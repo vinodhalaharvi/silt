@@ -97,13 +97,36 @@ func Vocabulary(paths []string) (map[string]Interface, error) {
 		return nil, fmt.Errorf("no .wit files under %s", strings.Join(paths, ", "))
 	}
 
-	out := map[string]Interface{}
+	// A directory is one package, and WIT requires only one of its files to
+	// say which: WASI's cli package declares it in command.wit and nowhere
+	// else, so stdio.wit and environment.wit have no package line at all.
+	// Every file therefore takes its directory's declaration unless it makes
+	// its own, and two different declarations in one directory are an error.
+	srcs := map[string]string{}
+	dirPkg := map[string]string{}
+	dirPkgAt := map[string]string{}
 	for _, file := range files {
-		src, err := os.ReadFile(file)
+		data, err := os.ReadFile(file)
 		if err != nil {
 			return nil, err
 		}
-		found, err := scanWIT(string(src), file)
+		srcs[file] = string(data)
+		name, line := filePackage(string(data))
+		if name == "" {
+			continue
+		}
+		dir := filepath.Dir(file)
+		if prev, ok := dirPkg[dir]; ok && prev != name {
+			return nil, fmt.Errorf("%s:%d: package %s, but %s declares %s for the same directory",
+				file, line, name, dirPkgAt[dir], prev)
+		}
+		dirPkg[dir] = name
+		dirPkgAt[dir] = fmt.Sprintf("%s:%d", file, line)
+	}
+
+	out := map[string]Interface{}
+	for _, file := range files {
+		found, err := scanWIT(srcs[file], file, dirPkg[filepath.Dir(file)])
 		if err != nil {
 			return nil, err
 		}
@@ -120,14 +143,42 @@ func Vocabulary(paths []string) (map[string]Interface, error) {
 	return out, nil
 }
 
-// scanWIT finds package names and the interfaces declared directly in them.
-func scanWIT(src, file string) ([]Interface, error) {
+// filePackage returns the package a file declares with `package a:b;` at its
+// top level, without version, and the line it is on. A `package a:b { }`
+// block is a nested package, not the file's, and does not count.
+func filePackage(src string) (string, int) {
+	toks := tokenize(src)
+	depth := 0
+	for i, t := range toks {
+		switch t.text {
+		case "{":
+			depth++
+		case "}":
+			depth--
+		case "package":
+			if depth == 0 && i+2 < len(toks) && toks[i+2].text == ";" {
+				name := toks[i+1].text
+				if at := strings.IndexByte(name, '@'); at >= 0 {
+					name = name[:at]
+				}
+				return name, t.line
+			}
+		}
+	}
+	return "", 0
+}
+
+// scanWIT finds the interfaces declared directly in a file's packages.
+// dirPkg is the package the file's directory declares, which a file without
+// its own package line belongs to.
+func scanWIT(src, file, dirPkg string) ([]Interface, error) {
 	toks := tokenize(src)
 	var out []Interface
 
-	// filePkg is set by `package a:b;`. A `package a:b { ... }` block
-	// pushes a nested package whose interfaces sit one level deeper.
-	var filePkg string
+	// filePkg is set by `package a:b;`, and otherwise inherited from the
+	// directory. A `package a:b { ... }` block pushes a nested package
+	// whose interfaces sit one level deeper.
+	filePkg := dirPkg
 	type nested struct {
 		name  string
 		depth int
