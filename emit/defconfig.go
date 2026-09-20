@@ -16,9 +16,17 @@ import (
 // Trees lists the non-Buildroot trees this composition configures, sorted.
 // Each gets its own config file, handed to Buildroot through that tree's
 // consumed-by symbol.
+//
+// A check-only tree is not among them. A wasm-component tree constrains what
+// the image may contain and configures nothing, so it has no file to write
+// and no Buildroot symbol to hand one to; routing it here would make emit
+// demand a consumed-by that cannot exist.
 func Trees(r *compose.Result) []string {
 	var out []string
 	for sc, cs := range r.Constraints {
+		if d, ok := r.Trees[string(sc)]; ok && d.CheckOnly() {
+			continue
+		}
 		if sc != lang.Buildroot && hasHard(cs) {
 			out = append(out, string(sc))
 		}

@@ -280,3 +280,32 @@ func TestPathsResolveAgainstTheExternalTree(t *testing.T) {
 		t.Errorf("resolved outside the external tree: %q", c.Resolved)
 	}
 }
+
+// Component paths resolve against the br2-external tree, the base (path ...)
+// uses, so check and build name the same file. A pack with no external tree
+// has no such base, and a component outside the tree is not in the pack.
+func TestComponentTreesResolveAgainstExternal(t *testing.T) {
+	tree := `(tree gw (kind wasm-component) (component "files/gw.wasm") (wit "wit"))`
+	noExt := packDir(t, goodDecl+tree, "")
+	if _, err := Load(noExt); err == nil || !strings.Contains(err.Error(), "needs the pack to have an (external") {
+		t.Fatalf("got %v", err)
+	}
+
+	decl := `(pack demo (version "0.1.0") (external "br2-external") (provides (feature widget)))` + tree
+	dir := packDir(t, decl, "")
+	write(t, dir, "br2-external/external.desc", "name: DEMO\n")
+	write(t, dir, "br2-external/wit/x.wit", "package a:b;\n")
+	if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "files/gw.wasm, which is not in the pack's") {
+		t.Fatalf("got %v", err)
+	}
+	write(t, dir, "br2-external/files/gw.wasm", "")
+	p, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := p.Files[0].Trees[0].ResolvedComponents[0]
+	want, _ := filepath.Abs(filepath.Join(dir, "br2-external", "files", "gw.wasm"))
+	if got != want {
+		t.Fatalf("resolved to %s, want %s", got, want)
+	}
+}

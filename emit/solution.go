@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/vinodhalaharvi/silt/component"
 	"github.com/vinodhalaharvi/silt/compose"
 	"github.com/vinodhalaharvi/silt/lang"
 )
@@ -49,6 +50,28 @@ func Solution(r *compose.Result, versions, env map[string]string) string {
 		// hashed, so changing any one of them changes the solution.
 		for _, path := range strings.Fields(c.Resolved) {
 			fmt.Fprintf(&b, "file %s %s\n", c.Sym, hashPath(path))
+		}
+	}
+
+	// Component trees: each binary by content, and each policy line.
+	//
+	// The security claim a component tree makes is "no import, no path",
+	// and it holds only if the bytes check read are the bytes the image
+	// runs. The overlay's hash above already covers a carried component,
+	// but anonymously, as one file among many. Naming each binary against
+	// its tree makes the claim itself part of the image's identity: swap a
+	// component or widen a policy and the solution is a different one.
+	for _, d := range component.Trees(r) {
+		for i, abs := range d.ResolvedComponents {
+			fmt.Fprintf(&b, "component %s %s %s\n", d.Name, d.Components[i], fileSHA256(abs))
+		}
+		var policy []string
+		for _, c := range r.Constraints[lang.Scope(d.Name)] {
+			policy = append(policy, fmt.Sprintf("%s %s %s", d.Name, c.Want, c.Sym.Name))
+		}
+		sort.Strings(policy)
+		for _, line := range policy {
+			fmt.Fprintf(&b, "policy %s\n", line)
 		}
 	}
 
@@ -102,6 +125,22 @@ func pathConstraints(r *compose.Result) []lang.Constraint {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Sym.String() < out[j].Sym.String() })
 	return out
+}
+
+// fileSHA256 is the full SHA-256 of a file's bytes and nothing else.
+//
+// Component lines use it rather than hashPath, which mixes in the path and
+// mode. The component line is the one a reviewer compares with what a device
+// actually runs, and sha256sum on the device must print the same thing; a
+// hash that differed for reasons unrelated to the bytes would read as a
+// swapped binary.
+func fileSHA256(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "missing"
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 // hashPath is the content address of a file, or of a directory tree taken as

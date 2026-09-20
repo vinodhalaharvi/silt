@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/vinodhalaharvi/silt/component"
 	"github.com/vinodhalaharvi/silt/compose"
 	"github.com/vinodhalaharvi/silt/emit"
 	"github.com/vinodhalaharvi/silt/fixpoint"
@@ -251,12 +252,33 @@ func cmdCheck(args []string) error {
 		}
 	}
 
+	loaded := map[string]*component.Tree{}
 	for _, im := range images {
 		res, err := lib.Compose(im)
 		if err != nil {
 			return fmt.Errorf("image %s: %w", im.Name, err)
 		}
+		// Component trees need no Buildroot tree: the binaries and the
+		// pack's WIT are all they are checked against. So they run on a
+		// bare check too, which is where CI is most likely to run one.
+		compFindings, compAgainst, err := checkComponents(res, loaded)
+		if err != nil {
+			return fmt.Errorf("image %s: %w", im.Name, err)
+		}
 		if tree == nil {
+			if len(compAgainst) == 0 {
+				continue
+			}
+			if len(compFindings) == 0 {
+				fmt.Printf("ok  %-18s %s component symbols checked\n",
+					im.Name, strings.Join(compAgainst, ", "))
+				continue
+			}
+			bad++
+			fmt.Printf("\n%s — %d problem(s)\n", im.Name, len(compFindings))
+			for _, f := range compFindings {
+				fmt.Printf("  %s\n", f)
+			}
 			continue
 		}
 		// A pin that disagrees with the tree is reported before anything else:
@@ -277,6 +299,9 @@ func cmdCheck(args []string) error {
 		// Every other tree the library declares and the caller supplied. A
 		// tree nobody loaded is not checked, and the count below says so.
 		for _, sc := range otherScopes(res) {
+			if lib.Trees[string(sc)].CheckOnly() {
+				continue // checked above, against its components
+			}
 			t2, ver, err := treeFor(sc, lib.Trees, lxDir)
 			if err != nil {
 				return err
@@ -296,6 +321,9 @@ func cmdCheck(args []string) error {
 			against = append(against, fmt.Sprintf("%d %s", r2.Checked, sc))
 			versions = append(versions, string(sc)+" "+ver)
 		}
+
+		rep.Findings = append(rep.Findings, compFindings...)
+		against = append(against, compAgainst...)
 
 		// check is conservative: unstated is unknown, never false, so it
 		// catches contradictions but never "you did not say enough". The
@@ -327,6 +355,34 @@ func cmdCheck(args []string) error {
 	fmt.Printf("ok  %d files, %d fragments, %d rule blocks, %d images\n",
 		len(files), nf, nr, len(images))
 	return nil
+}
+
+// checkComponents checks every component tree an image uses, in two stages.
+//
+// verify.Check first, unchanged, over the pack's vocabulary presented as a
+// tree of bool symbols: a policy naming an interface no WIT defines is a
+// finding, which is how a misspelled (n ...) is caught instead of passing
+// forever. Then component.Findings, which asks the question Kconfig cannot:
+// whether the binaries import what the policy forbids, whether they import
+// anything the vocabulary cannot name, and whether the image carries them.
+func checkComponents(res *compose.Result, loaded map[string]*component.Tree) ([]verify.Finding, []string, error) {
+	var findings []verify.Finding
+	var against []string
+	for _, d := range component.Trees(res) {
+		ct, ok := loaded[d.Name]
+		if !ok {
+			var err error
+			if ct, err = component.Load(d); err != nil {
+				return nil, nil, err
+			}
+			loaded[d.Name] = ct
+		}
+		rep := verify.Check(res, ct.Kconfig(), d)
+		findings = append(findings, rep.Findings...)
+		findings = append(findings, component.Findings(res, ct)...)
+		against = append(against, fmt.Sprintf("%d %s", rep.Checked, d.Name))
+	}
+	return findings, against, nil
 }
 
 // predictionDrops reports symbols an image states that the predicted
@@ -740,8 +796,11 @@ func cmdSolutionHash(args []string) error {
 	}
 	fmt.Printf("%s  %s\n", emit.SolutionHash(res, versions, env), name)
 	for _, line := range strings.Split(strings.TrimSpace(emit.Solution(res, versions, env)), "\n") {
+		// Components are shown, not just hashed: which binary backs a
+		// component tree is the claim itself, and the one line a reviewer
+		// wants to compare against what the device runs.
 		if strings.HasPrefix(line, "tree ") || strings.HasPrefix(line, "env ") ||
-			strings.HasPrefix(line, "fragment ") {
+			strings.HasPrefix(line, "fragment ") || strings.HasPrefix(line, "component ") {
 			fmt.Printf("  %s\n", line)
 		}
 	}
@@ -872,6 +931,12 @@ func solutionInputs(brDir, lxDir string, decls map[string]lang.TreeDecl, r *comp
 		}
 	}
 	for _, sc := range otherScopes(r) {
+		// A component tree has no release: its identity is its binaries,
+		// which the solution already hashes one by one. Recording
+		// "unknown" here would read as a tree nobody supplied.
+		if decls[string(sc)].CheckOnly() {
+			continue
+		}
 		versions[string(sc)] = "unknown"
 		dir := lxDir
 		if d, ok := decls[string(sc)]; ok && d.Source != "" && dir == "" {
@@ -937,6 +1002,21 @@ func cmdWhy(args []string) error {
 	id, err := resolveSymbol(r, sym)
 	if err != nil {
 		return err
+	}
+	// A component tree's symbol is a fact about binaries, not a Kconfig
+	// value: say what it is and who imports it, then any policy about it.
+	if d, ok := r.Trees[id.Tree]; ok && d.CheckOnly() {
+		ct, err := component.Load(d)
+		if err != nil {
+			return err
+		}
+		fmt.Print(ct.Why(id.Name))
+		for _, c := range r.Constraints[lang.Scope(id.Tree)] {
+			if c.Sym == id {
+				fmt.Printf("  policy: (%s %s) by %s at %s\n", c.Want, id.Name, c.From, c.Pos.Short())
+			}
+		}
+		return nil
 	}
 	if s, ok := r.ExplainDerived(id); ok {
 		fmt.Print(s)

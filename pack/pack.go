@@ -72,6 +72,9 @@ func Load(dir string) (*Pack, error) {
 	if err := p.resolvePaths(); err != nil {
 		return nil, err
 	}
+	if err := p.resolveComponents(); err != nil {
+		return nil, err
+	}
 	if p.Decl.External != "" {
 		ext, err := filepath.Abs(filepath.Join(dir, p.Decl.External))
 		if err != nil {
@@ -128,6 +131,57 @@ func (p *Pack) resolvePaths() error {
 					}
 					c.Value = strings.ReplaceAll(tmpl, "{}", ref)
 				}
+			}
+		}
+	}
+	return nil
+}
+
+// resolveComponents finds the binaries and interface definitions of every
+// wasm-component tree the pack declares, against the br2-external tree.
+//
+// The same base as resolvePaths, deliberately. A component tree's claim is
+// about the bytes the image carries; the image carries files through (path
+// ...), and those resolve against the external tree. Resolving components
+// against anything else would let check read one file while the build copied
+// another, which is the exact failure resolvePaths was fixed for.
+func (p *Pack) resolveComponents() error {
+	for _, f := range p.Files {
+		for _, d := range f.Trees {
+			if d.Kind != lang.KindWasmComponent {
+				continue
+			}
+			if p.Decl.External == "" {
+				return fmt.Errorf("%s: tree %s names components, which needs the pack to have "+
+					"an (external ...) tree: that is what the image carries them from",
+					d.Pos.Short(), d.Name)
+			}
+			base := filepath.Join(p.Decl.Dir, p.Decl.External)
+			resolve := func(rel, what string) (string, error) {
+				abs, err := filepath.Abs(filepath.Join(base, rel))
+				if err != nil {
+					return "", err
+				}
+				if _, err := os.Stat(abs); err != nil {
+					return "", fmt.Errorf("%s: tree %s names %s %s, which is not in the pack's %s tree",
+						d.Pos.Short(), d.Name, what, rel, p.Decl.External)
+				}
+				return abs, nil
+			}
+			d.ResolvedComponents, d.ResolvedWit = nil, nil
+			for _, rel := range d.Components {
+				abs, err := resolve(rel, "component")
+				if err != nil {
+					return err
+				}
+				d.ResolvedComponents = append(d.ResolvedComponents, abs)
+			}
+			for _, rel := range d.Wit {
+				abs, err := resolve(rel, "wit")
+				if err != nil {
+					return err
+				}
+				d.ResolvedWit = append(d.ResolvedWit, abs)
 			}
 		}
 	}

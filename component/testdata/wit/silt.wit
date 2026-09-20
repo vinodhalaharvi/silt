@@ -1,0 +1,21 @@
+// The interfaces a Modbus and OPC UA pack would define.
+package silt:modbus@0.1.0;
+
+/// Read holding registers. Nothing here can write.
+interface read {
+  read-holding: func(addr: u16) -> u16;
+}
+
+/* Writing is its own interface, so a policy can forbid it
+   without forbidding reads. */
+interface write {
+  write-holding: func(addr: u16, value: u16);
+}
+
+world reader {
+  import read;
+  // An inline interface is not vocabulary: nothing can import it by name.
+  import scratch: interface {
+    note: func();
+  }
+}

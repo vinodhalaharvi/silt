@@ -1,0 +1,18 @@
+package silt:opcua@0.1.0;
+
+interface browse {
+  children: func(node: string) -> list<string>;
+}
+
+// Nested package blocks, in the form wasm-tools itself prints.
+package wasi:http@0.3.0 {
+  interface incoming-handler {
+    handle: func();
+  }
+}
+
+package wasi:clocks@0.3.0 {
+  interface monotonic-clock {
+    now: func() -> u64;
+  }
+}

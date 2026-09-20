@@ -183,17 +183,57 @@ constraint nobody enforces reads as a promise.
 
 ```ebnf
 tree        = "(" "tree" tree-name { tree-clause } ")" ;
-tree-clause = "(" "kind" "kconfig" ")"
+tree-clause = "(" "kind" ( "kconfig" | "wasm-component" ) ")"
             | "(" "prefix" string ")"
             | "(" "consumed-by" symbol ")"
-            | "(" "source" string ")" ;
+            | "(" "source" string ")"
+            | "(" "component" string ")"
+            | "(" "wit" string ")" ;
 ```
 
 `buildroot` (prefix `BR2_`) and `linux` (prefix `CONFIG_`, consumed by
-`BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES`) are built in. `kind` is required and only
-`kconfig` exists; devicetree is not a constraint system and is rejected. `consumed-by`
+`BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES`) are built in. `kind` is required, and is
+`kconfig` or `wasm-component`; devicetree is not a constraint system and is rejected. `consumed-by`
 names the Buildroot symbol that receives the tree's emitted config file; `silt check
 --buildroot` verifies it exists and is a string.
+
+### Component trees
+
+A `wasm-component` tree's symbols are the interfaces WebAssembly components import,
+read from the binaries rather than declared. It configures nothing: it emits no file
+and takes no `consumed-by`, `prefix`, `source` or `env`. It takes one or more
+`component` clauses, whose imports are unioned, and one or more `wit` clauses, whose
+interfaces are the tree's vocabulary. Clauses belonging to the other kind are errors.
+
+```lisp
+(tree agent-gateway
+  (kind wasm-component)
+  (component "files/components/gateway.wasm")
+  (wit "wit"))
+
+(fragment feature:agent-read-only
+  (scope agent-gateway
+    (n SILT__MODBUS__WRITE)))
+```
+
+Only packs declare component trees, and both paths resolve against the pack's
+br2-external tree — the base `path` uses — so what `check` reads is what the image
+carries. An interface name maps to a symbol by upper-casing it, writing each `:` and
+`/` as `__` and each `-` as `_`, and dropping the version:
+`silt:modbus/read@0.1.0` is `SILT__MODBUS__READ`. The double underscore makes the
+mapping injective; `a-b:c/d` and `a:b-c/d` stay distinct. The mapping is permanent,
+since every pack's policy is written in its output.
+
+A component scope takes only `n`: its claim is what a component cannot reach.
+`check` reports a policy symbol the vocabulary does not define, a forbidden
+interface a component imports, an import the vocabulary cannot name (policy cannot
+forbid what it cannot name, so this fails closed), an import that is not an
+interface, and a component no stated `path` carries into the image. The solution
+hash records each component's SHA-256, the same value `sha256sum` prints on the
+device, and each policy line.
+
+Policy is written in a feature, not a profile: an image composes one profile, and a
+restriction is additive.
 
 ---
 
