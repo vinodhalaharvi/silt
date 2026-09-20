@@ -10,7 +10,7 @@
 # refuses a unit it does not serve, and the component refuses a count the
 # protocol cannot carry.
 #
-# Needs python3, curl and a Rust toolchain. Nothing here needs the appliance.
+# Needs curl, Go and a Rust toolchain. Nothing here needs the appliance.
 set -eu
 cd "$(dirname "$0")"
 
@@ -31,7 +31,7 @@ trap cleanup EXIT
 # does it, and a release build of a wasmtime-embedding binary is minutes.
 (cd ../host && cargo build --locked)
 
-python3 fake-plc.py "$plc_port" > "$tmp/plc.log" 2>&1 &
+go run ../../../tools/fake-plc -addr "127.0.0.1:$plc_port" > "$tmp/plc.log" 2>&1 &
 plc_pid=$!
 
 COMPONENT="$gw" LISTEN="127.0.0.1:$port" MODBUS_DEVICE="127.0.0.1:$plc_port" \

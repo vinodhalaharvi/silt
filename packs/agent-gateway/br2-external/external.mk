@@ -1,1 +1,1 @@
-# No packages yet: the gateway is carried as a file by the overlay.
+include $(sort $(wildcard $(BR2_EXTERNAL_AGENT_GATEWAY_PATH)/package/*/*.mk))

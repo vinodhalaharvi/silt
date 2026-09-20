@@ -22,4 +22,5 @@
 
   (provides
     (feature agent-gateway)
-    (feature agent-read-only)))
+    (feature agent-read-only)
+    (feature agent-gateway-host)))

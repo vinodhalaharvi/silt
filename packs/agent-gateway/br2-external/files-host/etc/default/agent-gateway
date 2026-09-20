@@ -1,0 +1,27 @@
+# The agent gateway's deployment: what it serves, to whom, and about what.
+#
+# Every line is part of what this appliance is, and the file is carried by
+# the image, so its contents are in the solution hash: changing where the
+# gateway listens or which device it reads changes the appliance's identity.
+
+# The component whose tools are served. Its imports are what the agent can
+# reach, and silt check verified them against this image's policy.
+COMPONENT=/opt/components/gateway.wasm
+
+# The WireGuard address, not 0.0.0.0 and not a LAN address.
+#
+# MCP has no authentication of its own here, so reachability is the
+# authentication: wg0 exists only after the appliance has handshaked with a
+# peer holding the right key, and nothing else on any network can open this
+# port. An MCP server on a plant LAN would be a different proposition.
+LISTEN=10.9.0.1:8080
+
+# The equipment. 10.0.2.2 is the host machine as seen from QEMU's user
+# network, where tools/fake-plc stands in for a PLC; a deployment points
+# this at the real device.
+MODBUS_DEVICE=10.0.2.2:15020
+MODBUS_TIMEOUT_MS=2000
+
+# One record per tool call, hash-chained. StateDirectory creates the
+# directory and makes it writable under ProtectSystem=strict.
+AUDIT_LOG=/var/lib/agent-gateway/audit.log

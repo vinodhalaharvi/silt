@@ -1,0 +1,20 @@
+config BR2_PACKAGE_AGENT_GATEWAY_HOST_ARCH_SUPPORTS
+	bool
+	default y if BR2_aarch64
+
+config BR2_PACKAGE_AGENT_GATEWAY_HOST
+	bool "agent-gateway-host"
+	depends on BR2_PACKAGE_AGENT_GATEWAY_HOST_ARCH_SUPPORTS
+	depends on BR2_INIT_SYSTEMD
+	help
+	  Serves the gateway component's tools over MCP, and nothing else.
+	  It embeds wasmtime, instantiates /opt/components/gateway.wasm, and
+	  answers the one function that component imports, silt:modbus/read,
+	  from a Modbus TCP device.
+
+	  Installed from a release tarball rather than built here: it is a
+	  Rust program embedding wasmtime, and building it in Buildroot would
+	  mean a Rust toolchain plus a vendored dependency tree larger than
+	  this repository. The source is in packs/agent-gateway/host and
+	  release.sh builds what this fetches; the hash beside this file is
+	  what ties the two together.

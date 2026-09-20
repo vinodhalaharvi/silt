@@ -1,0 +1,29 @@
+;; The program that runs the gateway and serves its tools to an agent.
+;;
+;; The component is the checked part and this is the trusted part: what the
+;; component may ask for is in its binary, and what it actually gets is this
+;; program's doing. It is fetched rather than built here — a Rust program
+;; embedding wasmtime, pinned by the hash beside its package — and its
+;; source is in this pack under host/.
+;;
+;; It listens on the WireGuard address, which is why this feature is worth
+;; composing onto the VPN appliance rather than onto any image with a
+;; network: wg0 exists only after a peer with the right key has handshaked,
+;; so reachability is the authentication MCP does not have of its own.
+
+(fragment feature:agent-gateway-host
+
+  (doc "Serves the gateway component's tools over MCP, on the VPN address")
+
+  (requires
+    (capability systemd-init)
+    (capability no-console-login))
+
+  (buildroot
+    (y BR2_PACKAGE_AGENT_GATEWAY_HOST)
+
+    ;; Its own overlay, not the component's. They were one directory until
+    ;; it became clear that an image with the component and without this
+    ;; feature would ship a unit whose binary is not installed, and fail at
+    ;; boot for a reason nothing in the image explains.
+    (path-append BR2_ROOTFS_OVERLAY "files-host")))

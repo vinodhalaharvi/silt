@@ -1,0 +1,24 @@
+[Unit]
+Description=Agent gateway: the gateway component's tools, over MCP
+# wg0 and its address come from the appliance's first-boot provisioning, and
+# LISTEN names that address, so there is nothing to bind to before it runs.
+After=wg-appliance.service network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/default/agent-gateway
+ExecStart=/usr/bin/agent-gateway-host
+User=root
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+StateDirectory=agent-gateway
+# A gateway that died is a gateway an agent cannot reach, which is the safe
+# direction to fail in; it comes back, and the audit chain continues from
+# the head it reads on start.
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

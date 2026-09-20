@@ -1,0 +1,24 @@
+;; The VPN appliance, with an agent gateway on the tunnel.
+;;
+;; Derived from qemu-arm-locked rather than restating it: the target, the
+;; locked profile, WireGuard and the first-boot provisioning are that
+;; image's and stay there. What this adds is the component, the policy that
+;; says what it must not reach, and the host that serves its tools.
+;;
+;; The result is an appliance with no login, no console prompt, and one port
+;; that exists only inside a tunnel whose peer had to be configured before
+;; the first boot. An agent that can reach it can read holding registers and
+;; nothing else, which silt check verifies from the component's binary.
+
+(image qemu-arm-agent-vpn
+
+  (compose
+    image:qemu-arm-locked
+    feature:agent-gateway
+    feature:agent-read-only
+    feature:agent-gateway-host)
+
+  ;; The host embeds wasmtime and is tens of megabytes; Buildroot's default
+  ;; 60M rootfs is what the base image was content with.
+  (override
+    (value buildroot:BR2_TARGET_ROOTFS_EXT2_SIZE "256M")))
