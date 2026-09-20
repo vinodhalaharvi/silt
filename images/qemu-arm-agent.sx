@@ -1,0 +1,11 @@
+;; The locked appliance, with an agent gateway that can read the plant and
+;; change nothing — checked from the gateway's binary by silt check.
+
+(image qemu-arm-agent
+  (compose
+    target:qemu-aarch64-virt
+    profile:locked
+    feature:networking
+    feature:agent-gateway
+    feature:agent-read-only)
+  (verified-against (buildroot "2025.02.16")))

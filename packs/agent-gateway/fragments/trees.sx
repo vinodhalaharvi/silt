@@ -1,0 +1,8 @@
+;; Everything the agent can reach goes through this one component, so this
+;; one tree is the agent's trust boundary. A later tool the operator uses but
+;; the agent must not would be a second tree, checked under its own policy.
+
+(tree agent-gateway
+  (kind wasm-component)
+  (component "files/opt/components/gateway.wasm")
+  (wit "wit"))

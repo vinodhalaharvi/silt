@@ -1,0 +1,18 @@
+/// Modbus, split so that reading and writing are separate capabilities.
+///
+/// A component that imports only `read` cannot write a register: there is
+/// no function in its binary that could. That is what lets a policy forbid
+/// writing without forbidding reading, and what Silt checks.
+package silt:modbus@0.1.0;
+
+/// Read holding registers. Nothing in this interface changes the plant.
+interface read {
+  /// Read `count` holding registers starting at `addr` from unit `unit`.
+  read-holding: func(unit: u8, addr: u16, count: u16) -> result<list<u16>, string>;
+}
+
+/// Write holding registers. Importing this is a claim that the component
+/// may change the plant, and read-only policy forbids it.
+interface write {
+  write-holding: func(unit: u8, addr: u16, value: u16) -> result<_, string>;
+}

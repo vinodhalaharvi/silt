@@ -1,0 +1,45 @@
+;; The gateway, carried into the image.
+;;
+;; The overlay puts it at /opt/components/gateway.wasm, beside the component
+;; the wasm-runtime pack runs. Carrying it is also what lets silt check vouch
+;; for it: a component the image does not carry is a finding, so the bytes
+;; checked are the bytes shipped.
+
+(fragment feature:agent-gateway
+
+  (doc "The agent gateway component, carried at /opt/components/gateway.wasm")
+
+  (buildroot
+    (path-append BR2_ROOTFS_OVERLAY "files")))
+
+
+;; What the agent must not be able to do, stated about the gateway's imports.
+;;
+;; A feature, not a profile: an image composes one profile, the appliances
+;; already use profile:locked, and a restriction is additive.
+;;
+;; Each line forbids an interface. The check is against the binary, so
+;; rebuilding the gateway with a write in it makes silt check fail rather
+;; than making a comment false.
+
+(fragment feature:agent-read-only
+
+  (doc "The agent can read the plant and change nothing")
+
+  (scope agent-gateway
+    ;; The plant.
+    (n SILT__MODBUS__WRITE)
+
+    ;; The appliance's own disk. Nothing an agent asks for needs it.
+    (n WASI__FILESYSTEM__TYPES)
+    (n WASI__FILESYSTEM__PREOPENS)
+
+    ;; The network. The gateway talks to devices only through the host's
+    ;; Modbus adapter; a socket of its own would be a path around it.
+    (n WASI__SOCKETS__NETWORK)
+    (n WASI__SOCKETS__INSTANCE_NETWORK)
+    (n WASI__SOCKETS__TCP)
+    (n WASI__SOCKETS__TCP_CREATE_SOCKET)
+    (n WASI__SOCKETS__UDP)
+    (n WASI__SOCKETS__UDP_CREATE_SOCKET)
+    (n WASI__SOCKETS__IP_NAME_LOOKUP)))

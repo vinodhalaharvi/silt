@@ -1,0 +1,28 @@
+/// The agent gateway: the tools an AI agent may call, and nothing else.
+///
+/// The agent reaches the plant only through the tools this component
+/// exports, and the component reaches the plant only through what it
+/// imports. Its imports are therefore the whole of what an agent can do,
+/// and they are in the binary where Silt reads them.
+package silt:gateway@0.1.0;
+
+/// The tools the gateway offers, in the shape an MCP host maps onto
+/// tools/list and tools/call.
+interface tools {
+  /// A tool's name, what it does, and the JSON schema of its arguments.
+  record tool {
+    name: string,
+    description: string,
+    input-schema: string,
+  }
+
+  list-tools: func() -> list<tool>;
+
+  /// Call a tool by name with JSON arguments; returns JSON.
+  call-tool: func(name: string, arguments: string) -> result<string, string>;
+}
+
+world gateway {
+  import silt:modbus/read@0.1.0;
+  export tools;
+}

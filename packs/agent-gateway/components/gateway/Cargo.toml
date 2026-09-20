@@ -1,0 +1,23 @@
+[package]
+name = "agent-gateway"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The tools an AI agent may call on a plant; imports only silt:modbus/read"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.62"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Small and deterministic: this binary's SHA-256 is in the image's solution
+# hash, so a build that differed for no reason would read as a new gateway.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

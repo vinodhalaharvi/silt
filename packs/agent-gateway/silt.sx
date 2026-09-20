@@ -1,0 +1,25 @@
+;; The tools an AI agent may call on a plant, checked before they ship.
+;;
+;; An agent reaches equipment only through the gateway component's exported
+;; tools, and the gateway reaches equipment only through what it imports.
+;; Its imports are in its binary, so "can the agent write a register?" is
+;; answered by reading the artifact, not by trusting a configuration file.
+;;
+;; The tree below is what makes that a Silt question. Its vocabulary is every
+;; interface under br2-external/wit — this pack's own (silt:modbus,
+;; silt:gateway) and WASI 0.2.6, vendored so that policy can name the WASI
+;; interfaces too. An import outside that vocabulary is a finding: a policy
+;; cannot forbid what it cannot name, so the check fails closed.
+
+(pack agent-gateway
+  (version "0.1.0")
+  (doc "An agent gateway whose reach is checked from its binary")
+
+  (requires
+    (buildroot "2025.02.16"))
+
+  (external "br2-external")
+
+  (provides
+    (feature agent-gateway)
+    (feature agent-read-only)))
