@@ -7,6 +7,19 @@
 
 COMPONENT=/opt/components/hello.wasm
 
+# The runtime's own options, which are not grants.
+#
+# wasmtime keeps a compilation cache under $HOME/.cache, and a first boot
+# failed on it: "failed to create cache directory: /root/.cache/wasmtime:
+# Read-only file system". That is ProtectSystem=strict doing its job, and
+# the right answer is not to give the runtime a writable home. A component
+# that runs at boot is compiled once per boot either way.
+#
+# An appliance that cares about start-up time precompiles instead:
+# wasmtime compile --target aarch64-unknown-linux-gnu, carried as the
+# artifact, with the compiler never run on the device at all.
+RUNTIME_OPTS=-C cache=n
+
 # Filesystem: host path :: guest path. Nothing else is visible, and the
 # component cannot name a path outside what is mapped.
 GRANT_DIRS=--dir /var/lib/component::/data
