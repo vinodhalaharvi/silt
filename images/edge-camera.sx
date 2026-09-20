@@ -27,4 +27,9 @@
 
   (repair-policy
     (minimize changed-symbols)
-    (keep target)))
+    (keep target))
+
+  ;; Checked in to fail, and saying so keeps silt check's exit code usable
+  ;; for CI. If it ever stops failing, check reports that too: the fixture
+  ;; would have stopped testing what it is here for.
+  (expect-problems "libcamera depends on !BR2_STATIC_LIBS and profile:minimal sets it"))

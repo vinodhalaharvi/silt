@@ -204,7 +204,17 @@ type Image struct {
 	// against. A fragment asserts things that are true of a release, not of
 	// Buildroot in general.
 	VerifiedAgainst map[string]string
-	Pos             sexpr.Pos
+	// ExpectProblems marks an image checked in to fail, with the reason.
+	//
+	// edge-camera exists to show that libcamera and static libs cannot hold
+	// together. Without a way to say so, one deliberate fixture made check's
+	// exit code useless for CI, the one place the check earns its keep. The
+	// converse is reported too: a fixture that stops failing has stopped
+	// testing what it was checked in for, a quieter way to lose a test than
+	// deleting it. Not inherited: an image derived from a fixture is not
+	// itself one, and inheriting the marker would excuse its failures.
+	ExpectProblems string
+	Pos            sexpr.Pos
 }
 
 // File is everything parsed out of one .sx file.

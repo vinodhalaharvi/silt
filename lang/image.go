@@ -97,6 +97,16 @@ func parseImage(n *sexpr.Node) (*Image, error) {
 			}
 			im.Delegate = append(im.Delegate, d)
 
+		case "expect-problems":
+			s, err := oneString(cl)
+			if err != nil {
+				return nil, err
+			}
+			if s == "" {
+				return nil, errf(cl, "(expect-problems \"...\") needs the reason the image fails")
+			}
+			im.ExpectProblems = s
+
 		case "verified-against":
 			if im.VerifiedAgainst == nil {
 				im.VerifiedAgainst = map[string]string{}

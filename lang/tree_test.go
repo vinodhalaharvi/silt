@@ -31,3 +31,14 @@ func TestTreeClausesMatchKind(t *testing.T) {
 		t.Fatal("a kconfig tree reports check-only")
 	}
 }
+
+func TestExpectProblems(t *testing.T) {
+	f := parse(t, `(image i (compose target:t profile:p)
+	  (expect-problems "checked in to fail"))`)
+	if f.Images[0].ExpectProblems != "checked in to fail" {
+		t.Fatalf("got %q", f.Images[0].ExpectProblems)
+	}
+	rejects(t, `(image i (compose target:t profile:p) (expect-problems))`, "")
+	// A fixture with no stated reason cannot tell anyone what it tests.
+	rejects(t, `(image i (compose target:t profile:p) (expect-problems ""))`, "needs the reason")
+}

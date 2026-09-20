@@ -276,7 +276,7 @@ image         = "(" "image" name { image-clause } ")" ;
 
 image-clause  = doc | compose | scope | override
               | opaque | unmanaged | delegate | environment
-              | verified-against | repair-policy ;
+              | verified-against | expect-problems | repair-policy ;
 
 compose       = "(" "compose" { fragment-id } ")" ;
 
@@ -286,6 +286,12 @@ and its repair policy and kernel version unless restated. Exactly one image
 reference, and it may not be accompanied by a target or profile — those come
 from the base. `verified-against` is inherited, and pinning a different release
 than the base is an error rather than a reinterpretation.
+
+`expect-problems` marks an image checked in to fail, with the reason: `check`
+counts its findings as expected rather than as a failure of the run, and reports
+it if it has none, since a fixture that stops failing has stopped testing
+anything. That converse is judged only by `check --buildroot`, where the
+findings a fixture exists for can appear. It is not inherited.
 override      = "(" "override" { constraint } ")" ;
 
 opaque        = "(" "opaque" { value } ")" ;
@@ -295,6 +301,7 @@ environment   = "(" "environment" { value } ")" ;
 
 verified-against = "(" "verified-against" { tree-version } ")" ;
 tree-version     = "(" tree-name string ")" ;
+expect-problems  = "(" "expect-problems" string ")" ;
 
 tree-name     = "linux" | "uboot" | "barebox" | "busybox" | "uclibc" | name ;
 delegation    = "(" "custom-config-file" string ")"

@@ -75,6 +75,20 @@ func main() {
 	args, externals := takeFlags(os.Args[2:], "--external")
 	externalTrees = append(externalTrees, externals...)
 	args, packDirs := takeFlags(args, "--pack")
+	// With no --pack given, every pack under packs/ is loaded.
+	//
+	// Images routinely compose fragments from packs, so a bare silt check
+	// failed on the first such image with "no such fragment", and naming
+	// every pack by hand meant knowing which packs each image touches.
+	// Naming any pack turns discovery off: the caller is being deliberate.
+	if len(packDirs) == 0 {
+		found, err := discoverPacks("packs")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		packDirs = found
+	}
 	for _, dir := range packDirs {
 		p, err := pack.Load(dir)
 		if err != nil {
@@ -274,6 +288,11 @@ func cmdCheck(args []string) error {
 					im.Name, strings.Join(compAgainst, ", "))
 				continue
 			}
+			if im.ExpectProblems != "" {
+				fmt.Printf("ok  %-18s %d expected problem(s): %s\n",
+					im.Name, len(compFindings), im.ExpectProblems)
+				continue
+			}
 			bad++
 			fmt.Printf("\n%s — %d problem(s)\n", im.Name, len(compFindings))
 			for _, f := range compFindings {
@@ -336,6 +355,20 @@ func cmdCheck(args []string) error {
 				Pos: im.Pos.Short(), Message: "could not predict: " + err.Error()})
 		} else {
 			rep.Findings = append(rep.Findings, dropped...)
+		}
+
+		// An image checked in to fail is not a failure of the run. A fixture
+		// that stops failing is: it has stopped testing anything.
+		if im.ExpectProblems != "" {
+			if rep.OK() {
+				bad++
+				fmt.Printf("\n%s expects problems and has none: %s\n", im.Name, im.ExpectProblems)
+				fmt.Printf("  the fixture has stopped testing what it was checked in for\n")
+				continue
+			}
+			fmt.Printf("ok  %-18s %d expected problem(s): %s\n",
+				im.Name, len(rep.Findings), im.ExpectProblems)
+			continue
 		}
 
 		if rep.OK() {
@@ -761,6 +794,37 @@ func takeFlag(args []string, flag string) ([]string, string) {
 // takeFlags removes every occurrence of a repeatable flag. --pack and
 // --external are repeatable, and reading them one at a time in a loop lost
 // all but the last: the loop consumed every occurrence on its first pass.
+// discoverPacks lists the subdirectories of dir that declare a pack.
+//
+// A directory without a silt.sx is not a pack and is skipped: packs/ may hold
+// notes or work in progress. A directory with one is a pack, and if it fails
+// to load that is an error, not a skip. Skipping it would turn a broken pack
+// into a confusing "no such fragment" at whichever image first used it — or,
+// for a pack whose component is missing, into images that quietly lose the
+// check the pack exists to make.
+func discoverPacks(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		p := filepath.Join(dir, e.Name())
+		if _, err := os.Stat(filepath.Join(p, "silt.sx")); err != nil {
+			continue
+		}
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
 func takeFlags(args []string, flag string) ([]string, []string) {
 	var out, values []string
 	for i := 0; i < len(args); i++ {
