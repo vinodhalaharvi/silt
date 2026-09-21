@@ -97,7 +97,9 @@ qemu_cmd() {
 # the banner the provisioning script prints and then kills the machine.
 boot_and_capture() {
 	local logfile=$1 marker=$2 timeout=${3:-180}
+	local ok="${logfile%.txt}.ok"
 	local script; script=$(mktemp)
+	rm -f "$ok"
 	cat > "$script" <<EOF
 set timeout $timeout
 log_file -noappend $logfile
@@ -129,6 +131,12 @@ expect {
     sleep 10
   }
 }
+
+# Reached only if every step above did: each failure leaves by exit 1. The
+# file is how the caller tells the two apart, because asciinema exits 0
+# whatever the command it recorded did — an expect that timed out under
+# WITH_CAST looked exactly like a boot that worked.
+exec touch $ok
 EOF
 	if [[ -n ${WITH_CAST:-} ]] && command -v asciinema >/dev/null; then
 		asciinema rec --overwrite -c "expect -f $script" "$ev/$(basename "${logfile%.txt}").cast" || true
@@ -137,6 +145,8 @@ EOF
 	fi
 	rm -f "$script"
 	stop_qemu
+	[[ -e $ok ]] || return 1
+	rm -f "$ok"
 }
 
 # QEMU holds a write lock on the disk images, so the next machine cannot
@@ -224,48 +234,104 @@ say "3. second boot, with the peer in place"
 # appliance is the same peer it was, and that it has taken the configuration.
 boot_started=0
 script=$(mktemp)
+ready="$ev/boot-2.ready"
+
+# Everything below reads boot-2.txt while expect is still writing it, so the
+# two have to agree on when it is worth reading. Two ways of getting that
+# wrong both showed up as "the appliance did not take the peer":
+#
+#   - the transcript was not removed first, so the one left by the previous
+#     run answered the first grep before expect had even opened the file.
+#     expect then truncated it, and every assertion after that read an empty
+#     file. That is the empty boot-2.txt, and it is also why the failure came
+#     back in seconds rather than after the wait.
+#   - the wait was for "WireGuard appliance ready", which the provisioning
+#     script prints two lines before the key. A second boot has nothing to
+#     format and reaches the banner in about six seconds, so the greps ran in
+#     the gap between the banner and the key and read a transcript that
+#     stopped short: "the appliance changed identity across a reboot: KEY ->".
+#
+# So: remove the transcript, wait for the key line as the first boot does,
+# and let expect say when the file is complete rather than guessing from its
+# contents.
+rm -f "$ev/boot-2.txt" "$ev/boot-2.expect.log" "$ready"
+
 cat > "$script" <<EOF
 set timeout 180
 log_file -noappend $ev/boot-2.txt
 spawn -noecho sh -c {$(qemu_cmd)}
 expect {
-  "WireGuard appliance ready" { }
-  timeout { send_user "\nTIMEOUT\n"; exit 1 }
+  "public key:" { }
+  timeout { send_user "\nTIMEOUT waiting for: public key:\n"; exit 1 }
+  eof     { send_user "\nthe machine exited before it said anything\n"; exit 1 }
 }
-# Leave it running: the tunnel test below needs a live appliance.
+# Keep reading for a few seconds, so the rest of the banner lands in the log.
+set timeout 5
 expect timeout
+
+# Close the log and reopen it appending: that flushes what has been read so
+# far, so the transcript is complete before the file below appears. The file
+# is the signal — the transcript is evidence, not a protocol.
+log_file
+log_file $ev/boot-2.txt
+exec touch $ready
+
+# Leave it running: the tunnel test below needs a live appliance, and it
+# needs one until this script is done rather than for a fixed number of
+# seconds. cleanup is what ends the machine.
+set timeout -1
+expect eof
 EOF
-# Not deleted here: expect is backgrounded and may not have opened the file
-# yet. A run lost the race and phase 3 produced no transcript at all, which
-# read as "the appliance did not take the peer". cleanup removes it.
+# The script file is not deleted here: expect is backgrounded and may not
+# have read it yet. cleanup removes it.
 expect -f "$script" > "$ev/boot-2.expect.log" 2>&1 &
-qemu_pid=$!
+boot2_pid=$!
 boot_started=1
 boot2_script=$script
+boot2_ready=$ready
 
 cleanup() {
-	rm -f "${boot2_script:-}"
+	rm -f "${boot2_script:-}" "${boot2_ready:-}"
 	[[ ${plc_started:-0} -eq 1 ]] && kill "${plc_pid:-0}" 2>/dev/null
 	[[ $boot_started -eq 1 ]] || return 0
 	sudo ip link del wg-demo 2>/dev/null || true
 	pkill -f "qemu-system-aarch64.*$images/Image" 2>/dev/null || true
-	kill "$qemu_pid" 2>/dev/null || true
+	# Asking is not enough here either. This expect waits on the machine's
+	# console for as long as the script runs, and one has been seen to hang in
+	# its own exit once the machine went, left behind holding the transcript
+	# open. So ask, then insist.
+	kill "$boot2_pid" 2>/dev/null || true
+	for ((i = 0; i < 20; i++)); do
+		kill -0 "$boot2_pid" 2>/dev/null || return 0
+		sleep 0.1
+	done
+	kill -9 "$boot2_pid" 2>/dev/null || true
 }
 trap cleanup EXIT
 
-# Wait for the banner to appear in the log rather than sleeping a fixed time.
-for _ in $(seq 60); do
-	grep -q "WireGuard appliance ready" "$ev/boot-2.txt" 2>/dev/null && break
-	sleep 2
+# Wait for expect to say the transcript is complete, and stop waiting early
+# if expect is gone: it has a timeout of its own and prints what it was
+# waiting for, which is a better answer than a deadline here guessing. The
+# bound is the longer of the two for that reason, and only exists so a wedged
+# expect cannot hang the script.
+for ((i = 0; i < 480; i++)); do
+	if [[ -e $ready ]]; then break; fi
+	if ! kill -0 "$boot2_pid" 2>/dev/null; then break; fi
+	sleep 0.5
 done
+[[ -e $ready ]] || {
+	echo "the appliance did not come up on the second boot; see $ev/boot-2.txt" >&2
+	# expect's own output, not the transcript: it holds the same console the
+	# transcript does and the reason expect gave up as well, so an empty
+	# transcript still comes with an explanation.
+	echo "expect said:" >&2
+	tail -20 "$ev/boot-2.expect.log" >&2
+	exit 1
+}
+
 grep -q "applying peers" "$ev/boot-2.txt" || {
 	echo "the appliance did not take the peer; see $ev/boot-2.txt" >&2
-	# An empty transcript is not the appliance's doing: the machine never
-	# got far enough to say anything, and expect said why.
-	[[ -s $ev/boot-2.txt ]] || {
-		echo "the transcript is empty; expect said:" >&2
-		cat "$ev/boot-2.expect.log" >&2
-	}
+	tail -20 "$ev/boot-2.txt" >&2
 	exit 1
 }
 
