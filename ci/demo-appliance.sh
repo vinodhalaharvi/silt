@@ -136,8 +136,22 @@ EOF
 		expect -f "$script" || { rm -f "$script"; return 1; }
 	fi
 	rm -f "$script"
+	stop_qemu
+}
+
+# QEMU holds a write lock on the disk images, so the next machine cannot
+# start until this one is really gone. pkill only asks: a run left phase 3
+# with an empty transcript because its QEMU exited immediately, unable to
+# lock a file the previous one still had open.
+stop_qemu() {
+	local i
 	pkill -f "qemu-system-aarch64.*$images/Image" 2>/dev/null || true
-	sleep 2
+	for ((i = 0; i < 40; i++)); do
+		pgrep -f "qemu-system-aarch64.*$images/Image" >/dev/null || return 0
+		sleep 0.5
+	done
+	pkill -9 -f "qemu-system-aarch64.*$images/Image" 2>/dev/null || true
+	sleep 1
 }
 
 # ---------------------------------------------------- 1. a blank appliance
@@ -224,7 +238,7 @@ EOF
 # Not deleted here: expect is backgrounded and may not have opened the file
 # yet. A run lost the race and phase 3 produced no transcript at all, which
 # read as "the appliance did not take the peer". cleanup removes it.
-expect -f "$script" > /dev/null 2>&1 &
+expect -f "$script" > "$ev/boot-2.expect.log" 2>&1 &
 qemu_pid=$!
 boot_started=1
 boot2_script=$script
@@ -244,8 +258,16 @@ for _ in $(seq 60); do
 	grep -q "WireGuard appliance ready" "$ev/boot-2.txt" 2>/dev/null && break
 	sleep 2
 done
-grep -q "applying peers" "$ev/boot-2.txt" ||
-	{ echo "the appliance did not take the peer; see $ev/boot-2.txt" >&2; exit 1; }
+grep -q "applying peers" "$ev/boot-2.txt" || {
+	echo "the appliance did not take the peer; see $ev/boot-2.txt" >&2
+	# An empty transcript is not the appliance's doing: the machine never
+	# got far enough to say anything, and expect said why.
+	[[ -s $ev/boot-2.txt ]] || {
+		echo "the transcript is empty; expect said:" >&2
+		cat "$ev/boot-2.expect.log" >&2
+	}
+	exit 1
+}
 
 pubkey2=$(grep -o 'public key: .*' "$ev/boot-2.txt" | tail -1 | sed 's/public key: //' | tr -d '\r ' || true)
 [[ $pubkey2 == "$pubkey" ]] ||
