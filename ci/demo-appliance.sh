@@ -311,7 +311,9 @@ if [[ $mcp -eq 1 ]]; then
 	# Built, not go run: a compile is not a startup delay to sleep through,
 	# and a built binary is what the panes demo runs too.
 	plc_bin="$ev/fake-plc"
-	go build -o "$plc_bin" "$(dirname "$0")/../tools/fake-plc"
+	# An absolute path, because "ci/../tools/fake-plc" is an import path to
+	# go build, not a directory: "package tools/fake-plc is not in std".
+	go build -o "$plc_bin" "$(cd "$(dirname "$0")/.." && pwd)/tools/fake-plc"
 	"$plc_bin" -addr 0.0.0.0:15020 > "$ev/fake-plc.txt" 2>&1 &
 	plc_pid=$!
 	plc_started=1
