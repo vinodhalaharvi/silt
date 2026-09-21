@@ -98,6 +98,21 @@ expect {
 # and it reads nothing while sleeping.
 set timeout 5
 expect timeout
+
+# Then power it down rather than killing it. The appliance writes its
+# keypair to the state disk and ext4 commits on a delay, so a killed machine
+# loses them: two runs of this script left a state disk with no wireguard
+# directory on it at all, and the peer could not be written. Ctrl-A c
+# reaches QEMU's monitor under -nographic, and system_powerdown is an ACPI
+# request systemd shuts down cleanly on.
+send "\001c"
+expect "(qemu)"
+send "system_powerdown\r"
+set timeout 60
+expect {
+  eof     { }
+  timeout { send_user "\nthe appliance did not power down\n" }
+}
 EOF
 	if [[ -n ${WITH_CAST:-} ]] && command -v asciinema >/dev/null; then
 		asciinema rec --overwrite -c "expect -f $script" "$ev/$(basename "${logfile%.txt}").cast" || true
@@ -150,13 +165,17 @@ say "2. writing a peer onto the state partition"
 # Our end's identity. The private half never leaves this machine, and the
 # appliance is only ever told the public half — which is the same shape as
 # the appliance's own key never leaving it.
-wg genkey > "$ev/local-private.key"
-chmod 600 "$ev/local-private.key"
+# umask first: wg warns about a world-readable key, and it is right to.
+( umask 077 && wg genkey > "$ev/local-private.key" )
 local_pub=$(wg pubkey < "$ev/local-private.key")
 echo "local public key: $local_pub"
 
 mnt=$(mktemp -d)
 sudo mount -o loop "$state" "$mnt"
+# The appliance makes this directory itself on a first boot, and a clean
+# shutdown is what puts it on the disk. Creating it here as well costs
+# nothing and keeps this step working on a disk that has never been booted.
+sudo mkdir -p "$mnt/wireguard"
 sudo tee "$mnt/wireguard/peers.conf" > /dev/null <<EOF
 [Peer]
 PublicKey = $local_pub
