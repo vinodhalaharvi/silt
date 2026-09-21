@@ -111,7 +111,10 @@ send "system_powerdown\r"
 set timeout 60
 expect {
   eof     { }
-  timeout { send_user "\nthe appliance did not power down\n" }
+  timeout {
+    send_user "\nthe appliance did not power down; giving its writes a moment\n"
+    sleep 10
+  }
 }
 EOF
 	if [[ -n ${WITH_CAST:-} ]] && command -v asciinema >/dev/null; then
@@ -205,12 +208,16 @@ expect {
 # Leave it running: the tunnel test below needs a live appliance.
 expect timeout
 EOF
+# Not deleted here: expect is backgrounded and may not have opened the file
+# yet. A run lost the race and phase 3 produced no transcript at all, which
+# read as "the appliance did not take the peer". cleanup removes it.
 expect -f "$script" > /dev/null 2>&1 &
 qemu_pid=$!
 boot_started=1
-rm -f "$script"
+boot2_script=$script
 
 cleanup() {
+	rm -f "${boot2_script:-}"
 	[[ ${plc_started:-0} -eq 1 ]] && kill "${plc_pid:-0}" 2>/dev/null
 	[[ $boot_started -eq 1 ]] || return 0
 	sudo ip link del wg-demo 2>/dev/null || true

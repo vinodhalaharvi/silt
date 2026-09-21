@@ -70,6 +70,11 @@ if [ ! -f "$WG_DIR/private" ]; then
 	log "generating a keypair"
 	( umask 077 && wg genkey > "$WG_DIR/private" )
 	wg pubkey < "$WG_DIR/private" > "$WG_DIR/public"
+	# On the disk now, not in five seconds. ext4 commits on a delay, and an
+	# appliance whose identity is still in page cache comes back from a
+	# power cut as a different peer that no configured client can reach.
+	# A plant box gets unplugged; this is one write per lifetime.
+	sync
 fi
 
 # 3. The interface. wg-quick is not used: it is a bash script, and bash is a
