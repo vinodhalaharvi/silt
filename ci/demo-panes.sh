@@ -136,6 +136,9 @@ type_line() {
 
 say() { tmux send-keys -t "$ASK" -l "" ; type_line "$ASK" "# $1"; }
 
+# params arrives as literal JSON in single quotes, so it must not be
+# escaped: backslashes meant for a double-quoted context were typed
+# verbatim and the server answered "parse error: key must be a string".
 mcp_line() { # id, method, params — one curl, formatted for reading
 	echo "curl -s -X POST http://$APPLIANCE_IP:8080/mcp -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":$1,\"method\":\"$2\",\"params\":$3}' | jq -c ."
 }
@@ -165,12 +168,12 @@ drive() {
 
 	say "read five holding registers from the device"
 	type_line "$ASK" "$(mcp_line 2 tools/call \
-		'{\"name\":\"read_holding_registers\",\"arguments\":{\"unit\":1,\"address\":40001,\"count\":5}}')"
+		'{"name":"read_holding_registers","arguments":{"unit":1,"address":40001,"count":5}}')"
 	sleep 6
 
 	say "now ask it to write one"
 	type_line "$ASK" "$(mcp_line 3 tools/call \
-		'{\"name\":\"write_holding_register\",\"arguments\":{\"unit\":1,\"address\":40001,\"value\":0}}')"
+		'{"name":"write_holding_register","arguments":{"unit":1,"address":40001,"value":0}}')"
 	sleep 6
 
 	say "there is no write tool. the component imports no interface that"
