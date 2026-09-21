@@ -72,17 +72,26 @@ trap cleanup EXIT
 
 # ------------------------------------------------------------ the panes
 
-qemu_cmd() {
-	echo qemu-system-aarch64 -M virt -cpu cortex-a53 -nographic -smp 4 -m 2048 \
-		-kernel "$images/Image" \
-		-append "'rootwait root=/dev/vdb console=ttyAMA0'" \
-		-netdev "user,id=eth0,hostfwd=udp::$PORT-:$PORT" \
-		-device virtio-net-device,netdev=eth0 \
-		-drive "file=$images/rootfs.ext2,if=none,format=raw,id=hd0" \
-		-device virtio-blk-device,drive=hd0 \
-		-drive "file=$state,if=none,format=raw,id=hd1" \
-		-device virtio-blk-device,drive=hd1
-}
+# A launcher file, not a command string. demo-appliance.sh hands its
+# command to expect, which protects it with braces; passing the same string
+# through sh -c '...' here put single quotes inside single quotes, the
+# kernel got an empty root=, and the machine panicked with "Cannot open
+# root device". A file has no quoting to get wrong.
+launcher="$ev/panes-qemu.sh"
+mkdir -p "$ev"
+cat > "$launcher" <<LAUNCHER
+#!/bin/sh
+exec qemu-system-aarch64 -M virt -cpu cortex-a53 -nographic -smp 4 -m 2048 \\
+	-kernel "$images/Image" \\
+	-append "rootwait root=/dev/vdb console=ttyAMA0" \\
+	-netdev "user,id=eth0,hostfwd=udp::$PORT-:$PORT" \\
+	-device virtio-net-device,netdev=eth0 \\
+	-drive "file=$images/rootfs.ext2,if=none,format=raw,id=hd0" \\
+	-device virtio-blk-device,drive=hd0 \\
+	-drive "file=$state,if=none,format=raw,id=hd1" \\
+	-device virtio-blk-device,drive=hd1
+LAUNCHER
+chmod +x "$launcher"
 
 # The equipment, outside the appliance as equipment is. Started before the
 # panes so the appliance has something to read the moment it is up.
@@ -95,8 +104,7 @@ for _ in $(seq 50); do
 done
 
 tmux kill-session -t "$SESSION" 2>/dev/null || true
-tmux new-session -d -s "$SESSION" -x "$COLS" -y "$ROWS" \
-	"sh -c '$(qemu_cmd)'"
+tmux new-session -d -s "$SESSION" -x "$COLS" -y "$ROWS" "$launcher"
 tmux set -t "$SESSION" -g pane-border-status top
 tmux set -t "$SESSION" -g pane-border-format ' #{pane_title} '
 tmux select-pane -t "$SESSION:0.0" -T 'the appliance: no login, no prompt'
