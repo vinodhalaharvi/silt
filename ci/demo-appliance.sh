@@ -50,6 +50,19 @@ LOCAL_IP=10.9.0.2
 PORT=51820
 
 say()  { printf '\n\033[1m== %s\033[0m\n' "$*"; }
+
+# Wait for the port rather than guessing at a sleep: go run compiles first,
+# and a one second wait meant the appliance's first read hit a port nothing
+# was listening on yet — "connect 10.0.2.2:15020: Connection refused".
+wait_for_port() {
+	local port=$1 i
+	for ((i = 0; i < 100; i++)); do
+		(exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null && { exec 3>&-; return 0; }
+		sleep 0.2
+	done
+	return 1
+}
+
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 1; }; }
 
 need qemu-system-aarch64
@@ -273,11 +286,18 @@ if [[ $mcp -eq 1 ]]; then
 	# The equipment, outside the appliance as equipment is. The guest
 	# reaches this machine at 10.0.2.2 on QEMU's user network, which is
 	# what /etc/default/agent-gateway names, so nothing is forwarded in.
-	go run "$(dirname "$0")/../tools/fake-plc" -addr 0.0.0.0:15020 \
-		> "$ev/fake-plc.txt" 2>&1 &
+	# Built, not go run: a compile is not a startup delay to sleep through,
+	# and a built binary is what the panes demo runs too.
+	plc_bin="$ev/fake-plc"
+	go build -o "$plc_bin" "$(dirname "$0")/../tools/fake-plc"
+	"$plc_bin" -addr 0.0.0.0:15020 > "$ev/fake-plc.txt" 2>&1 &
 	plc_pid=$!
 	plc_started=1
-	sleep 1
+	wait_for_port 15020 || {
+		echo "the fake PLC did not start; see $ev/fake-plc.txt" >&2
+		cat "$ev/fake-plc.txt" >&2
+		exit 1
+	}
 
 	mcp_call() { # id, method, params-json
 		curl -s --max-time 10 -X POST "http://$APPLIANCE_IP:8080/mcp" \

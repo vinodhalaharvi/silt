@@ -86,8 +86,13 @@ qemu_cmd() {
 
 # The equipment, outside the appliance as equipment is. Started before the
 # panes so the appliance has something to read the moment it is up.
-go run "$here/../tools/fake-plc" -addr 0.0.0.0:15020 > "$ev/panes-plc.log" 2>&1 &
+go build -o "$ev/fake-plc" "$here/../tools/fake-plc"
+"$ev/fake-plc" -addr 0.0.0.0:15020 > "$ev/panes-plc.log" 2>&1 &
 plc_pid=$!
+for _ in $(seq 50); do
+	(exec 3<>/dev/tcp/127.0.0.1/15020) 2>/dev/null && { exec 3>&-; break; }
+	sleep 0.2
+done
 
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 tmux new-session -d -s "$SESSION" -x "$COLS" -y "$ROWS" \
