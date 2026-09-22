@@ -1,0 +1,8 @@
+;; Imported by silt import from /tmp/rockpi4bplus.defconfig.
+;; silt import --kbuild checks this composes back to the source exactly.
+
+(image rock-pi-4b-plus
+  (compose
+    target:rock-pi-4b-plus
+    profile:rock-pi-4b-plus)
+  (verified-against (buildroot "2025.02.16")))

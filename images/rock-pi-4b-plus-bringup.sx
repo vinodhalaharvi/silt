@@ -1,0 +1,13 @@
+;; First boot on a Rock Pi 4B Plus (RK3399), headless: does the board boot,
+;; take an address from the router, and let us in?
+;;
+;; Derived from Buildroot's rock4se_defconfig with the DTS and U-Boot
+;; board name changed to the 4B Plus, imported and round-tripped by
+;; silt import. SSH is added here so there is a way in without a serial
+;; cable. The root password is the development one; this is a bench image.
+
+(image rock-pi-4b-plus-bringup
+  (compose
+    image:rock-pi-4b-plus
+    feature:ssh)
+  (verified-against (buildroot "2025.02.16")))

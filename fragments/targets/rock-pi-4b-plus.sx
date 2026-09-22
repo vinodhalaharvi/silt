@@ -1,0 +1,64 @@
+;; Imported by silt import from /tmp/rockpi4bplus.defconfig, buildroot 2025.02.16.
+;; The target/profile split is a first cut by rule; the rule is noted on
+;; every line. Move lines between the two fragments freely.
+
+(fragment target:rock-pi-4b-plus
+  (doc "target part of rockpi4bplus.defconfig")
+
+  ;; Derived from kbuild's .config of the source, not asserted.
+  (provides
+    (capability compiler)
+    (capability glibc)
+    (capability mmu))
+
+  ;; A defconfig cannot answer these: no symbol says whether the board
+  ;; has the hardware. Uncomment what it has, delete the rest. Until
+  ;; then a feature requiring one of them will not compose onto it.
+  ;; (provides
+  ;;   (capability csi-camera)
+  ;;   (capability sdcard)
+  ;;   (capability serial-console)
+  ;;   (capability virtio)
+  ;;   (capability wifi-sdio))
+
+  (buildroot
+    (y BR2_aarch64)                                            ; :1 defined under arch/
+    (y BR2_cortex_a72_a53)                                     ; :2 defined under arch/
+    (y BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_12)             ; :3 kernel headers follow the kernel
+    (value BR2_GLOBAL_PATCH_DIR "board/radxa/rock4se/patches") ; :4 board integration hook
+    (value BR2_TARGET_GENERIC_HOSTNAME "rock-pi-4b-plus")      ; :6 names the board
+    (value BR2_TARGET_GENERIC_ISSUE "Welcome to Buildroot for Radxa Rock Pi 4B Plus") ; :7 names the board
+    (value BR2_ROOTFS_POST_BUILD_SCRIPT "board/radxa/rock4se/post-build.sh") ; :8 board integration hook
+    (value BR2_ROOTFS_POST_IMAGE_SCRIPT "support/scripts/genimage.sh") ; :9 board integration hook
+    (value BR2_ROOTFS_POST_SCRIPT_ARGS "-c board/radxa/rock4se/genimage.cfg") ; :10 board integration hook
+    (y BR2_LINUX_KERNEL)                                       ; :11 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_CUSTOM_VERSION)                        ; :12 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE "6.12.28")    ; :13 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG)               ; :14 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_DTS_SUPPORT)                           ; :15 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_INTREE_DTS_NAME "rockchip/rk3399-rock-pi-4b-plus") ; :16 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_INSTALL_TARGET)                        ; :17 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL)                    ; :18 defined under linux/ (kernel)
+    (y BR2_TARGET_ARM_TRUSTED_FIRMWARE)                        ; :22 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_ARM_TRUSTED_FIRMWARE_LATEST_LTS_2_10_VERSION) ; :23 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_ARM_TRUSTED_FIRMWARE_PLATFORM "rk3399")  ; :24 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_ARM_TRUSTED_FIRMWARE_IMAGES "")          ; :25 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_ARM_TRUSTED_FIRMWARE_NEEDS_ARM32_TOOLCHAIN)  ; :26 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT)                                       ; :27 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_BUILD_SYSTEM_KCONFIG)                  ; :28 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_CUSTOM_VERSION)                        ; :29 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_UBOOT_CUSTOM_VERSION_VALUE "2024.10")    ; :30 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_UBOOT_BOARD_DEFCONFIG "rock-pi-4b-rk3399") ; :31 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_DTC)                             ; :32 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_PYLIBFDT)                        ; :33 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_PYELFTOOLS)                      ; :34 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_OPENSSL)                         ; :35 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_GNUTLS)                          ; :36 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_ATF_BL31)                        ; :37 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_ATF_BL31_ELF)                    ; :38 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_FORMAT_CUSTOM)                         ; :39 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_UBOOT_FORMAT_CUSTOM_NAME "u-boot.itb")   ; :40 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_SPL)                                   ; :41 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_UBOOT_SPL_NAME "idbloader.img")          ; :42 defined under boot/ (bootloader or firmware)
+    (y BR2_PACKAGE_HOST_GENIMAGE)                              ; :43 host tool, typically for boot media
+  ))

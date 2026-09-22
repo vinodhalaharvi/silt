@@ -1,0 +1,13 @@
+;; Imported by silt import from /tmp/rockpi4bplus.defconfig, buildroot 2025.02.16.
+;; The target/profile split is a first cut by rule; the rule is noted on
+;; every line. Move lines between the two fragments freely.
+
+(fragment profile:rock-pi-4b-plus
+  (doc "profile part of rockpi4bplus.defconfig")
+
+  (buildroot
+    (y BR2_DOWNLOAD_FORCE_CHECK_HASHES)                        ; :5 not hardware by any rule above
+    (y BR2_TARGET_ROOTFS_EXT2)                                 ; :19 not hardware by any rule above
+    (y BR2_TARGET_ROOTFS_EXT2_4)                               ; :20 not hardware by any rule above
+    (value BR2_TARGET_ROOTFS_EXT2_SIZE "250M")                 ; :21 not hardware by any rule above
+  ))
