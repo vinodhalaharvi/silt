@@ -1,0 +1,35 @@
+#!/bin/sh
+#
+# Start Modbus TCP on port 502.
+#
+# No wait for the network: libmodbus binds INADDR_ANY, which works before
+# DHCP has finished. It does wait for the sim core's tag table, in its own
+# loop, so the order of these scripts is a preference and not a
+# requirement.
+#
+
+DAEMON=/usr/bin/silt-modbusd
+PIDFILE=/var/run/silt-modbus.pid
+LOG=/var/log/silt-modbus.log
+
+case "$1" in
+start)
+	printf "Starting silt-modbus: "
+	start-stop-daemon -S -q -b -m -p "$PIDFILE" \
+		-x /bin/sh -- -c "exec $DAEMON >> $LOG 2>&1" \
+		&& echo "OK" || echo "FAIL"
+	;;
+stop)
+	printf "Stopping silt-modbus: "
+	start-stop-daemon -K -q -p "$PIDFILE" && rm -f "$PIDFILE" \
+		&& echo "OK" || echo "FAIL"
+	;;
+restart)
+	"$0" stop
+	sleep 1
+	"$0" start
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+esac

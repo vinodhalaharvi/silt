@@ -1,5 +1,10 @@
-;; Industrial protocol bench tooling for dev boards: OPC UA and Modbus TCP
-;; servers to connect to, and CAN tools with a virtual bus to use them on.
+;; One simulated device on a dev board, reachable over several protocols.
+;;
+;; /etc/silt-sim.json describes the device: its tags, how each one moves,
+;; and where each appears on Modbus, OPC UA and CAN. silt-sim validates it
+;; and publishes a tag table into /dev/shm; each protocol daemon serves
+;; that table. So a setpoint written over Modbus is the same value every
+;; other protocol reports, and the map lives in one file rather than three.
 ;;
 ;;   silt check --buildroot ~/buildroot
 ;;
@@ -7,7 +12,7 @@
 ;; and unencrypted by design, so a client can connect with no setup at all.
 
 (pack fieldbus-test
-  (version "0.2.0")
+  (version "0.3.0")
   (doc "OPC UA on 4840, Modbus TCP on 502, can-utils and vcan0 for bench testing")
 
   (requires

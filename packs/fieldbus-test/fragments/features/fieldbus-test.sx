@@ -6,11 +6,19 @@
 ;; server, which is why the pack carries one. It is selected by the package,
 ;; therefore not stated here.
 ;;
-;; Modbus TCP: hello-modbus is a small libmodbus server started at boot on
-;; port 502. Holding register 0 is a counter that ticks once a second,
-;; register 1 is 0x5117, registers 2-9 and coils 0-7 are writable scratch.
-;; Like open62541, libmodbus is a library, and it is selected by the package.
-;; feature:modbus, composed beside this one, states it for any image.
+;; The device itself: silt-sim reads /etc/silt-sim.json, validates it, and
+;; publishes a tag table into /dev/shm. Every protocol daemon serves that
+;; table, so one file describes the device and no two protocols can
+;; disagree about which tag lives where. The default config is a pump:
+;; temperature, pressure, rpm, run hours, a fault bit, and a writable
+;; setpoint and run flag. Editing that file changes the device; nothing
+;; about it is fixed in the image.
+;;
+;; Modbus TCP: silt-modbus serves the table on port 502, at the addresses
+;; the config gives. A client writing a writable tag writes it into the
+;; table, where the other protocols see it. Like open62541, libmodbus is a
+;; library, selected by the package; feature:modbus, composed beside this
+;; one, states it for any image.
 ;;
 ;; CAN: can-utils (candump, cansend, cangen) and a vcan0 virtual bus created
 ;; at boot, so the tools work on a board with no CAN hardware.
@@ -24,7 +32,8 @@
 
   (buildroot
     (y BR2_PACKAGE_HELLO_OPCUA)
-    (y BR2_PACKAGE_HELLO_MODBUS)
+    (y BR2_PACKAGE_SILT_SIM)
+    (y BR2_PACKAGE_SILT_MODBUS)
     (y BR2_PACKAGE_CAN_UTILS)
 
     ;; BusyBox's ip cannot create a link of type vcan or configure a CAN

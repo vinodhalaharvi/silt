@@ -1,0 +1,83 @@
+{
+  "device": "pump-1",
+
+  "_comment": [
+    "The default device: one pump, readable over every protocol the board",
+    "serves. Edit this file and the whole device changes; nothing is",
+    "hardcoded in the image.",
+    "",
+    "Each tag says how it moves (sim), and where it appears on each",
+    "protocol. A tag needs at least one protocol, and is either simulated",
+    "or writable, never both.",
+    "",
+    "  sim: sine | ramp | toggle | counter | walk, with min, max, step,",
+    "       period_s",
+    "  modbus: holding | input | coil | discrete, plus scale. A register",
+    "       carries value * scale, so 54.3 at scale 10 reads as 543.",
+    "  opcua: the node name, reachable as ns=1;s=<device>.<node>",
+    "  can: id, byte, len (1, 2 or 4), scale, period_s"
+  ],
+
+  "tags": [
+    {
+      "name": "temperature",
+      "unit": "C",
+      "type": "float",
+      "sim": { "sine": { "min": 40, "max": 80, "period_s": 60 } },
+      "modbus": { "input": 0, "scale": 10 },
+      "opcua": "Temperature",
+      "can": { "id": "0x100", "byte": 0, "len": 2, "scale": 10, "period_s": 0.1 }
+    },
+    {
+      "name": "pressure",
+      "unit": "bar",
+      "type": "float",
+      "sim": { "walk": { "min": 1.0, "max": 6.0, "step": 0.2, "period_s": 1 } },
+      "modbus": { "input": 1, "scale": 100 },
+      "opcua": "Pressure",
+      "can": { "id": "0x100", "byte": 2, "len": 2, "scale": 100, "period_s": 0.1 }
+    },
+    {
+      "name": "rpm",
+      "unit": "rpm",
+      "type": "int",
+      "sim": { "ramp": { "min": 0, "max": 3000, "period_s": 30 } },
+      "modbus": { "input": 2, "scale": 1 },
+      "opcua": "Rpm",
+      "can": { "id": "0x100", "byte": 4, "len": 2, "scale": 1, "period_s": 0.1 }
+    },
+    {
+      "name": "hours",
+      "unit": "h",
+      "type": "int",
+      "sim": { "counter": { "min": 0, "max": 65000, "step": 1, "period_s": 1 } },
+      "modbus": { "input": 3, "scale": 1 },
+      "opcua": "RunHours"
+    },
+    {
+      "name": "fault",
+      "type": "bool",
+      "sim": { "toggle": { "period_s": 120 } },
+      "modbus": { "discrete": 0 },
+      "opcua": "Fault",
+      "can": { "id": "0x101", "byte": 0, "len": 1, "scale": 1, "period_s": 1 }
+    },
+    {
+      "name": "setpoint",
+      "unit": "C",
+      "type": "float",
+      "writable": true,
+      "initial": 60,
+      "modbus": { "holding": 0, "scale": 10 },
+      "opcua": "Setpoint"
+    },
+    {
+      "name": "run",
+      "type": "bool",
+      "writable": true,
+      "initial": 1,
+      "modbus": { "coil": 0 },
+      "opcua": "Run"
+    }
+  ]
+}

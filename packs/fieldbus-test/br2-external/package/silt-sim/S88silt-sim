@@ -1,0 +1,45 @@
+#!/bin/sh
+#
+# Start the simulation core, which publishes the tag table the protocol
+# daemons read. It runs before them (S88, they are S89 and later) because
+# they wait for the table rather than serving an empty one.
+#
+# reload re-reads the config without dropping any client connection. A
+# config that does not validate is refused and the running device carries
+# on unchanged; /var/log/silt-sim.log says why.
+#
+
+DAEMON=/usr/bin/silt-simd
+CONFIG=/etc/silt-sim.json
+PIDFILE=/var/run/silt-sim.pid
+LOG=/var/log/silt-sim.log
+
+case "$1" in
+start)
+	printf "Starting silt-sim: "
+	if ! "$DAEMON" -t -c "$CONFIG" >> "$LOG" 2>&1; then
+		echo "FAIL (config rejected, see $LOG)"
+		exit 1
+	fi
+	start-stop-daemon -S -q -b -m -p "$PIDFILE" \
+		-x /bin/sh -- -c "exec $DAEMON -c $CONFIG >> $LOG 2>&1" \
+		&& echo "OK" || echo "FAIL"
+	;;
+stop)
+	printf "Stopping silt-sim: "
+	start-stop-daemon -K -q -p "$PIDFILE" && rm -f "$PIDFILE" \
+		&& echo "OK" || echo "FAIL"
+	;;
+reload)
+	printf "Reloading silt-sim config: "
+	start-stop-daemon -K -q -s HUP -p "$PIDFILE" && echo "OK" || echo "FAIL"
+	;;
+restart)
+	"$0" stop
+	sleep 1
+	"$0" start
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart|reload}"
+	exit 1
+esac

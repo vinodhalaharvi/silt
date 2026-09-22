@@ -1,0 +1,11 @@
+[Unit]
+Description=Silt Modbus TCP server on port 502
+After=silt-sim.service
+Wants=silt-sim.service
+
+[Service]
+ExecStart=/usr/bin/silt-modbusd
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

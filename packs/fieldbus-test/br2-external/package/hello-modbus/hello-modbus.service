@@ -1,9 +1,0 @@
-[Unit]
-Description=Bench Modbus TCP server on port 502
-
-[Service]
-ExecStart=/usr/bin/hello-modbus
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+config BR2_PACKAGE_SILT_SIM
+	bool "silt-sim"
+	depends on BR2_USE_MMU # start-stop-daemon -b forks
+	select BR2_PACKAGE_CJSON
+	help
+	  The simulation core: reads the device config, publishes the tag
+	  table into /dev/shm, and moves the simulated values. The protocol
+	  daemons read that table, so this is the only program that parses
+	  the config, and the only validator of it.

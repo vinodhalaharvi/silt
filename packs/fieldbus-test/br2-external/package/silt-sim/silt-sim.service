@@ -1,0 +1,12 @@
+[Unit]
+Description=Silt simulation core (tag table in /dev/shm)
+Before=silt-modbus.service
+
+[Service]
+ExecStartPre=/usr/bin/silt-simd -t -c /etc/silt-sim.json
+ExecStart=/usr/bin/silt-simd -c /etc/silt-sim.json
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

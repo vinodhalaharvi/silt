@@ -1,0 +1,10 @@
+config BR2_PACKAGE_SILT_MODBUS
+	bool "silt-modbus"
+	depends on BR2_USE_MMU # start-stop-daemon -b forks
+	select BR2_PACKAGE_SILT_SIM
+	select BR2_PACKAGE_LIBMODBUS
+	help
+	  Modbus TCP on port 502 for the simulated device. Addresses come
+	  from the tag table in /dev/shm, so this daemon never reads the
+	  config file and cannot disagree with the other protocols about
+	  which tag lives where.
