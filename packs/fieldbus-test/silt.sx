@@ -1,15 +1,14 @@
-;; Industrial protocol bench tooling for dev boards: an OPC UA server to
-;; connect to, and CAN tools with a virtual bus to use them on.
+;; Industrial protocol bench tooling for dev boards: OPC UA and Modbus TCP
+;; servers to connect to, and CAN tools with a virtual bus to use them on.
 ;;
 ;;   silt check --buildroot ~/buildroot
 ;;
-;; For testing on the bench, not for shipping: the OPC UA server is
-;; anonymous and unencrypted by design, so a client can connect with no
-;; setup at all.
+;; For testing on the bench, not for shipping: both servers are anonymous
+;; and unencrypted by design, so a client can connect with no setup at all.
 
 (pack fieldbus-test
-  (version "0.1.0")
-  (doc "OPC UA server on 4840, can-utils, and a vcan0 bus for bench testing")
+  (version "0.2.0")
+  (doc "OPC UA on 4840, Modbus TCP on 502, can-utils and vcan0 for bench testing")
 
   (requires
     (buildroot "2025.02.16"))

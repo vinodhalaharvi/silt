@@ -1,4 +1,4 @@
-;; OPC UA and CAN on a dev board, for bench testing.
+;; OPC UA, Modbus TCP and CAN on a dev board, for bench testing.
 ;;
 ;; OPC UA: hello-opcua is a small open62541 server started at boot on port
 ;; 4840, anonymous, with ns=1;s=silt.hello and a counter ns=1;s=silt.counter
@@ -6,18 +6,25 @@
 ;; server, which is why the pack carries one. It is selected by the package,
 ;; therefore not stated here.
 ;;
+;; Modbus TCP: hello-modbus is a small libmodbus server started at boot on
+;; port 502. Holding register 0 is a counter that ticks once a second,
+;; register 1 is 0x5117, registers 2-9 and coils 0-7 are writable scratch.
+;; Like open62541, libmodbus is a library, and it is selected by the package.
+;; feature:modbus, composed beside this one, states it for any image.
+;;
 ;; CAN: can-utils (candump, cansend, cangen) and a vcan0 virtual bus created
 ;; at boot, so the tools work on a board with no CAN hardware.
 
 (fragment feature:fieldbus-test
 
-  (doc "OPC UA server on 4840, can-utils, and a vcan0 bus")
+  (doc "OPC UA server on 4840, Modbus TCP server on 502, can-utils, and a vcan0 bus")
 
   (requires
     (capability mmu))
 
   (buildroot
     (y BR2_PACKAGE_HELLO_OPCUA)
+    (y BR2_PACKAGE_HELLO_MODBUS)
     (y BR2_PACKAGE_CAN_UTILS)
 
     ;; BusyBox's ip cannot create a link of type vcan or configure a CAN

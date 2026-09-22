@@ -1,0 +1,9 @@
+config BR2_PACKAGE_HELLO_MODBUS
+	bool "hello-modbus"
+	depends on BR2_USE_MMU # start-stop-daemon -b forks
+	select BR2_PACKAGE_LIBMODBUS
+	help
+	  A bench Modbus TCP server on port 502, built on libmodbus:
+	  a counter in holding register 0 that ticks once a second,
+	  0x5117 in register 1, and writable scratch registers and
+	  coils. Started at boot.

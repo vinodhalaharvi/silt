@@ -8,5 +8,6 @@
   (compose
     image:raspberrypi3-64
     feature:dev-ssh
+    feature:modbus
     feature:fieldbus-test)
   (verified-against (buildroot "2025.02.16")))
