@@ -1,0 +1,11 @@
+;; First boot on a Raspberry Pi 3 Model B (64-bit), headless.
+;;
+;; Uses the Raspberry Pi Foundation's own kernel tarball (the bcmrpi3
+;; defconfig), which has all the drivers you need out of the box.
+;; No eMMC on this board, so the SD card always wins.
+
+(image raspberrypi3-64-bringup
+  (compose
+    image:raspberrypi3-64
+    feature:ssh)
+  (verified-against (buildroot "2025.02.16")))
