@@ -1,0 +1,1 @@
+source "$BR2_EXTERNAL_FIELDBUS_TEST_PATH/package/hello-opcua/Config.in"

@@ -1,0 +1,20 @@
+#!/bin/sh
+#
+# A virtual CAN bus, vcan0, so can-utils has something to talk to on a
+# board with no CAN hardware. BusyBox init only: under systemd this script
+# is not run, and systemd-networkd can create vcan0 from a .netdev instead.
+#
+
+case "$1" in
+start)
+	printf "Creating vcan0: "
+	modprobe vcan && ip link add dev vcan0 type vcan 2>/dev/null
+	ip link set up vcan0 && echo "OK" || echo "FAIL"
+	;;
+stop)
+	ip link del vcan0 2>/dev/null
+	;;
+*)
+	echo "Usage: $0 {start|stop}"
+	exit 1
+esac

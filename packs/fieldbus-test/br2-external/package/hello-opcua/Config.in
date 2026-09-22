@@ -1,0 +1,8 @@
+config BR2_PACKAGE_HELLO_OPCUA
+	bool "hello-opcua"
+	depends on BR2_USE_MMU # start-stop-daemon -b forks
+	select BR2_PACKAGE_OPEN62541
+	help
+	  A bench OPC UA server on port 4840, built on open62541:
+	  anonymous, unencrypted, with a fixed string and a counter
+	  that ticks once a second under Objects. Started at boot.

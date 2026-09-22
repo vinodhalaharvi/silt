@@ -1,0 +1,10 @@
+[Unit]
+Description=Bench OPC UA server on port 4840
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/hello-opcua
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

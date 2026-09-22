@@ -1,0 +1,43 @@
+;; OPC UA and CAN on a dev board, for bench testing.
+;;
+;; OPC UA: hello-opcua is a small open62541 server started at boot on port
+;; 4840, anonymous, with ns=1;s=silt.hello and a counter ns=1;s=silt.counter
+;; that ticks once a second. open62541 itself is a library and installs no
+;; server, which is why the pack carries one. It is selected by the package,
+;; therefore not stated here.
+;;
+;; CAN: can-utils (candump, cansend, cangen) and a vcan0 virtual bus created
+;; at boot, so the tools work on a board with no CAN hardware.
+
+(fragment feature:fieldbus-test
+
+  (doc "OPC UA server on 4840, can-utils, and a vcan0 bus")
+
+  (requires
+    (capability mmu))
+
+  (buildroot
+    (y BR2_PACKAGE_HELLO_OPCUA)
+    (y BR2_PACKAGE_CAN_UTILS)
+
+    ;; BusyBox's ip cannot create a link of type vcan or configure a CAN
+    ;; interface's bitrate; iproute2's can.
+    (y BR2_PACKAGE_IPROUTE2)
+
+    ;; The Pi kernels are built with CONFIG_MODULE_COMPRESS_XZ, and
+    ;; Buildroot's BusyBox has FEATURE_SEAMLESS_XZ off, so BusyBox modprobe
+    ;; cannot load vcan.ko.xz. kmod's modprobe can, given xz.
+    (y BR2_PACKAGE_KMOD)
+    (y BR2_PACKAGE_KMOD_TOOLS)
+    (y BR2_PACKAGE_XZ)
+
+    ;; /etc/init.d/S45vcan: creates vcan0 at boot under BusyBox init.
+    (path-append BR2_ROOTFS_OVERLAY "overlay"))
+
+  (linux
+    ;; What vcan0 needs. Modules, not built in: bcmrpi3_defconfig already
+    ;; says m for all three, and a board with real CAN hardware loads its
+    ;; own controller driver beside them.
+    (m CONFIG_CAN)
+    (m CONFIG_CAN_RAW)
+    (m CONFIG_CAN_VCAN)))

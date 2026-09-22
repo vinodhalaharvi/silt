@@ -1,0 +1,28 @@
+#!/bin/sh
+#
+# Start the bench OPC UA server on port 4840.
+#
+
+DAEMON=/usr/bin/hello-opcua
+PIDFILE=/var/run/hello-opcua.pid
+
+case "$1" in
+start)
+	printf "Starting hello-opcua: "
+	start-stop-daemon -S -q -b -m -p "$PIDFILE" -x "$DAEMON" \
+		&& echo "OK" || echo "FAIL"
+	;;
+stop)
+	printf "Stopping hello-opcua: "
+	start-stop-daemon -K -q -p "$PIDFILE" && rm -f "$PIDFILE" \
+		&& echo "OK" || echo "FAIL"
+	;;
+restart)
+	"$0" stop
+	sleep 1
+	"$0" start
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+esac
