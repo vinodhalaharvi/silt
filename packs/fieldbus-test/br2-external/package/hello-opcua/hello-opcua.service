@@ -1,6 +1,9 @@
 [Unit]
 Description=Bench OPC UA server on port 4840
-After=network.target
+# open62541 picks listening addresses with getaddrinfo(AI_ADDRCONFIG): started
+# before the network has an address, it does not listen on IPv4 at all.
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 ExecStart=/usr/bin/hello-opcua
