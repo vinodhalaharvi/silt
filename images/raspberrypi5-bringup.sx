@@ -1,0 +1,14 @@
+;; First boot on a Raspberry Pi 5, headless: does the board come up, take an
+;; address from the router, and let us in?
+;;
+;; Buildroot's own Pi 5 configuration, imported and round-tripped by silt
+;; import, plus SSH so there is a way in without a screen or a serial cable.
+;; The root password is feature:ssh's development one. This image proves
+;; the board and nothing else; it is not an appliance and must not leave
+;; the bench.
+
+(image raspberrypi5-bringup
+  (compose
+    image:raspberrypi5
+    feature:ssh)
+  (verified-against (buildroot "2025.02.16")))

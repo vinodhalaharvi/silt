@@ -1,0 +1,8 @@
+;; Imported by silt import from configs/raspberrypi5_defconfig.
+;; silt import --kbuild checks this composes back to the source exactly.
+
+(image raspberrypi5
+  (compose
+    target:raspberrypi5
+    profile:raspberrypi5)
+  (verified-against (buildroot "2025.02.16")))

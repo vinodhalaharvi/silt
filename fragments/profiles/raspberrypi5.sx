@@ -1,0 +1,20 @@
+;; Imported by silt import from configs/raspberrypi5_defconfig, buildroot 2025.02.16.
+;; The target/profile split is a first cut by rule; the rule is noted on
+;; every line. Move lines between the two fragments freely.
+
+(fragment profile:raspberrypi5
+  (doc "profile part of raspberrypi5_defconfig")
+
+  (buildroot
+    (y BR2_TOOLCHAIN_BUILDROOT_CXX)                            ; :4 not hardware by any rule above
+    (y BR2_DOWNLOAD_FORCE_CHECK_HASHES)                        ; :6 not hardware by any rule above
+    (value BR2_SYSTEM_DHCP "eth0")                             ; :7 not hardware by any rule above
+    (y BR2_PACKAGE_BUSYBOX_SHOW_OTHERS)                        ; :18 not hardware by any rule above
+    (y BR2_PACKAGE_XZ)                                         ; :19 not hardware by any rule above
+    (y BR2_PACKAGE_KMOD)                                       ; :24 not hardware by any rule above
+    (y BR2_PACKAGE_KMOD_TOOLS)                                 ; :25 not hardware by any rule above
+    (y BR2_TARGET_ROOTFS_EXT2)                                 ; :26 not hardware by any rule above
+    (y BR2_TARGET_ROOTFS_EXT2_4)                               ; :27 not hardware by any rule above
+    (value BR2_TARGET_ROOTFS_EXT2_SIZE "120M")                 ; :28 not hardware by any rule above
+    (n BR2_TARGET_ROOTFS_TAR)                                  ; :29 not hardware by any rule above
+  ))

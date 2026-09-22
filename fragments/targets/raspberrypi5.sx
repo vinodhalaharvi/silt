@@ -1,0 +1,47 @@
+;; Imported by silt import from configs/raspberrypi5_defconfig, buildroot 2025.02.16.
+;; The target/profile split is a first cut by rule; the rule is noted on
+;; every line. Move lines between the two fragments freely.
+
+(fragment target:raspberrypi5
+  (doc "target part of raspberrypi5_defconfig")
+
+  ;; Derived from kbuild's .config of the source, not asserted.
+  (provides
+    (capability compiler)
+    (capability glibc)
+    (capability mmu))
+
+  ;; A defconfig cannot answer these: no symbol says whether the board
+  ;; has the hardware. Uncomment what it has, delete the rest. Until
+  ;; then a feature requiring one of them will not compose onto it.
+  ;; (provides
+  ;;   (capability csi-camera)
+  ;;   (capability sdcard)
+  ;;   (capability serial-console)
+  ;;   (capability virtio)
+  ;;   (capability wifi-sdio))
+
+  (buildroot
+    (y BR2_aarch64)                                            ; :1 defined under arch/
+    (y BR2_cortex_a76)                                         ; :2 defined under arch/
+    (y BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_6)              ; :3 kernel headers follow the kernel
+    (value BR2_GLOBAL_PATCH_DIR "board/raspberrypi/patches")   ; :5 board integration hook
+    (value BR2_ROOTFS_POST_BUILD_SCRIPT "board/raspberrypi5/post-build.sh") ; :8 board integration hook
+    (value BR2_ROOTFS_POST_IMAGE_SCRIPT "board/raspberrypi5/post-image.sh") ; :9 board integration hook
+    (y BR2_LINUX_KERNEL)                                       ; :10 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_CUSTOM_TARBALL)                        ; :11 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION "$(call github,raspberrypi,linux,576cc10e1ed50a9eacffc7a05c796051d7343ea4)/linux-576cc10e1ed50a9eacffc7a05c796051d7343ea4.tar.gz") ; :12 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_DEFCONFIG "bcm2712")               ; :13 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES "board/raspberrypi/linux-4k-page-size.fragment") ; :14 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_DTS_SUPPORT)                           ; :15 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_INTREE_DTS_NAME "broadcom/bcm2712-rpi-5-b broadcom/bcm2712d0-rpi-5-b") ; :16 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL)                    ; :17 defined under linux/ (kernel)
+    (y BR2_PACKAGE_RPI_FIRMWARE)                               ; :20 firmware package
+    (value BR2_PACKAGE_RPI_FIRMWARE_CONFIG_FILE "board/raspberrypi5/config_5.txt") ; :21 firmware package
+    (value BR2_PACKAGE_RPI_FIRMWARE_CMDLINE_FILE "board/raspberrypi5/cmdline_5.txt") ; :22 firmware package
+    (n BR2_PACKAGE_RPI_FIRMWARE_INSTALL_DTB_OVERLAYS)          ; :23 firmware package
+    (y BR2_PACKAGE_HOST_DOSFSTOOLS)                            ; :30 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_GENIMAGE)                              ; :31 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_KMOD_XZ)                               ; :32 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_MTOOLS)                                ; :33 host tool, typically for boot media
+  ))
