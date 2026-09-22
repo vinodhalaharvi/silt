@@ -1,0 +1,2 @@
+name: DEV_SSH
+desc: SSH with the Mac M4 public key baked in, no passwords

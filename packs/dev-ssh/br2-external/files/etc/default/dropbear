@@ -1,0 +1,3 @@
+# dev-ssh: public-key only, no passwords.
+# -s disables root password login, -g disables all password auth.
+DROPBEAR_ARGS="-s -g"

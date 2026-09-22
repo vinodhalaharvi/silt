@@ -1,0 +1,14 @@
+;; SSH for development boards: the Mac M4 public key installed at build
+;; time, password authentication disabled. Every dev board gets in with
+;; ssh root@<ip> and no password prompt. The wrong password hash is never
+;; the failure mode, because there is no password.
+
+(fragment feature:dev-ssh
+
+  (doc "SSH, public-key only, Mac M4 key baked in")
+
+  (requires (capability mmu))
+
+  (buildroot
+    (y BR2_PACKAGE_DROPBEAR)
+    (path-append BR2_ROOTFS_OVERLAY "files")))

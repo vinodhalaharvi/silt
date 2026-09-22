@@ -7,5 +7,5 @@
 (image raspberrypi3-64-bringup
   (compose
     image:raspberrypi3-64
-    feature:ssh)
+    feature:dev-ssh)
   (verified-against (buildroot "2025.02.16")))

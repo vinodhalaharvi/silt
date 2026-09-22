@@ -1,0 +1,6 @@
+(pack dev-ssh
+  (version "0.1.0")
+  (doc "SSH with the Mac M4 public key baked in; no password auth.")
+  (external "br2-external")
+  (provides
+    (feature dev-ssh)))

@@ -3,12 +3,12 @@
 ;;
 ;; Buildroot's own Pi 5 configuration, imported and round-tripped by silt
 ;; import, plus SSH so there is a way in without a screen or a serial cable.
-;; The root password is feature:ssh's development one. This image proves
+;; The root password is feature:dev-ssh's development one. This image proves
 ;; the board and nothing else; it is not an appliance and must not leave
 ;; the bench.
 
 (image raspberrypi5-bringup
   (compose
     image:raspberrypi5
-    feature:ssh)
+    feature:dev-ssh)
   (verified-against (buildroot "2025.02.16")))

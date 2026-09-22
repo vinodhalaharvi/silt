@@ -9,5 +9,5 @@
 (image rock-pi-4b-plus-bringup
   (compose
     image:rock-pi-4b-plus
-    feature:ssh)
+    feature:dev-ssh)
   (verified-against (buildroot "2025.02.16")))
