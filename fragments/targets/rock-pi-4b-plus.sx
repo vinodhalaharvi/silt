@@ -48,7 +48,7 @@
     (y BR2_TARGET_UBOOT_BUILD_SYSTEM_KCONFIG)                  ; :28 defined under boot/ (bootloader or firmware)
     (y BR2_TARGET_UBOOT_CUSTOM_VERSION)                        ; :29 defined under boot/ (bootloader or firmware)
     (value BR2_TARGET_UBOOT_CUSTOM_VERSION_VALUE "2024.10")    ; :30 defined under boot/ (bootloader or firmware)
-    (value BR2_TARGET_UBOOT_BOARD_DEFCONFIG "rock-pi-4b-rk3399") ; :31 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_UBOOT_BOARD_DEFCONFIG "rock-pi-4-rk3399") ; :31 defined under boot/ (bootloader or firmware)
     (y BR2_TARGET_UBOOT_NEEDS_DTC)                             ; :32 defined under boot/ (bootloader or firmware)
     (y BR2_TARGET_UBOOT_NEEDS_PYLIBFDT)                        ; :33 defined under boot/ (bootloader or firmware)
     (y BR2_TARGET_UBOOT_NEEDS_PYELFTOOLS)                      ; :34 defined under boot/ (bootloader or firmware)
