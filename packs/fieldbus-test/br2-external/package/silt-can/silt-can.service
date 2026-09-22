@@ -4,7 +4,8 @@ After=silt-sim.service
 Wants=silt-sim.service
 
 [Service]
-ExecStart=/usr/bin/silt-cand -i vcan0
+EnvironmentFile=-/etc/default/silt-can
+ExecStart=/bin/sh -c 'exec /usr/bin/silt-cand -i "${IFACE:-vcan0}"'
 Restart=on-failure
 
 [Install]

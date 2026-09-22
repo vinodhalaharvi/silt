@@ -1,10 +1,16 @@
 /*
  * silt-opcuad - OPC UA for the simulated device.
  *
- * Serves port 4840 from the tag table in /dev/shm. Every tag with an
- * "opcua" name in the config becomes a variable under Objects, as
- * ns=1;s=<device>.<node>, so the default pump appears as
- * ns=1;s=pump-1.Temperature and so on.
+ * Serves port 4840 from the tag table in /dev/shm. The device is an object
+ * under Objects, named after the config's device, and every tag with an
+ * "opcua" name is a variable under it, as ns=1;s=<device>.<node>: the
+ * default pump appears as ns=1;s=pump-1.Temperature inside an object
+ * "pump-1". Browsing a folder of tags is what a client expects to find,
+ * rather than a flat scatter of variables at the root.
+ *
+ * A tag with a unit gets an EngineeringUnits property beside its value,
+ * the same place a real server puts it, so a client shows "54.3 C" and not
+ * a bare number.
  *
  * Reads:  the loop copies the table into the nodes ten times a second.
  * Writes: a writable tag's node gets a write callback that copies the new
@@ -133,11 +139,60 @@ static void node_id_of(const struct siltsim_table *tb,
 	snprintf(buf, cap, "%s.%s", tb->device, t->opcua_node);
 }
 
+/* The unit, as the standard's EUInformation property. */
+static void add_unit(UA_Server *server, const char *var_id,
+		     const struct siltsim_tag *t)
+{
+	UA_VariableAttributes attr = UA_VariableAttributes_default;
+	char id[ID_LEN + 8];
+	UA_EUInformation eu;
+
+	if (!t->unit[0])
+		return;
+
+	UA_EUInformation_init(&eu);
+	eu.displayName = UA_LOCALIZEDTEXT("en-US", (char *)t->unit);
+	eu.description = UA_LOCALIZEDTEXT("en-US", (char *)t->unit);
+	eu.namespaceUri = UA_STRING("http://www.opcfoundation.org/UA/units/un/cefact");
+
+	UA_Variant_setScalarCopy(&attr.value, &eu, &UA_TYPES[UA_TYPES_EUINFORMATION]);
+	attr.displayName = UA_LOCALIZEDTEXT("en-US", "EngineeringUnits");
+	attr.accessLevel = UA_ACCESSLEVELMASK_READ;
+
+	snprintf(id, sizeof(id), "%s.EU", var_id);
+	UA_Server_addVariableNode(server, UA_NODEID_STRING(1, id),
+		UA_NODEID_STRING(1, (char *)var_id),
+		UA_NODEID_NUMERIC(0, UA_NS0ID_HASPROPERTY),
+		UA_QUALIFIEDNAME(0, "EngineeringUnits"),
+		UA_NODEID_NUMERIC(0, UA_NS0ID_PROPERTYTYPE),
+		attr, NULL, NULL);
+	UA_Variant_clear(&attr.value);
+}
+
+/* The device object the tags hang under. */
+static UA_StatusCode add_device(UA_Server *server, struct siltsim_table *tb)
+{
+	UA_ObjectAttributes attr = UA_ObjectAttributes_default;
+
+	attr.displayName = UA_LOCALIZEDTEXT("en-US", tb->device);
+	return UA_Server_addObjectNode(server, UA_NODEID_STRING(1, tb->device),
+		UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER),
+		UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES),
+		UA_QUALIFIEDNAME(1, tb->device),
+		UA_NODEID_NUMERIC(0, UA_NS0ID_BASEOBJECTTYPE),
+		attr, NULL, NULL);
+}
+
 static int add_nodes(UA_Server *server, struct siltsim_table *tb)
 {
 	uint32_t i, n = 0;
 
 	added_count = 0;
+	if (add_device(server, tb) != UA_STATUSCODE_GOOD) {
+		fprintf(stderr, "silt-opcuad: cannot add the device object\n");
+		return -1;
+	}
+	snprintf(added[added_count++], ID_LEN, "%s", tb->device);
 	for (i = 0; i < tb->tag_count; i++) {
 		struct siltsim_tag *t = &tb->tag[i];
 		UA_VariableAttributes attr = UA_VariableAttributes_default;
@@ -158,8 +213,8 @@ static int add_nodes(UA_Server *server, struct siltsim_table *tb)
 
 		rc = UA_Server_addVariableNode(server,
 			UA_NODEID_STRING(1, id),
-			UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER),
-			UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES),
+			UA_NODEID_STRING(1, tb->device),
+			UA_NODEID_NUMERIC(0, UA_NS0ID_HASCOMPONENT),
 			UA_QUALIFIEDNAME(1, t->opcua_node),
 			UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE),
 			attr, t, NULL);
@@ -176,6 +231,7 @@ static int add_nodes(UA_Server *server, struct siltsim_table *tb)
 			UA_Server_setVariableNode_valueCallback(server,
 				UA_NODEID_STRING(1, id), cb);
 		}
+		add_unit(server, id, t);
 		snprintf(added[added_count++], ID_LEN, "%s", id);
 		n++;
 	}

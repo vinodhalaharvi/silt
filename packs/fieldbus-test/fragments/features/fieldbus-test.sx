@@ -21,12 +21,20 @@
 ;; library, selected by the package; feature:modbus, composed beside this
 ;; one, states it for any image.
 ;;
+;; Fidelity, in the places a client would otherwise be told a comfortable
+;; lie: a Modbus address no tag uses answers ILLEGAL DATA ADDRESS rather
+;; than 0, tags marked signed are two's complement on both Modbus and CAN,
+;; CAN signals can be little-endian, and each OPC UA tag hangs under an
+;; object named after the device with its unit as an EngineeringUnits
+;; property.
+;;
 ;; CAN: silt-can packs the tags that name a can id into frames and sends
-;; them on vcan0 - the default pump puts temperature, pressure and rpm in
+;; them on the bus named in /etc/default/silt-can, vcan0 - the default pump puts temperature, pressure and rpm in
 ;; 0x100 and the fault bit in 0x101 - and writes writable tags back from
 ;; frames it receives. can-utils (candump, cansend, cangen) is there to
 ;; watch and drive that bus, and S45vcan creates it at boot, so all of it
-;; works on a board with no CAN hardware.
+;; works on a board with no CAN hardware. A real HAT is that file plus a
+;; device-tree overlay, which its comments spell out.
 ;;
 ;; Config over HTTP: silt-http accepts a device config on port 8080, checks
 ;; it with the same validator, saves it and asks the sim core to reload, so

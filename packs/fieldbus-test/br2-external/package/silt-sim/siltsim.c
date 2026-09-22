@@ -143,6 +143,12 @@ static int parse_modbus(const cJSON *mb, struct siltsim_tag *t,
 		t->mb_addr = (int32_t)a->valuedouble;
 
 		if ((t->mb_table == SILTSIM_MB_COIL ||
+		     t->mb_table == SILTSIM_MB_DISCRETE) && t->is_signed) {
+			ERR("tag \"%s\": a coil carries one bit, so signed means nothing",
+			    t->name);
+			return -1;
+		}
+		if ((t->mb_table == SILTSIM_MB_COIL ||
 		     t->mb_table == SILTSIM_MB_DISCRETE) && t->type != SILTSIM_BOOL) {
 			ERR("tag \"%s\": %s carries one bit, so the tag must be bool",
 			    t->name, tables[i].name);
@@ -177,6 +183,21 @@ static int parse_can(const cJSON *can, struct siltsim_tag *t,
 	}
 
 	t->can_id = (int32_t)v;
+	{
+		const cJSON *o = cJSON_GetObjectItemCaseSensitive(can, "order");
+
+		if (!o)
+			t->can_order = SILTSIM_BIG;
+		else if (cJSON_IsString(o) && !strcmp(o->valuestring, "big"))
+			t->can_order = SILTSIM_BIG;
+		else if (cJSON_IsString(o) && !strcmp(o->valuestring, "little"))
+			t->can_order = SILTSIM_LITTLE;
+		else {
+			ERR("tag \"%s\": can.order must be big or little", t->name);
+			return -1;
+		}
+	}
+
 	t->can_byte = (uint32_t)num(can, "byte", 0);
 	t->can_len = (uint32_t)num(can, "len", 2);
 	t->can_scale = num(can, "scale", 1);
@@ -212,6 +233,11 @@ static int check_mb_range(const struct siltsim_tag *t, char *err, size_t errlen)
 
 	lo = t->sim_min * t->mb_scale;
 	hi = t->sim_max * t->mb_scale;
+	if (t->is_signed && (lo < -32768 || hi > 32767)) {
+		ERR("tag \"%s\": %g..%g scaled by %g does not fit a signed "
+		    "16-bit register", t->name, t->sim_min, t->sim_max, t->mb_scale);
+		return -1;
+	}
 	if (lo < -32768 || hi > 65535) {
 		ERR("tag \"%s\": %g..%g scaled by %g does not fit a 16-bit register",
 		    t->name, t->sim_min, t->sim_max, t->mb_scale);
@@ -259,6 +285,11 @@ static int parse_tag(const cJSON *j, struct siltsim_tag *t,
 
 	v = cJSON_GetObjectItemCaseSensitive(j, "writable");
 	t->writable = cJSON_IsTrue(v) ? 1 : 0;
+
+	/* Signed values are carried as two's complement on both Modbus and
+	 * CAN; without this a -5 reads back as 65531. */
+	v = cJSON_GetObjectItemCaseSensitive(j, "signed");
+	t->is_signed = cJSON_IsTrue(v) ? 1 : 0;
 
 	v = cJSON_GetObjectItemCaseSensitive(j, "sim");
 	if (v) {

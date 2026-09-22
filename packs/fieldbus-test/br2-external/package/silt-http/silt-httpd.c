@@ -217,6 +217,32 @@ static const char *type_name(uint32_t type)
 	return type == SILTSIM_BOOL ? "bool" : type == SILTSIM_INT ? "int" : "float";
 }
 
+/* Which Modbus table, not just the address: holding 0 and discrete 0 are
+ * different places, and printing a bare 0 for both is how you end up
+ * reading the wrong register and blaming the daemon. */
+static const char *mb_table_name(uint32_t table)
+{
+	switch (table) {
+	case SILTSIM_MB_HOLDING:  return "holding";
+	case SILTSIM_MB_INPUT:    return "input";
+	case SILTSIM_MB_COIL:     return "coil";
+	case SILTSIM_MB_DISCRETE: return "discrete";
+	default:                  return "none";
+	}
+}
+
+static const char *sim_name(uint32_t sim)
+{
+	switch (sim) {
+	case SILTSIM_SIM_SINE:    return "sine";
+	case SILTSIM_SIM_RAMP:    return "ramp";
+	case SILTSIM_SIM_TOGGLE:  return "toggle";
+	case SILTSIM_SIM_COUNTER: return "counter";
+	case SILTSIM_SIM_WALK:    return "walk";
+	default:                  return "none";
+	}
+}
+
 /* Live values, so a buyer can see what the device is doing without a
  * protocol client at all. */
 static mhd_result get_tags(struct MHD_Connection *c)
@@ -240,11 +266,39 @@ static mhd_result get_tags(struct MHD_Connection *c)
 
 		at += (size_t)snprintf(body + at, cap - at,
 			"%s{\"name\":\"%s\",\"value\":%.4f,\"type\":\"%s\","
-			"\"unit\":\"%s\",\"writable\":%s,"
-			"\"modbus\":%d,\"opcua\":\"%s\",\"can\":%d}",
+			"\"unit\":\"%s\",\"writable\":%s,\"signed\":%s,"
+			"\"sim\":\"%s\",",
 			i ? "," : "", t->name, siltsim_get(t), type_name(t->type),
 			t->unit, t->writable ? "true" : "false",
-			t->mb_addr, t->opcua_node, t->can_id);
+			t->is_signed ? "true" : "false", sim_name(t->sim));
+
+		if (t->mb_addr >= 0)
+			at += (size_t)snprintf(body + at, cap - at,
+				"\"modbus\":{\"table\":\"%s\",\"address\":%d,"
+				"\"scale\":%g},",
+				mb_table_name(t->mb_table), t->mb_addr, t->mb_scale);
+		else
+			at += (size_t)snprintf(body + at, cap - at, "\"modbus\":null,");
+
+		if (t->can_id >= 0)
+			at += (size_t)snprintf(body + at, cap - at,
+				"\"can\":{\"id\":\"0x%X\",\"byte\":%u,\"len\":%u,"
+				"\"order\":\"%s\",\"scale\":%g},",
+				(unsigned)t->can_id, t->can_byte, t->can_len,
+				t->can_order == SILTSIM_LITTLE ? "little" : "big",
+				t->can_scale);
+		else
+			at += (size_t)snprintf(body + at, cap - at, "\"can\":null,");
+
+		if (t->opcua_node[0])
+			at += (size_t)snprintf(body + at, cap - at,
+				"\"opcua\":\"ns=1;s=%s.%s\",",
+				table->device, t->opcua_node);
+		else
+			at += (size_t)snprintf(body + at, cap - at, "\"opcua\":null,");
+
+		at += (size_t)snprintf(body + at, cap - at,
+			"\"mqtt\":\"silt/%s/%s\"}", table->device, t->name);
 	}
 	if (at < cap)
 		at += (size_t)snprintf(body + at, cap - at, "]}\n");

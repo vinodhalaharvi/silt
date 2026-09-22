@@ -23,6 +23,8 @@ endef
 define SILT_CAN_INSTALL_TARGET_CMDS
 	$(INSTALL) -D -m 0755 $(@D)/silt-cand $(TARGET_DIR)/usr/bin/silt-cand
 	$(INSTALL) -D -m 0755 $(@D)/silt-cand-test $(TARGET_DIR)/usr/bin/silt-cand-test
+	$(INSTALL) -D -m 0644 $(SILT_CAN_PKGDIR)/silt-can.default \
+		$(TARGET_DIR)/etc/default/silt-can
 endef
 
 define SILT_CAN_INSTALL_INIT_SYSV

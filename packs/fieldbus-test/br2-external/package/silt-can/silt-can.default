@@ -1,0 +1,19 @@
+# Which CAN interface silt-can talks to, and how to bring it up.
+#
+# The image creates vcan0 at boot, a virtual bus that needs no hardware, and
+# that is the default. For a real bus, point IFACE at it and set BITRATE.
+#
+# On a Raspberry Pi with an MCP2515 CAN HAT, the interface exists only once
+# the boot firmware loads the overlay, so add a line like this to
+# config.txt on the FAT boot partition (oscillator and interrupt pin depend
+# on the board):
+#
+#   dtoverlay=mcp2515-can0,oscillator=16000000,interrupt=25
+#
+# Then set IFACE=can0 and BITRATE to whatever the bus runs at. 500000 is
+# the most common in vehicles, 250000 in industrial machinery. A bitrate
+# that does not match the bus produces error frames and nothing else, which
+# is the first thing to check when a real bus stays silent.
+
+IFACE=vcan0
+BITRATE=

@@ -13,6 +13,12 @@
  *         them. A tag that is simulated is never written back, so the sim
  *         core stays its only writer.
  *
+ * Addresses: libmodbus answers anything inside its mapping, so a mapping
+ * sized to a fixed 512 would return 0 for every address the config never
+ * mentions. A real device answers ILLEGAL DATA ADDRESS there, and a client
+ * that reads a hole should be told it is a hole. The mapping is therefore
+ * sized to the highest address each table actually uses.
+ *
  * It binds with modbus_new_tcp(NULL, ...), which is INADDR_ANY, so unlike
  * the OPC UA server it can start before DHCP has finished.
  */
@@ -32,8 +38,6 @@
 
 #define PORT         502
 #define MAX_CLIENTS  8
-#define NB_BITS      512
-#define NB_REGISTERS 512
 
 static volatile sig_atomic_t running = 1;
 
@@ -42,19 +46,49 @@ static void on_stop(int sig) { (void)sig; running = 0; }
 static uint16_t to_register(const struct siltsim_tag *t, double v)
 {
 	double scaled = round(v * t->mb_scale);
+	double lo = t->is_signed ? -32768 : 0;
+	double hi = t->is_signed ? 32767 : 65535;
 
+	if (scaled < lo)
+		scaled = lo;
+	if (scaled > hi)
+		scaled = hi;
 	if (scaled < 0)
-		scaled += 65536;        /* two's complement, as Modbus clients read it */
-	if (scaled < 0)
-		scaled = 0;
-	if (scaled > 65535)
-		scaled = 65535;
+		scaled += 65536;        /* two's complement, as clients read it */
 	return (uint16_t)scaled;
 }
 
 static double from_register(const struct siltsim_tag *t, uint16_t raw)
 {
-	return (double)raw / t->mb_scale;
+	double v = t->is_signed && raw >= 0x8000 ? (double)raw - 65536.0
+						 : (double)raw;
+
+	return v / t->mb_scale;
+}
+
+/* One past the highest address each table uses, so libmodbus answers
+ * ILLEGAL DATA ADDRESS beyond it. At least one of each, because
+ * modbus_mapping_new treats zero as "no table at all". */
+static void mapping_sizes(const struct siltsim_table *tb, int *bits,
+			  int *input_bits, int *regs, int *input_regs)
+{
+	uint32_t i;
+
+	*bits = *input_bits = *regs = *input_regs = 1;
+	for (i = 0; i < tb->tag_count; i++) {
+		const struct siltsim_tag *t = &tb->tag[i];
+		int want = t->mb_addr + 1;
+
+		if (t->mb_addr < 0)
+			continue;
+		switch (t->mb_table) {
+		case SILTSIM_MB_HOLDING:  if (want > *regs) *regs = want; break;
+		case SILTSIM_MB_INPUT:    if (want > *input_regs) *input_regs = want; break;
+		case SILTSIM_MB_COIL:     if (want > *bits) *bits = want; break;
+		case SILTSIM_MB_DISCRETE: if (want > *input_bits) *input_bits = want; break;
+		default: break;
+		}
+	}
 }
 
 /* The table's values into libmodbus's view of the world. */
@@ -119,13 +153,17 @@ static void mapping_to_table(struct siltsim_table *tb, const modbus_mapping_t *m
 
 static void report(const struct siltsim_table *tb)
 {
+	int bits, input_bits, regs, input_regs;
 	uint32_t i, n = 0;
 
 	for (i = 0; i < tb->tag_count; i++)
 		if (tb->tag[i].mb_addr >= 0)
 			n++;
-	fprintf(stderr, "silt-modbusd: \"%s\" generation %u, %u tag(s) on Modbus\n",
-		tb->device, tb->generation, n);
+	mapping_sizes(tb, &bits, &input_bits, &regs, &input_regs);
+	fprintf(stderr, "silt-modbusd: \"%s\" generation %u, %u tag(s): "
+		"holding 0-%d, input 0-%d, coils 0-%d, discrete 0-%d\n",
+		tb->device, tb->generation, n,
+		regs - 1, input_regs - 1, bits - 1, input_bits - 1);
 }
 
 int main(void)
@@ -136,6 +174,7 @@ int main(void)
 	modbus_mapping_t *map;
 	modbus_t *ctx;
 	uint32_t seen_generation;
+	int bits, input_bits, regs, input_regs;
 	int listener, fdmax, fd;
 	fd_set all;
 
@@ -154,8 +193,9 @@ int main(void)
 	seen_generation = __atomic_load_n(&tb->generation, __ATOMIC_ACQUIRE);
 	report(tb);
 
+	mapping_sizes(tb, &bits, &input_bits, &regs, &input_regs);
 	ctx = modbus_new_tcp(NULL, PORT);
-	map = modbus_mapping_new(NB_BITS, NB_BITS, NB_REGISTERS, NB_REGISTERS);
+	map = modbus_mapping_new(bits, input_bits, regs, input_regs);
 	if (!ctx || !map) {
 		fprintf(stderr, "silt-modbusd: %s\n", modbus_strerror(errno));
 		return EXIT_FAILURE;
@@ -187,8 +227,19 @@ int main(void)
 
 		gen = __atomic_load_n(&tb->generation, __ATOMIC_ACQUIRE);
 		if (gen != seen_generation) {
+			modbus_mapping_t *fresh;
+
+			/* A new config means new addresses, so the mapping is
+			 * resized: a tag the old config had and this one does
+			 * not must stop answering. */
 			seen_generation = gen;
-			report(tb);   /* the config changed under us */
+			mapping_sizes(tb, &bits, &input_bits, &regs, &input_regs);
+			fresh = modbus_mapping_new(bits, input_bits, regs, input_regs);
+			if (fresh) {
+				modbus_mapping_free(map);
+				map = fresh;
+			}
+			report(tb);
 		}
 
 		for (fd = 0; fd <= fdmax; fd++) {

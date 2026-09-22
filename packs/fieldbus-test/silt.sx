@@ -15,7 +15,7 @@
 ;; and unencrypted by design, so a client can connect with no setup at all.
 
 (pack fieldbus-test
-  (version "0.5.0")
+  (version "0.6.0")
   (doc "One simulated device on Modbus, OPC UA, CAN and MQTT, configured over HTTP")
 
   (requires

@@ -84,12 +84,48 @@ int main(void)
 	check("a value too large for its field saturates rather than wrapping",
 	      data[0] == 0xFF && data[1] == 0xFF);
 
+	/* An unsigned field cannot carry a negative value, so it clamps at
+	 * zero rather than wrapping to 65531 and reading as a huge number.
+	 * Two's complement belongs to tags marked signed, tested below. */
 	siltsim_set(temp, -5);
 	siltcan_build(&tb, 0x100, data);
-	check("-5 at scale 10 is two's complement 0xFFCE",
-	      data[0] == 0xFF && data[1] == 0xCE);
+	check("a negative value in an unsigned field clamps to zero",
+	      data[0] == 0x00 && data[1] == 0x00);
 
 	check("an id no tag uses gives no frame", siltcan_build(&tb, 0x7AA, data) == 0);
+
+	/* Byte order and signedness, the two things a CAN matrix pins down. */
+	{
+		struct siltsim_tag *little = add(&tb, "intel", 0x300, 0, 2, 1, 0);
+		struct siltsim_tag *sgn = add(&tb, "offset", 0x301, 0, 2, 10, 0);
+
+		little->can_order = SILTSIM_LITTLE;
+		siltsim_set(little, 0x1234);
+		siltcan_build(&tb, 0x300, data);
+		check("little-endian puts the low byte first",
+		      data[0] == 0x34 && data[1] == 0x12);
+
+		sgn->is_signed = 1;
+		siltsim_set(sgn, -5);
+		siltcan_build(&tb, 0x301, data);
+		check("a signed -5 at scale 10 is 0xFFCE",
+		      data[0] == 0xFF && data[1] == 0xCE);
+
+		siltsim_set(sgn, -9999);
+		siltcan_build(&tb, 0x301, data);
+		check("a signed value saturates at its own negative limit",
+		      data[0] == 0x80 && data[1] == 0x00);
+
+		sgn->writable = 1;
+		data[0] = 0xFF; data[1] = 0xCE;
+		siltcan_apply(&tb, 0x301, data, 2);
+		check("a signed field decodes back to -5", siltsim_get(sgn) == -5.0);
+
+		sgn->is_signed = 0;
+		siltcan_apply(&tb, 0x301, data, 2);
+		check("the same bytes unsigned decode to 6548.6",
+		      siltsim_get(sgn) > 6548.5 && siltsim_get(sgn) < 6548.7);
+	}
 
 	/* Receiving. */
 	memset(data, 0, sizeof(data));

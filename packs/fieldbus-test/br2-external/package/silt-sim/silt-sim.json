@@ -15,7 +15,12 @@
     "  modbus: holding | input | coil | discrete, plus scale. A register",
     "       carries value * scale, so 54.3 at scale 10 reads as 543.",
     "  opcua: the node name, reachable as ns=1;s=<device>.<node>",
-    "  can: id, byte, len (1, 2 or 4), scale, period_s"
+    "  can: id, byte, len (1, 2 or 4), scale, period_s, order (big or",
+    "       little; big is the default and what most CAN matrices use)",
+    "",
+    "A tag with \"signed\": true is two's complement on the wire, on both",
+    "Modbus and CAN, so it can carry negative values. Without it a",
+    "negative clamps to zero rather than wrapping into a huge number."
   ],
 
   "tags": [
@@ -45,6 +50,16 @@
       "modbus": { "input": 2, "scale": 1 },
       "opcua": "Rpm",
       "can": { "id": "0x100", "byte": 4, "len": 2, "scale": 1, "period_s": 0.1 }
+    },
+    {
+      "name": "ambient",
+      "unit": "C",
+      "type": "float",
+      "signed": true,
+      "sim": { "sine": { "min": -15, "max": 35, "period_s": 90 } },
+      "modbus": { "input": 4, "scale": 10 },
+      "opcua": "AmbientTemperature",
+      "can": { "id": "0x101", "byte": 2, "len": 2, "scale": 10, "order": "little" }
     },
     {
       "name": "hours",

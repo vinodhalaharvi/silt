@@ -9,9 +9,11 @@
  *
  *   silt-cand [-i vcan0]
  *
- * Encoding: value * scale, rounded, big-endian across len bytes (1, 2 or
- * 4), which is the byte order most published CAN matrices use. Negative
- * values are two's complement in that width. The frame's length is the
+ * Encoding: value * scale, rounded, across len bytes (1, 2 or 4). Byte
+ * order is Motorola (big-endian) by default, which is what most published
+ * CAN matrices use, and Intel (little-endian) when a tag says
+ * "order": "little". A tag marked "signed": true is two's complement in
+ * that width and is sign-extended when decoded. The frame's length is the
  * highest byte any of its tags reaches.
  *
  * Receiving: a frame whose id matches is decoded into the writable tags
@@ -43,21 +45,42 @@ static volatile sig_atomic_t running = 1;
 
 static void on_stop(int sig) { (void)sig; running = 0; }
 
-static void put_be(uint8_t *data, uint32_t at, uint32_t len, uint32_t raw)
+static void put_bytes(uint8_t *data, uint32_t at, uint32_t len, uint32_t order,
+		      uint32_t raw)
 {
 	uint32_t i;
 
-	for (i = 0; i < len; i++)
-		data[at + i] = (uint8_t)(raw >> (8 * (len - 1 - i)));
+	for (i = 0; i < len; i++) {
+		uint32_t shift = (order == SILTSIM_LITTLE) ? i : (len - 1 - i);
+
+		data[at + i] = (uint8_t)(raw >> (8 * shift));
+	}
 }
 
-static uint32_t get_be(const uint8_t *data, uint32_t at, uint32_t len)
+static uint32_t get_bytes(const uint8_t *data, uint32_t at, uint32_t len,
+			  uint32_t order)
 {
 	uint32_t v = 0, i;
 
-	for (i = 0; i < len; i++)
-		v = (v << 8) | data[at + i];
+	for (i = 0; i < len; i++) {
+		uint32_t shift = (order == SILTSIM_LITTLE) ? i : (len - 1 - i);
+
+		v |= (uint32_t)data[at + i] << (8 * shift);
+	}
 	return v;
+}
+
+/* Two's complement in the field's own width, widened to a double. */
+static double widen(const struct siltsim_tag *t, uint32_t raw)
+{
+	uint32_t bits = t->can_len * 8;
+	double limit = (bits == 32) ? 4294967296.0 : (double)(1u << bits);
+
+	if (t->is_signed && bits < 32 && raw >= (uint32_t)(1u << (bits - 1)))
+		return (double)raw - limit;
+	if (t->is_signed && bits == 32 && raw >= 0x80000000u)
+		return (double)raw - limit;
+	return (double)raw;
 }
 
 static uint32_t encode(const struct siltsim_tag *t, double v)
@@ -65,13 +88,15 @@ static uint32_t encode(const struct siltsim_tag *t, double v)
 	double scaled = round(v * t->can_scale);
 	double limit = (t->can_len == 4) ? 4294967296.0 :
 		       (t->can_len == 2) ? 65536.0 : 256.0;
+	double lo = t->is_signed ? -limit / 2 : 0;
+	double hi = t->is_signed ? limit / 2 - 1 : limit - 1;
 
+	if (scaled < lo)
+		scaled = lo;
+	if (scaled > hi)
+		scaled = hi;
 	if (scaled < 0)
 		scaled += limit;        /* two's complement in this width */
-	if (scaled < 0)
-		scaled = 0;
-	if (scaled > limit - 1)
-		scaled = limit - 1;
 	return (uint32_t)scaled;
 }
 
@@ -90,7 +115,8 @@ uint8_t siltcan_build(const struct siltsim_table *tb, int32_t can_id, uint8_t *d
 
 		if (t->can_id != can_id)
 			continue;
-		put_be(data, t->can_byte, t->can_len, encode(t, siltsim_get(t)));
+		put_bytes(data, t->can_byte, t->can_len, t->can_order,
+			  encode(t, siltsim_get(t)));
 		if (t->can_byte + t->can_len > dlc)
 			dlc = t->can_byte + t->can_len;
 	}
@@ -110,8 +136,8 @@ void siltcan_apply(struct siltsim_table *tb, int32_t can_id,
 			continue;
 		if (t->can_byte + t->can_len > dlc)
 			continue;       /* the sender did not carry this tag */
-		siltsim_set(t, (double)get_be(data, t->can_byte, t->can_len) /
-				t->can_scale);
+		siltsim_set(t, widen(t, get_bytes(data, t->can_byte, t->can_len,
+						 t->can_order)) / t->can_scale);
 	}
 }
 

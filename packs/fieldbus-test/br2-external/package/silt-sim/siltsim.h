@@ -56,6 +56,14 @@ enum siltsim_sim {
 	SILTSIM_SIM_WALK    = 5   /* random walk within min..max */
 };
 
+/* Byte order of a CAN signal. Most published CAN matrices are Motorola
+ * (big-endian), but Intel (little-endian) is common enough that a fixed
+ * choice would be wrong half the time. */
+enum siltsim_order {
+	SILTSIM_BIG    = 0,
+	SILTSIM_LITTLE = 1
+};
+
 /* Which Modbus table a tag appears in. NONE means it has no Modbus
  * address, which is fine: a tag may be OPC UA or CAN only. */
 enum siltsim_mb_table {
@@ -72,6 +80,7 @@ struct siltsim_tag {
 
 	uint32_t type;          /* enum siltsim_type */
 	uint32_t writable;      /* a client may write it; the sim core will not */
+	uint32_t is_signed;     /* the wire carries two's complement, not unsigned */
 
 	uint32_t sim;           /* enum siltsim_sim */
 	uint32_t sim_period_ms; /* one cycle, or one step for COUNTER */
@@ -90,9 +99,8 @@ struct siltsim_tag {
 	uint32_t can_byte;
 	uint32_t can_len;       /* 1, 2 or 4 bytes, big-endian in the frame */
 	uint32_t can_period_ms;
+	uint32_t can_order;     /* enum siltsim_order */
 	double   can_scale;
-
-	uint32_t pad;
 	double   value;         /* the live value; one writer, atomic access */
 };
 
