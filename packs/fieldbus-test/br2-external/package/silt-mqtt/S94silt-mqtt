@@ -1,0 +1,36 @@
+#!/bin/sh
+#
+# The device on MQTT.
+#
+#   mosquitto_sub -h <board> -t 'silt/#' -v
+#   mosquitto_pub -h <board> -t 'silt/pump-1/setpoint/set' -m 72.5
+#
+# The bridge waits for the broker and reconnects if it goes away, so the
+# order against mosquitto's own init script does not matter.
+#
+
+DAEMON=/usr/bin/silt-mqttd
+PIDFILE=/var/run/silt-mqtt.pid
+LOG=/var/log/silt-mqtt.log
+
+case "$1" in
+start)
+	printf "Starting silt-mqtt: "
+	start-stop-daemon -S -q -b -m -p "$PIDFILE" \
+		-x /bin/sh -- -c "exec $DAEMON >> $LOG 2>&1" \
+		&& echo "OK" || echo "FAIL"
+	;;
+stop)
+	printf "Stopping silt-mqtt: "
+	start-stop-daemon -K -q -p "$PIDFILE" && rm -f "$PIDFILE" \
+		&& echo "OK" || echo "FAIL"
+	;;
+restart)
+	"$0" stop
+	sleep 1
+	"$0" start
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+esac

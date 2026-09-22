@@ -1,0 +1,34 @@
+#!/bin/sh
+#
+# Start CAN on vcan0, the virtual bus S45vcan brings up.
+#
+# The daemon waits for the interface itself, so it also works with a real
+# CAN HAT whose driver appears later in the boot.
+#
+
+DAEMON=/usr/bin/silt-cand
+IFACE=vcan0
+PIDFILE=/var/run/silt-can.pid
+LOG=/var/log/silt-can.log
+
+case "$1" in
+start)
+	printf "Starting silt-can on %s: " "$IFACE"
+	start-stop-daemon -S -q -b -m -p "$PIDFILE" \
+		-x /bin/sh -- -c "exec $DAEMON -i $IFACE >> $LOG 2>&1" \
+		&& echo "OK" || echo "FAIL"
+	;;
+stop)
+	printf "Stopping silt-can: "
+	start-stop-daemon -K -q -p "$PIDFILE" && rm -f "$PIDFILE" \
+		&& echo "OK" || echo "FAIL"
+	;;
+restart)
+	"$0" stop
+	sleep 1
+	"$0" start
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+esac

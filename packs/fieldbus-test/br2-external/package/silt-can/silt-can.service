@@ -1,0 +1,11 @@
+[Unit]
+Description=Silt CAN frames for the simulated device
+After=silt-sim.service
+Wants=silt-sim.service
+
+[Service]
+ExecStart=/usr/bin/silt-cand -i vcan0
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

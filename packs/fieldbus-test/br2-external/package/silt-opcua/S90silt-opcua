@@ -1,0 +1,35 @@
+#!/bin/sh
+#
+# Start OPC UA on port 4840.
+#
+# The daemon waits for an IPv4 address itself, because open62541 picks its
+# listening addresses with getaddrinfo(AI_ADDRCONFIG): started before DHCP
+# it would listen on IPv6 alone, and every IPv4 client would be refused.
+# Backgrounded so a board with no network does not hold up the boot.
+#
+
+DAEMON=/usr/bin/silt-opcuad
+PIDFILE=/var/run/silt-opcua.pid
+LOG=/var/log/silt-opcua.log
+
+case "$1" in
+start)
+	printf "Starting silt-opcua: "
+	start-stop-daemon -S -q -b -m -p "$PIDFILE" \
+		-x /bin/sh -- -c "exec $DAEMON >> $LOG 2>&1" \
+		&& echo "OK" || echo "FAIL"
+	;;
+stop)
+	printf "Stopping silt-opcua: "
+	start-stop-daemon -K -q -p "$PIDFILE" && rm -f "$PIDFILE" \
+		&& echo "OK" || echo "FAIL"
+	;;
+restart)
+	"$0" stop
+	sleep 1
+	"$0" start
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+esac

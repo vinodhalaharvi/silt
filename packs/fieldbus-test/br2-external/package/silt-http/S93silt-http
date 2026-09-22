@@ -1,0 +1,35 @@
+#!/bin/sh
+#
+# Config over HTTP on port 8080.
+#
+#   curl -X POST --data-binary @device.json http://<board>:8080/config
+#   curl http://<board>:8080/tags
+#
+# libmicrohttpd binds INADDR_ANY, so no wait for the network is needed.
+#
+
+DAEMON=/usr/bin/silt-httpd
+PIDFILE=/var/run/silt-http.pid
+LOG=/var/log/silt-http.log
+
+case "$1" in
+start)
+	printf "Starting silt-http: "
+	start-stop-daemon -S -q -b -m -p "$PIDFILE" \
+		-x /bin/sh -- -c "exec $DAEMON >> $LOG 2>&1" \
+		&& echo "OK" || echo "FAIL"
+	;;
+stop)
+	printf "Stopping silt-http: "
+	start-stop-daemon -K -q -p "$PIDFILE" && rm -f "$PIDFILE" \
+		&& echo "OK" || echo "FAIL"
+	;;
+restart)
+	"$0" stop
+	sleep 1
+	"$0" start
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+esac

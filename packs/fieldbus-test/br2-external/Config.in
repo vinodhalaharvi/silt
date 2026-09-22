@@ -1,3 +1,6 @@
 source "$BR2_EXTERNAL_FIELDBUS_TEST_PATH/package/silt-sim/Config.in"
 source "$BR2_EXTERNAL_FIELDBUS_TEST_PATH/package/silt-modbus/Config.in"
-source "$BR2_EXTERNAL_FIELDBUS_TEST_PATH/package/hello-opcua/Config.in"
+source "$BR2_EXTERNAL_FIELDBUS_TEST_PATH/package/silt-opcua/Config.in"
+source "$BR2_EXTERNAL_FIELDBUS_TEST_PATH/package/silt-can/Config.in"
+source "$BR2_EXTERNAL_FIELDBUS_TEST_PATH/package/silt-http/Config.in"
+source "$BR2_EXTERNAL_FIELDBUS_TEST_PATH/package/silt-mqtt/Config.in"

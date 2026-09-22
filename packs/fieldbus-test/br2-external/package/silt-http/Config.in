@@ -1,0 +1,10 @@
+config BR2_PACKAGE_SILT_HTTP
+	bool "silt-http"
+	depends on BR2_USE_MMU # start-stop-daemon -b forks
+	select BR2_PACKAGE_SILT_SIM
+	select BR2_PACKAGE_LIBMICROHTTPD
+	help
+	  Push a device config to the board over HTTP on port 8080, and
+	  read the live values back as JSON. No authentication and no TLS:
+	  the board already serves anonymous OPC UA, unauthenticated Modbus
+	  writes and an open CAN bus, so it belongs on a lab network.

@@ -1,0 +1,11 @@
+[Unit]
+Description=Silt device on MQTT
+After=silt-sim.service mosquitto.service
+Wants=silt-sim.service mosquitto.service
+
+[Service]
+ExecStart=/usr/bin/silt-mqttd
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

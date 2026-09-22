@@ -1,0 +1,9 @@
+config BR2_PACKAGE_SILT_CAN
+	bool "silt-can"
+	depends on BR2_USE_MMU # start-stop-daemon -b forks
+	select BR2_PACKAGE_SILT_SIM
+	help
+	  CAN for the simulated device: the tags that name a can id are
+	  packed into frames and sent on the bus, and writable tags can be
+	  written from it. Defaults to vcan0, the virtual bus the image
+	  brings up at boot.

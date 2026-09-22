@@ -8,12 +8,15 @@
 ;;
 ;;   silt check --buildroot ~/buildroot
 ;;
-;; For testing on the bench, not for shipping: both servers are anonymous
+;; The device is a file, not something fixed in the image: push a new one
+;; with curl -X POST --data-binary @device.json http://<board>:8080/config
+;;
+;; For testing on the bench, not for shipping: the servers are anonymous
 ;; and unencrypted by design, so a client can connect with no setup at all.
 
 (pack fieldbus-test
-  (version "0.3.0")
-  (doc "OPC UA on 4840, Modbus TCP on 502, can-utils and vcan0 for bench testing")
+  (version "0.5.0")
+  (doc "One simulated device on Modbus, OPC UA, CAN and MQTT, configured over HTTP")
 
   (requires
     (buildroot "2025.02.16"))

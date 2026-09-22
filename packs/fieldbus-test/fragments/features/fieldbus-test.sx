@@ -1,11 +1,5 @@
 ;; OPC UA, Modbus TCP and CAN on a dev board, for bench testing.
 ;;
-;; OPC UA: hello-opcua is a small open62541 server started at boot on port
-;; 4840, anonymous, with ns=1;s=silt.hello and a counter ns=1;s=silt.counter
-;; that ticks once a second. open62541 itself is a library and installs no
-;; server, which is why the pack carries one. It is selected by the package,
-;; therefore not stated here.
-;;
 ;; The device itself: silt-sim reads /etc/silt-sim.json, validates it, and
 ;; publishes a tag table into /dev/shm. Every protocol daemon serves that
 ;; table, so one file describes the device and no two protocols can
@@ -14,26 +8,58 @@
 ;; setpoint and run flag. Editing that file changes the device; nothing
 ;; about it is fixed in the image.
 ;;
+;; OPC UA: silt-opcua serves the same table on port 4840, anonymous. Each
+;; tag with an opcua name becomes a variable under Objects, as
+;; ns=1;s=<device>.<node>, so the default pump reads at
+;; ns=1;s=pump-1.Temperature. open62541 is a library and installs no
+;; server, which is why the pack carries one; it is selected by the
+;; package, therefore not stated here.
+;;
 ;; Modbus TCP: silt-modbus serves the table on port 502, at the addresses
 ;; the config gives. A client writing a writable tag writes it into the
 ;; table, where the other protocols see it. Like open62541, libmodbus is a
 ;; library, selected by the package; feature:modbus, composed beside this
 ;; one, states it for any image.
 ;;
-;; CAN: can-utils (candump, cansend, cangen) and a vcan0 virtual bus created
-;; at boot, so the tools work on a board with no CAN hardware.
+;; CAN: silt-can packs the tags that name a can id into frames and sends
+;; them on vcan0 - the default pump puts temperature, pressure and rpm in
+;; 0x100 and the fault bit in 0x101 - and writes writable tags back from
+;; frames it receives. can-utils (candump, cansend, cangen) is there to
+;; watch and drive that bus, and S45vcan creates it at boot, so all of it
+;; works on a board with no CAN hardware.
+;;
+;; Config over HTTP: silt-http accepts a device config on port 8080, checks
+;; it with the same validator, saves it and asks the sim core to reload, so
+;; a buyer changes the device with curl rather than by editing a file over
+;; ssh. GET /tags shows every live value as JSON, which is the quickest way
+;; to see what the device is doing without a protocol client at all.
+;;
+;; MQTT: silt-mqtt publishes each tag to the local broker as it changes, on
+;; silt/<device>/<tag>, retained, and accepts writes on
+;; silt/<device>/<tag>/set. Northbound, the direction a gateway runs: the
+;; field protocols read the device, MQTT carries it to whatever is
+;; subscribed. Nothing here talks to the other daemons over MQTT; they
+;; share the table.
+;;
+;; No authentication and no TLS on either. The board already serves
+;; anonymous OPC UA, unauthenticated Modbus writes and an open CAN bus, so
+;; a password on one endpoint would suggest a protection the device does
+;; not have. Lab networks only, and the docs should say so.
 
 (fragment feature:fieldbus-test
 
-  (doc "OPC UA server on 4840, Modbus TCP server on 502, can-utils, and a vcan0 bus")
+  (doc "One simulated device on Modbus, OPC UA, CAN and MQTT, configured over HTTP")
 
   (requires
     (capability mmu))
 
   (buildroot
-    (y BR2_PACKAGE_HELLO_OPCUA)
     (y BR2_PACKAGE_SILT_SIM)
     (y BR2_PACKAGE_SILT_MODBUS)
+    (y BR2_PACKAGE_SILT_OPCUA)
+    (y BR2_PACKAGE_SILT_CAN)
+    (y BR2_PACKAGE_SILT_HTTP)
+    (y BR2_PACKAGE_SILT_MQTT)
     (y BR2_PACKAGE_CAN_UTILS)
 
     ;; BusyBox's ip cannot create a link of type vcan or configure a CAN

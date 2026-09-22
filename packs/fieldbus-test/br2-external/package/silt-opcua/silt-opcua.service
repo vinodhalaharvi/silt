@@ -1,12 +1,12 @@
 [Unit]
-Description=Bench OPC UA server on port 4840
+Description=Silt OPC UA server on port 4840
 # open62541 picks listening addresses with getaddrinfo(AI_ADDRCONFIG): started
 # before the network has an address, it does not listen on IPv4 at all.
-Wants=network-online.target
-After=network-online.target
+Wants=network-online.target silt-sim.service
+After=network-online.target silt-sim.service
 
 [Service]
-ExecStart=/usr/bin/hello-opcua
+ExecStart=/usr/bin/silt-opcuad
 Restart=on-failure
 
 [Install]

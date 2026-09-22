@@ -1,0 +1,9 @@
+config BR2_PACKAGE_SILT_OPCUA
+	bool "silt-opcua"
+	depends on BR2_USE_MMU # start-stop-daemon -b forks
+	select BR2_PACKAGE_SILT_SIM
+	select BR2_PACKAGE_OPEN62541
+	help
+	  OPC UA on port 4840 for the simulated device. Each tag with an
+	  opcua name in the config becomes a variable under Objects, as
+	  ns=1;s=<device>.<node>, served from the tag table in /dev/shm.
