@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>silt media kit</title>
+<style>
+  body { font: 16px/1.6 system-ui, sans-serif; margin: 0 auto; max-width: 46rem;
+         padding: 1.5rem; background: #11151a; color: #e6eaf0; }
+  a { color: #63c9b0; }
+  img { max-width: 100%; border-radius: 8px; background: #000; display: block; }
+  code, pre { font-family: ui-monospace, Menlo, monospace; font-size: .88rem;
+              background: #1a2029; border-radius: 6px; }
+  code { padding: .12em .35em; }
+  pre { padding: .8rem 1rem; overflow-x: auto; }
+  .hint { color: #9aa5b3; font-size: .9rem; }
+</style>
+</head>
+<body>
+
+<h1>silt media kit</h1>
+
+<h2>Live</h2>
+<!-- multipart/x-mixed-replace: the browser renders it with no player and no
+     JavaScript. Nothing is listening until silt-media mjpeg runs. -->
+<img src="" id="live" alt="live stream"
+     onerror="this.replaceWith(Object.assign(document.createElement('p'),
+              {className:'hint',textContent:'Nothing on port 8090 yet. Run: silt-media mjpeg'}))">
+<p class="hint">Served by <code>silt-media mjpeg</code> on port 8090.</p>
+
+<h2>Recordings</h2>
+<p><a href="/rec/">/rec/</a> — MP4 segments, playable in this browser.</p>
+<p class="hint">Written by <code>silt-media record</code>, ten seconds each.</p>
+
+<h2>Still</h2>
+<p><a href="/snap.jpg">snap.jpg</a> — one frame, from <code>silt-media snap</code>.</p>
+
+<h2>On the board</h2>
+<pre>silt-media sources          what cameras this board can see
+silt-media mjpeg            live view, here on this page
+silt-media record           MP4 segments into /var/www/rec
+silt-media rtp 192.168.1.5  H.264 to that host, low latency
+silt-media snap             one JPEG
+
+WIDTH=640 HEIGHT=480 silt-media mjpeg usb     pick a size and a source</pre>
+
+<h2>From your laptop</h2>
+<pre>ffplay http://&lt;board&gt;/silt.sdp        the RTP stream
+ffplay http://&lt;board&gt;:8090/           the MJPEG stream
+vlc    http://&lt;board&gt;/rec/00000.mp4   a recording</pre>
+
+<p class="hint">No camera attached? Every command takes <code>test</code> as a
+source and generates a pattern, so the whole chain works before the hardware
+arrives.</p>
+
+<script>
+  // The stream is on another port of this same board, so the page works
+  // whatever address you reached it by: hostname, IP or .local.
+  var img = document.getElementById('live');
+  img.src = 'http://' + location.hostname + ':8090/?action=stream';
+</script>
+
+</body>
+</html>

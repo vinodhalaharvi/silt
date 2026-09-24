@@ -1,0 +1,88 @@
+;; Camera capture and streaming on a dev board: both cameras, three ways out.
+;;
+;; Sources. A USB webcam is v4l2src on /dev/video0, and most webcams emit
+;; MJPEG themselves, which is the cheap path. A Pi camera on the CSI ribbon
+;; is libcamerasrc: Buildroot builds libcamera's GStreamer element whenever
+;; GStreamer is in the image, so one pipeline language covers both. With no
+;; camera at all, videotestsrc still exercises the whole chain.
+;;
+;; Outputs, in order of how much a browser has to cooperate:
+;;
+;;   MJPEG over HTTP   an <img> tag, no player, no JavaScript. mjpg-streamer
+;;                     serves it for a USB camera; silt-media builds the
+;;                     same thing from GStreamer for the CSI one.
+;;   MP4 recordings    splitmuxsink writes segments into /var/www/rec, and
+;;                     lighttpd serves the directory, so a browser plays
+;;                     them back without any extra software.
+;;   H.264 over RTP    for VLC or ffplay, via the .sdp file silt-media
+;;                     writes. Low latency, not browser-viewable.
+;;
+;; A note on this board specifically: the Raspberry Pi 5 has no hardware
+;; H.264 encoder - Broadcom removed it - so x264enc is software encoding on
+;; four A76 cores. 720p30 is comfortable, 1080p30 is not. MJPEG has no such
+;; problem, which is another reason it is the default path here.
+
+(fragment feature:media-kit
+
+  (doc "camera capture, MJPEG over HTTP, MP4 recording and RTP out")
+
+  (requires
+    (capability mmu))
+
+  (buildroot
+    ;; GStreamer, and only the plugins the pipelines in silt-media name.
+    (y BR2_PACKAGE_GSTREAMER1)
+
+    (y BR2_PACKAGE_GST1_PLUGINS_BASE)
+    (y BR2_PACKAGE_GST1_PLUGINS_BASE_PLUGIN_VIDEOTESTSRC)      ; no camera needed
+    (y BR2_PACKAGE_GST1_PLUGINS_BASE_PLUGIN_VIDEOCONVERTSCALE)
+    (y BR2_PACKAGE_GST1_PLUGINS_BASE_PLUGIN_TYPEFIND)
+    (y BR2_PACKAGE_GST1_PLUGINS_BASE_PLUGIN_APP)
+
+    (y BR2_PACKAGE_GST1_PLUGINS_GOOD)
+    (y BR2_PACKAGE_GST1_PLUGINS_GOOD_PLUGIN_V4L2)              ; the USB camera
+    (y BR2_PACKAGE_GST1_PLUGINS_GOOD_JPEG)                     ; jpegenc, jpegdec
+    (y BR2_PACKAGE_GST1_PLUGINS_GOOD_PLUGIN_MULTIPART)         ; MJPEG framing
+    (y BR2_PACKAGE_GST1_PLUGINS_GOOD_PLUGIN_MULTIFILE)         ; splitmuxsink
+    (y BR2_PACKAGE_GST1_PLUGINS_GOOD_PLUGIN_ISOMP4)            ; MP4 segments
+    (y BR2_PACKAGE_GST1_PLUGINS_GOOD_PLUGIN_MATROSKA)
+    (y BR2_PACKAGE_GST1_PLUGINS_GOOD_PLUGIN_RTP)
+    (y BR2_PACKAGE_GST1_PLUGINS_GOOD_PLUGIN_RTPMANAGER)
+    (y BR2_PACKAGE_GST1_PLUGINS_GOOD_PLUGIN_UDP)
+
+    ;; x264enc. It selects BR2_PACKAGE_X264 itself.
+    (y BR2_PACKAGE_GST1_PLUGINS_UGLY)
+    (y BR2_PACKAGE_GST1_PLUGINS_UGLY_PLUGIN_X264)
+
+    ;; libcamera, for the CSI camera. Its GStreamer element is built because
+    ;; gstreamer1 and gst1-plugins-base are in the image; libcamera.mk turns
+    ;; -Dgstreamer=enabled on when it sees both. libcamera-apps brings
+    ;; rpicam-hello and rpicam-vid, which are what the Raspberry Pi
+    ;; documentation tells you to try first when a CSI camera is quiet.
+    (y BR2_PACKAGE_LIBCAMERA)
+    (y BR2_PACKAGE_LIBCAMERA_APPS)
+
+    ;; The browser-native path for a USB camera: mjpg-streamer serves
+    ;; multipart/x-mixed-replace, which every browser renders in an <img>.
+    (y BR2_PACKAGE_MJPG_STREAMER)
+
+    ;; ffmpeg for everything the pipelines do not: converting a recording,
+    ;; probing a file, pulling a frame out.
+    (y BR2_PACKAGE_FFMPEG)
+    (y BR2_PACKAGE_FFMPEG_FFPROBE)
+
+    ;; lighttpd serves /var/www: the landing page, the recordings directory
+    ;; and the .sdp file. It is the only general-purpose server here; the
+    ;; live MJPEG has its own port because it is a long-lived response
+    ;; rather than a file.
+    (y BR2_PACKAGE_LIGHTTPD)
+
+    ;; /usr/bin/silt-media, the init scripts and the web root.
+    (path-append BR2_ROOTFS_OVERLAY "overlay"))
+
+  (linux
+    ;; A USB webcam is uvcvideo; the Pi kernels build it as a module. CSI
+    ;; cameras come up through libcamera on top of the same V4L2 core.
+    (at-least m CONFIG_VIDEO_DEV)
+    (at-least m CONFIG_MEDIA_SUPPORT)
+    (at-least m CONFIG_USB_VIDEO_CLASS)))

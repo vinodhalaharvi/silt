@@ -1,0 +1,25 @@
+;; A Raspberry Pi 5 that captures from either camera and serves it.
+;;
+;; Open http://<board>/ and the landing page has the live stream, the
+;; recordings and the commands. With no camera attached, every command
+;; takes "test" and generates a pattern, so the image is worth flashing
+;; before the hardware arrives.
+;;
+;; No hardware H.264 encoder on this board - Broadcom removed it for the
+;; Pi 5 - so recording and RTP are software x264 on the CPU, and MJPEG is
+;; the path that stays cheap. feature:media-kit's comment has the detail.
+;;
+;; The rootfs is larger than the board profile's default because GStreamer,
+;; libcamera-apps (which brings boost), ffmpeg and lighttpd are not small,
+;; and /var/www/rec fills with MP4 segments while recording.
+
+(image raspberrypi5-media
+  (compose
+    image:raspberrypi5
+    feature:dev-ssh
+    feature:media-kit)
+
+  (override
+    (value buildroot:BR2_TARGET_ROOTFS_EXT2_SIZE "2G"))
+
+  (verified-against (buildroot "2025.02.16")))

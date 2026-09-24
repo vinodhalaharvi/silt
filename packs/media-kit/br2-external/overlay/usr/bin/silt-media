@@ -1,0 +1,147 @@
+#!/bin/sh
+#
+# silt-media - one command for the pipelines this image is built around.
+#
+#   silt-media sources              what cameras this board can see
+#   silt-media mjpeg [source]       live MJPEG on http://<board>:8090/
+#   silt-media record [source]      10-second MP4 segments into /var/www/rec
+#   silt-media rtp HOST [source]    H.264 over RTP to HOST:5000, writes an .sdp
+#   silt-media snap [source]        one JPEG into /var/www/snap.jpg
+#
+# source is usb, csi or test. Left out, it picks the first that exists:
+# a USB camera, then a CSI camera, then the test pattern, so the command
+# does something useful on a board with no camera attached at all.
+#
+# The Pi 5 has no hardware H.264 encoder, so record and rtp are software
+# x264 on the CPU. 720p30 is comfortable; 1080p30 is not. mjpeg avoids the
+# problem entirely, which is why it is the one the landing page links to.
+
+set -e
+
+WWW=/var/www
+REC=$WWW/rec
+PORT_MJPEG=8090
+PORT_RTP=5000
+WIDTH=${WIDTH:-1280}
+HEIGHT=${HEIGHT:-720}
+FPS=${FPS:-30}
+
+have_usb() { [ -e /dev/video0 ] && v4l2-ctl --list-devices >/dev/null 2>&1 || [ -e /dev/video0 ]; }
+have_csi() { rpicam-hello --list-cameras 2>/dev/null | grep -q "^[0-9] :"; }
+
+pick_source() {
+    if have_usb; then echo usb
+    elif have_csi; then echo csi
+    else echo test
+    fi
+}
+
+# The head of a pipeline, in raw video, for whichever camera.
+src_pipeline() {
+    case "$1" in
+    usb)
+        echo "v4l2src device=/dev/video0 ! image/jpeg,width=$WIDTH,height=$HEIGHT ! jpegdec"
+        ;;
+    csi)
+        echo "libcamerasrc ! video/x-raw,width=$WIDTH,height=$HEIGHT,framerate=$FPS/1"
+        ;;
+    test)
+        echo "videotestsrc is-live=true pattern=smpte ! video/x-raw,width=$WIDTH,height=$HEIGHT,framerate=$FPS/1"
+        ;;
+    *)
+        echo "silt-media: unknown source \"$1\": use usb, csi or test" >&2
+        exit 1
+        ;;
+    esac
+}
+
+cmd_sources() {
+    echo "USB (v4l2):"
+    for d in /dev/video*; do
+        [ -e "$d" ] || { echo "  none"; break; }
+        echo "  $d"
+    done
+    echo "CSI (libcamera):"
+    rpicam-hello --list-cameras 2>/dev/null | sed 's/^/  /' || echo "  none, or libcamera cannot see one"
+    echo
+    echo "If a CSI camera is not listed, check that config.txt on the boot"
+    echo "partition has camera_auto_detect=1 and that the ribbon is the right"
+    echo "way round. rpicam-hello --list-cameras is the first thing to try."
+}
+
+cmd_mjpeg() {
+    src=${1:-$(pick_source)}
+    echo "silt-media: MJPEG from $src on http://$(hostname -i 2>/dev/null | cut -d' ' -f1):$PORT_MJPEG/"
+
+    if [ "$src" = usb ] && command -v mjpg_streamer >/dev/null 2>&1; then
+        # A USB camera's own MJPEG, passed through untouched: no decode, no
+        # encode, barely any CPU.
+        exec mjpg_streamer \
+            -i "input_uvc.so -d /dev/video0 -r ${WIDTH}x${HEIGHT} -f $FPS" \
+            -o "output_http.so -p $PORT_MJPEG -w $WWW"
+    fi
+
+    # Everything else goes through GStreamer. multipartmux plus tcpserversink
+    # is the same framing mjpg-streamer sends, so a browser renders it in an
+    # <img>; the landing page does exactly that.
+    exec gst-launch-1.0 -q $(src_pipeline "$src") \
+        ! videoconvert ! jpegenc quality=80 \
+        ! multipartmux boundary=silt \
+        ! tcpserversink host=0.0.0.0 port=$PORT_MJPEG
+}
+
+cmd_record() {
+    src=${1:-$(pick_source)}
+    mkdir -p "$REC"
+    echo "silt-media: recording $src into $REC, 10s segments"
+    exec gst-launch-1.0 -q $(src_pipeline "$src") \
+        ! videoconvert ! x264enc tune=zerolatency bitrate=4000 speed-preset=veryfast \
+        ! h264parse \
+        ! splitmuxsink location="$REC/%05d.mp4" max-size-time=10000000000
+}
+
+cmd_rtp() {
+    host=$1
+    [ -n "$host" ] || { echo "usage: silt-media rtp HOST [source]" >&2; exit 1; }
+    src=${2:-$(pick_source)}
+
+    # The receiver needs to know what is arriving; an .sdp file says so, and
+    # lighttpd serves it. On the other machine: ffplay http://<board>/silt.sdp
+    cat > "$WWW/silt.sdp" <<EOF
+v=0
+o=- 0 0 IN IP4 127.0.0.1
+s=silt-media
+c=IN IP4 $host
+t=0 0
+m=video $PORT_RTP RTP/AVP 96
+a=rtpmap:96 H264/90000
+EOF
+
+    echo "silt-media: H.264 to $host:$PORT_RTP, sdp at http://<board>/silt.sdp"
+    exec gst-launch-1.0 -q $(src_pipeline "$src") \
+        ! videoconvert ! x264enc tune=zerolatency bitrate=2000 speed-preset=veryfast \
+        ! rtph264pay config-interval=1 pt=96 \
+        ! udpsink host="$host" port=$PORT_RTP
+}
+
+cmd_snap() {
+    src=${1:-$(pick_source)}
+    gst-launch-1.0 -q $(src_pipeline "$src") \
+        ! videoconvert ! jpegenc ! filesink location="$WWW/snap.jpg" \
+        num-buffers=1 2>/dev/null ||
+    gst-launch-1.0 -q --eos-on-shutdown $(src_pipeline "$src") num-buffers=1 \
+        ! videoconvert ! jpegenc ! filesink location="$WWW/snap.jpg"
+    echo "silt-media: wrote $WWW/snap.jpg ($src)"
+}
+
+case "$1" in
+sources) shift; cmd_sources "$@" ;;
+mjpeg)   shift; cmd_mjpeg "$@" ;;
+record)  shift; cmd_record "$@" ;;
+rtp)     shift; cmd_rtp "$@" ;;
+snap)    shift; cmd_snap "$@" ;;
+*)
+    echo "usage: silt-media {sources|mjpeg|record|rtp HOST|snap} [usb|csi|test]"
+    exit 1
+    ;;
+esac

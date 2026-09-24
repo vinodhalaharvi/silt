@@ -1,0 +1,44 @@
+#!/bin/sh
+#
+# The web root at boot, and optionally the live stream with it.
+#
+# lighttpd always starts: it serves the landing page, the recordings and the
+# .sdp file, none of which need a camera. The MJPEG stream does need one, so
+# it starts only if AUTOSTREAM is set in /etc/default/silt-media. Off by
+# default, because a board encoding video nobody is watching is a board
+# running hot for no reason.
+#
+
+WWW=/var/www
+AUTOSTREAM=no
+SOURCE=
+[ -r /etc/default/silt-media ] && . /etc/default/silt-media
+
+case "$1" in
+start)
+	mkdir -p "$WWW/rec"
+	printf "Starting lighttpd: "
+	lighttpd -f /etc/lighttpd/lighttpd.conf && echo "OK" || echo "FAIL"
+
+	if [ "$AUTOSTREAM" = yes ]; then
+		printf "Starting silt-media stream: "
+		start-stop-daemon -S -q -b -m -p /var/run/silt-media.pid \
+			-x /bin/sh -- -c "exec /usr/bin/silt-media mjpeg $SOURCE >> /var/log/silt-media.log 2>&1" \
+			&& echo "OK" || echo "FAIL"
+	fi
+	;;
+stop)
+	start-stop-daemon -K -q -p /var/run/silt-media.pid 2>/dev/null
+	rm -f /var/run/silt-media.pid
+	killall lighttpd 2>/dev/null
+	echo "Stopped"
+	;;
+restart)
+	"$0" stop
+	sleep 1
+	"$0" start
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+esac

@@ -1,0 +1,25 @@
+;; Camera capture and streaming for a dev board.
+;;
+;; Both cameras (USB and CSI), three ways out (MJPEG in a browser, MP4
+;; recordings, H.264 over RTP), and a test pattern so all of it works
+;; before any camera arrives.
+;;
+;;   silt-media sources
+;;   silt-media mjpeg        then open http://<board>/ in a browser
+;;
+;; The pack carries files rather than packages: a launcher script, a
+;; lighttpd config, a landing page and an init script. Everything it needs
+;; to build is an ordinary Buildroot package, which is what the fragment
+;; states.
+
+(pack media-kit
+  (version "0.1.0")
+  (doc "camera capture, MJPEG over HTTP, MP4 recording and RTP out")
+
+  (requires
+    (buildroot "2025.02.16"))
+
+  (external "br2-external")
+
+  (provides
+    (feature media-kit)))

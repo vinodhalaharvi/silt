@@ -12,14 +12,15 @@
     (capability mmu))
 
   ;; A defconfig cannot answer these: no symbol says whether the board
-  ;; has the hardware. Uncomment what it has, delete the rest. Until
-  ;; then a feature requiring one of them will not compose onto it.
-  ;; (provides
-  ;;   (capability csi-camera)
-  ;;   (capability sdcard)
-  ;;   (capability serial-console)
-  ;;   (capability virtio)
-  ;;   (capability wifi-sdio))
+  ;; has the hardware. The Pi 5 has two CSI connectors (CAM/DISP 0 and 1),
+  ;; an SD slot and a serial console on the GPIO header.
+  (provides
+    (capability csi-camera)
+    (capability sdcard)
+    (capability serial-console))
+
+  ;; Not claimed: virtio (not a VM) and wifi-sdio (the Pi 5's wifi is on
+  ;; the RP1 side, and nothing here has needed to say so yet).
 
   (buildroot
     (y BR2_aarch64)                                            ; :1 defined under arch/

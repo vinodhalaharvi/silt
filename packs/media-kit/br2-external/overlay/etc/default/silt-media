@@ -1,0 +1,10 @@
+# Start the live MJPEG stream at boot?
+#
+# Off by default: encoding video nobody is watching keeps the board warm for
+# nothing, and on a Pi 5 there is no hardware encoder to do it cheaply.
+#
+#   AUTOSTREAM=yes
+#   SOURCE=usb      usb, csi or test; empty means pick whatever is present
+
+AUTOSTREAM=no
+SOURCE=
