@@ -1,0 +1,31 @@
+;; A Raspberry Pi Zero as a field device.
+;;
+;; The smallest board that can run the whole appliance: one ARM1176 core,
+;; 512MB, and the four daemons are a few hundred kilobytes each. What it
+;; does not have is an Ethernet jack, so feature:usb-gadget-net makes the
+;; data USB port a network interface and the board answers on
+;; 192.168.7.1 over the same cable that powers it:
+;;
+;;   ssh root@192.168.7.1
+;;   curl http://192.168.7.1:8080/tags
+;;
+;; No media kit here: one ARMv6 core without NEON is the wrong place for
+;; GStreamer. This is a $15 device on a bench, which is exactly what a
+;; simulated field device should cost.
+
+(image raspberrypi0-bringup
+  (compose
+    image:raspberrypi0
+    feature:usb-gadget-net
+    feature:dev-ssh
+    feature:modbus
+    feature:fieldbus-test)
+
+  ;; Two fragments name a config.txt: the board's own, and the one carrying
+  ;; dtoverlay=dwc2. silt will not choose between them, so this does. The
+  ;; gadget one is a copy of the board's with that single line added.
+  (override
+    (value buildroot:BR2_PACKAGE_RPI_FIRMWARE_CONFIG_FILE
+           "$(BR2_EXTERNAL_USB_GADGET_PATH)/files/config.txt"))
+
+  (verified-against (buildroot "2025.02.16")))

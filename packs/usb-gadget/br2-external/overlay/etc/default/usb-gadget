@@ -1,0 +1,6 @@
+# The board's end of the USB network link. The computer at the other end
+# takes another address in the same /24, conventionally .2.
+
+IFACE=usb0
+ADDR=192.168.7.1
+MASK=24

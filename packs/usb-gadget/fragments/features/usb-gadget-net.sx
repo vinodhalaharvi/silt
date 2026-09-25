@@ -1,0 +1,47 @@
+;; A network interface over the USB cable, for boards with no Ethernet.
+;;
+;; The Raspberry Pi Zero has two micro-B ports and neither is an Ethernet
+;; jack. The one marked USB can run as a peripheral instead of a host, so
+;; the board can present itself to a computer as a network adapter: one
+;; cable for power and network, nothing else to buy.
+;;
+;; Three things have to line up, and they live in three different places,
+;; which is why this is a feature rather than a note in a README:
+;;
+;;   config.txt   dtoverlay=dwc2, or the port stays a host port
+;;   kernel       dwc2 and g_ether, which bcmrpi builds as modules
+;;   userspace    load them and give usb0 an address
+;;
+;; The addresses are static on both ends: 192.168.7.1 on the board,
+;; 192.168.7.2 on the computer. A DHCP server for a two-node link would be
+;; more machinery than the link.
+;;
+;; The config.txt is the one part this fragment does not state. Every
+;; Raspberry Pi target already names one, and two fragments naming
+;; different files for one symbol is a conflict silt refuses rather than
+;; resolving by order - there is no sensible rule for which firmware config
+;; a board should boot with. So the image says, with an override, and this
+;; pack ships a config.txt for the Zero with the dwc2 line added:
+;;
+;;   (override
+;;     (value buildroot:BR2_PACKAGE_RPI_FIRMWARE_CONFIG_FILE
+;;            "$(BR2_EXTERNAL_USB_GADGET_PATH)/files/config.txt"))
+
+(fragment feature:usb-gadget-net
+
+  (doc "usb0 network over the board's own USB cable, 192.168.7.1")
+
+  (requires
+    (capability mmu))
+
+  (buildroot
+    ;; /etc/init.d/S39usbnet, before anything that wants a network.
+    (path-append BR2_ROOTFS_OVERLAY "overlay"))
+
+  (linux
+    ;; The controller and the gadget. bcmrpi has dwc2 as a module and the
+    ;; gadget framework built in; g_ether is the legacy Ethernet gadget,
+    ;; which is far simpler to bring up than the configfs route.
+    (y CONFIG_USB_GADGET)
+    (m CONFIG_USB_DWC2)
+    (m CONFIG_USB_ETH)))

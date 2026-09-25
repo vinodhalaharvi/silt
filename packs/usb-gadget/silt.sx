@@ -1,0 +1,22 @@
+;; Reaching a board that has no Ethernet jack.
+;;
+;; A Raspberry Pi Zero is two micro-B ports and an SD card. This pack makes
+;; the data port a network interface, so the board is reachable over the
+;; same cable that powers it:
+;;
+;;   ssh root@192.168.7.1
+;;
+;; The pack carries files rather than packages: a config.txt with the dwc2
+;; overlay, and an init script that loads the gadget and addresses usb0.
+
+(pack usb-gadget
+  (version "0.1.0")
+  (doc "usb0 network over the board's own USB cable")
+
+  (requires
+    (buildroot "2025.02.16"))
+
+  (external "br2-external")
+
+  (provides
+    (feature usb-gadget-net)))

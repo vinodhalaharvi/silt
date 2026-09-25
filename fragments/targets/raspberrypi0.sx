@@ -1,0 +1,46 @@
+;; Imported by silt import from configs/raspberrypi0_defconfig, buildroot 2025.02.16.
+;; The target/profile split is a first cut by rule; the rule is noted on
+;; every line. Move lines between the two fragments freely.
+
+(fragment target:raspberrypi0
+  (doc "target part of raspberrypi0_defconfig")
+
+  ;; Derived from kbuild's .config of the source, not asserted.
+  (provides
+    (capability compiler)
+    (capability glibc)
+    (capability mmu))
+
+  ;; A defconfig cannot answer these: no symbol says whether the board
+  ;; has the hardware. A Pi Zero has an SD slot, a CSI camera connector
+  ;; and a serial console on the GPIO header. What it does not have is an
+  ;; Ethernet jack, which is why feature:usb-gadget-net exists.
+  (provides
+    (capability csi-camera)
+    (capability sdcard)
+    (capability serial-console))
+
+  (buildroot
+    (y BR2_arm)                                                ; :1 defined under arch/
+    (y BR2_arm1176jzf_s)                                       ; :2 defined under arch/
+    (y BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_6)              ; :3 kernel headers follow the kernel
+    (value BR2_GLOBAL_PATCH_DIR "board/raspberrypi/patches")   ; :5 board integration hook
+    (value BR2_ROOTFS_POST_BUILD_SCRIPT "board/raspberrypi0/post-build.sh") ; :7 board integration hook
+    (value BR2_ROOTFS_POST_IMAGE_SCRIPT "board/raspberrypi0/post-image.sh") ; :8 board integration hook
+    (y BR2_LINUX_KERNEL)                                       ; :9 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_CUSTOM_TARBALL)                        ; :10 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION "$(call github,raspberrypi,linux,576cc10e1ed50a9eacffc7a05c796051d7343ea4)/linux-576cc10e1ed50a9eacffc7a05c796051d7343ea4.tar.gz") ; :11 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_DEFCONFIG "bcmrpi")                ; :12 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_DTS_SUPPORT)                           ; :13 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_INTREE_DTS_NAME "broadcom/bcm2708-rpi-zero") ; :14 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL)                    ; :15 defined under linux/ (kernel)
+    (y BR2_PACKAGE_RPI_FIRMWARE)                               ; :18 firmware package
+    (y BR2_PACKAGE_RPI_FIRMWARE_BOOTCODE_BIN)                  ; :19 firmware package
+    (y BR2_PACKAGE_RPI_FIRMWARE_VARIANT_PI)                    ; :20 firmware package
+    (value BR2_PACKAGE_RPI_FIRMWARE_CONFIG_FILE "board/raspberrypi0/config_default.txt") ; :21 firmware package
+    (n BR2_PACKAGE_RPI_FIRMWARE_INSTALL_DTB_OVERLAYS)          ; :22 firmware package
+    (y BR2_PACKAGE_HOST_DOSFSTOOLS)                            ; :29 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_GENIMAGE)                              ; :30 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_KMOD_XZ)                               ; :31 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_MTOOLS)                                ; :32 host tool, typically for boot media
+  ))

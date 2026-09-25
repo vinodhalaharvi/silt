@@ -1,0 +1,65 @@
+#!/bin/sh
+#
+# A network interface over the USB cable, for a board with no Ethernet.
+#
+# The Raspberry Pi Zero's middle micro-B port (marked USB, not PWR) can act
+# as a peripheral rather than a host. With the dwc2 overlay in config.txt
+# and the g_ether gadget loaded, the board appears to whatever it is
+# plugged into as a USB network adapter, and one cable carries both power
+# and the network.
+#
+# Addresses are static on both ends, because there is no DHCP server here
+# and adding one for a two-node link would be more machinery than the link
+# itself. The board takes 192.168.7.1; the computer takes 192.168.7.2.
+#
+# On a Mac the interface appears in Network settings as "RNDIS/Ethernet
+# Gadget"; set it to Manually, 192.168.7.2, mask 255.255.255.0, no router.
+# On Linux it is usually usb0, configured the same way.
+#
+# Change the addresses in /etc/default/usb-gadget if 192.168.7.x collides
+# with something.
+
+IFACE=usb0
+ADDR=192.168.7.1
+MASK=24
+[ -r /etc/default/usb-gadget ] && . /etc/default/usb-gadget
+
+case "$1" in
+start)
+	printf "Starting USB network gadget: "
+
+	# dwc2 is the controller, g_ether the gadget it presents. Both are
+	# modules in the Pi kernels, which is why kmod's modprobe is in the
+	# image: BusyBox modprobe cannot read xz-compressed modules.
+	modprobe dwc2 2>/dev/null
+	modprobe g_ether 2>/dev/null
+
+	# The interface appears a moment after the gadget binds.
+	i=0
+	while [ ! -e "/sys/class/net/$IFACE" ] && [ "$i" -lt 10 ]; do
+		sleep 1
+		i=$((i + 1))
+	done
+
+	if [ ! -e "/sys/class/net/$IFACE" ]; then
+		echo "FAIL (no $IFACE: is the cable in the USB port, not PWR?)"
+		exit 1
+	fi
+
+	ip addr add "$ADDR/$MASK" dev "$IFACE" 2>/dev/null
+	ip link set "$IFACE" up && echo "OK ($ADDR)" || echo "FAIL"
+	;;
+stop)
+	ip link set "$IFACE" down 2>/dev/null
+	modprobe -r g_ether 2>/dev/null
+	echo "Stopped"
+	;;
+restart)
+	"$0" stop
+	sleep 1
+	"$0" start
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+esac
