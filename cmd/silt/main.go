@@ -37,6 +37,7 @@ const usage = `silt — composable S-expressions over Kconfig
   silt emit IMAGE.sx [-o DIR]       compose and write defconfig + linux.config
         [--buildroot DIR]           let rules see select-implied symbols
   silt fmt [-w] [PATH...]           canonical form
+  silt externals IMAGE.sx           BR2_EXTERNAL for that image, colon-joined
   silt hash [PATH...]               content address of each file
   silt hash --solution IMAGE.sx --buildroot DIR [--linux DIR]
                                     content address of a composed image: its
@@ -119,6 +120,8 @@ func main() {
 		err = cmdFmt(args)
 	case "hash":
 		err = cmdHash(args)
+	case "externals":
+		err = cmdExternals(args)
 	case "why":
 		err = cmdWhy(args)
 	case "solve":
@@ -869,6 +872,78 @@ func cmdSolutionHash(args []string) error {
 			fmt.Printf("  %s\n", line)
 		}
 	}
+	return nil
+}
+
+// cmdExternals prints the BR2_EXTERNAL value an image needs: the
+// br2-external trees of exactly the packs it composes a fragment from,
+// colon-joined, absolute, in the order Buildroot wants them.
+//
+// This was a hand-maintained list, pasted onto every make line, and it is
+// the kind of list that is right until an image gains a feature from a pack
+// nobody remembered. The composition already says which packs are involved,
+// so asking silt beats remembering:
+//
+//	make -C $BR O=$OUT BR2_EXTERNAL=$(silt externals IMAGE.sx --buildroot $BR) ...
+func cmdExternals(args []string) error {
+	res, _, _, err := composeWithTree(args)
+	if err != nil {
+		return err
+	}
+
+	used := map[string]bool{}
+	for _, fr := range res.Fragments {
+		used[fr.ID.String()] = true
+	}
+
+	var out []string
+	for _, p := range packs {
+		if p.External == "" {
+			continue
+		}
+		for _, f := range p.Files {
+			hit := false
+			for _, fr := range f.Fragments {
+				if used[fr.ID.String()] {
+					hit = true
+					break
+				}
+			}
+			if hit {
+				abs, err := filepath.Abs(p.External)
+				if err != nil {
+					return err
+				}
+				out = append(out, abs)
+				break
+			}
+		}
+	}
+
+	// Trees given with --external are the caller's own and are passed
+	// through: an image may state symbols from a tree that is not a pack.
+	for _, e := range externalTrees {
+		abs, err := filepath.Abs(e)
+		if err != nil {
+			return err
+		}
+		known := false
+		for _, o := range out {
+			if o == abs {
+				known = true
+			}
+		}
+		for _, p := range packs {
+			if p.External == e {
+				known = true
+			}
+		}
+		if !known {
+			out = append(out, abs)
+		}
+	}
+
+	fmt.Println(strings.Join(out, ":"))
 	return nil
 }
 
