@@ -106,10 +106,24 @@ BR2_DL_DIR=${BR2_DL_DIR:-$HOME/.cache/buildroot-dl}
 export BR2_DL_DIR
 mkdir -p "$BR2_DL_DIR"
 
-# Symbols consumed after every package is built, by steps that run on every
-# make. A tree differing only in these is still a safe prefix.
-rootfs_only() {
-	grep -vE '^(BR2_ROOTFS_OVERLAY|BR2_ROOTFS_POST_BUILD_SCRIPT|BR2_ROOTFS_POST_IMAGE_SCRIPT|BR2_ROOTFS_POST_SCRIPT_ARGS|BR2_TARGET_ROOTFS_EXT2_SIZE|BR2_TARGET_ROOTFS_TAR|BR2_PACKAGE_RPI_FIRMWARE_CONFIG_FILE|BR2_PACKAGE_RPI_FIRMWARE_CMDLINE_FILE)='
+# Symbols that cannot make a stored tree unsafe, and so are ignored when
+# deciding whether it is a prefix. Two kinds.
+#
+# Consumed after every package is built, by steps Buildroot re-runs on every
+# make: the overlays, the post-build and post-image scripts, the filesystem
+# size, the firmware config files. A changed overlay cannot have affected a
+# compiled package, because nothing reads it until target-finalize.
+#
+# And filled in from the invocation rather than the configuration:
+# BR2_DEFCONFIG, the kernel fragment path, BR2_DL_DIR, BR2_JLEVEL, and every
+# BR2_EXTERNAL_*. That last one matters more than it looks.
+# BR2_EXTERNAL_<NAME>_VERSION is git describe of the external tree, so it
+# changes on every commit to this repository - which disqualified every
+# stored tree the moment anything was committed, and turned what should have
+# been a one-package delta into a twenty-two minute rebuild. It names a
+# string nothing is compiled against.
+not_build_affecting() {
+	grep -vE '^(BR2_ROOTFS_OVERLAY|BR2_ROOTFS_POST_BUILD_SCRIPT|BR2_ROOTFS_POST_IMAGE_SCRIPT|BR2_ROOTFS_POST_SCRIPT_ARGS|BR2_TARGET_ROOTFS_EXT2_SIZE|BR2_TARGET_ROOTFS_TAR|BR2_PACKAGE_RPI_FIRMWARE_CONFIG_FILE|BR2_PACKAGE_RPI_FIRMWARE_CMDLINE_FILE|BR2_DEFCONFIG|BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES|BR2_DL_DIR|BR2_CCACHE_DIR|BR2_JLEVEL|BR2_EXTERNAL[A-Z_0-9]*)='
 }
 
 cmd_list() {
@@ -217,7 +231,7 @@ fi
 
 # The predicted .config, which is what makes a prefix decidable.
 "$SILT" complete "$IMAGE" --buildroot "$BUILDROOT" -o "$SILT_CACHE/target.config" >/dev/null
-grep -v '^#' "$SILT_CACHE/target.config" | rootfs_only | LC_ALL=C sort > "$SILT_CACHE/target.sorted"
+grep -v '^#' "$SILT_CACHE/target.config" | not_build_affecting | LC_ALL=C sort > "$SILT_CACHE/target.sorted"
 
 best=
 best_lines=0
@@ -227,7 +241,7 @@ for cand in "$STORE"/*/; do
 		continue
 	fi
 
-	grep -v '^#' "$cand/predicted.config" | rootfs_only | LC_ALL=C sort > "$SILT_CACHE/cand.sorted"
+	grep -v '^#' "$cand/predicted.config" | not_build_affecting | LC_ALL=C sort > "$SILT_CACHE/cand.sorted"
 
 	# Every line of the candidate must appear in the target, symbol and
 	# value alike. One line that does not, and the tree is unsafe.
