@@ -16,13 +16,18 @@
 # because an image composing image:something needs the file that defines it.)
 #
 # silt fixpoint, after make defconfig and before the long make: did kbuild
-# write what silt predicted? solve and complete trust silt's model of
-# Kconfig; this trusts nothing and reads the .config kbuild produced. It is
-# the check that matters most here, because the store's safety rests on
-# complete being right about what a build becomes - without it, nothing in
-# this loop ever confirms that. A disagreement costs a second instead of
-# forty minutes, and it is how "asked for y, kbuild would write absent" gets
-# caught on a board nobody has tried.
+# honour what the image stated? It trusts nothing and reads the .config
+# kbuild produced. That is how "asked for y, kbuild would write absent" gets
+# caught on a board nobody has tried, for a second instead of forty minutes.
+#
+# And then ci/config-agrees.awk, which is the same idea taken to its
+# conclusion. fixpoint checks the symbols the image states - 43 of them on
+# the Pi 3 appliance. The prediction covers 460, and the cache's prefix test
+# compares all of them, including the four hundred nobody stated. If the
+# model were wrong about one of those, the cache could accept a prefix it
+# should not, and fixpoint would never notice. So every symbol kbuild knew
+# about is compared, set and unset alike: that is the foundation the store
+# rests on, verified on every build rather than assumed.
 #
 # Three kinds of answer, in order of how little work they are:
 #
@@ -268,6 +273,17 @@ if ! "$SILT" fixpoint "$IMAGE" --buildroot "$BUILDROOT" \
 	"$SILT" fixpoint "$IMAGE" --buildroot "$BUILDROOT" \
 		--config "$WORK/build/.config" >&2 || true
 	echo "$0: refusing to build on a prediction that is wrong" >&2
+	exit 1
+fi
+
+# Every symbol, not only the stated ones. Symbols kbuild fills in from the
+# invocation are excluded, and symbols silt knows about because it loads
+# every pack while make was given two are skipped: kbuild never saw them.
+if ! awk -f "$(dirname "$0")/config-agrees.awk" \
+	"$WORK/build/.config" "$SILT_CACHE/target.config"; then
+	echo "$0: silt's prediction does not match kbuild's .config" >&2
+	echo "$0: the cache decides prefix reuse from that prediction, so this" >&2
+	echo "$0: is not safe to build on" >&2
 	exit 1
 fi
 
