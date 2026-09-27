@@ -77,6 +77,12 @@
     ;; The Pi kernels are built with CONFIG_MODULE_COMPRESS_XZ, and
     ;; Buildroot's BusyBox has FEATURE_SEAMLESS_XZ off, so BusyBox modprobe
     ;; cannot load vcan.ko.xz. kmod's modprobe can, given xz.
+    ;; kmod's tools are hidden behind Buildroot's "show packages BusyBox
+    ;; also provides" switch. The three Raspberry Pi profiles happen to set
+    ;; it, so this feature worked there by accident; on a board whose
+    ;; profile does not, kmod would install without modprobe and vcan0
+    ;; would never appear.
+    (y BR2_PACKAGE_BUSYBOX_SHOW_OTHERS)
     (y BR2_PACKAGE_KMOD)
     (y BR2_PACKAGE_KMOD_TOOLS)
     (y BR2_PACKAGE_XZ)

@@ -1,0 +1,16 @@
+;; Imported by silt import from configs/imx8mp-evk_defconfig, buildroot 2025.02.16.
+;; The target/profile split is a first cut by rule; the rule is noted on
+;; every line. Move lines between the two fragments freely.
+
+(fragment profile:imx8mp-evk
+  (doc "profile part of imx8mp-evk_defconfig")
+
+  (buildroot
+    (y BR2_DOWNLOAD_FORCE_CHECK_HASHES)                        ; :5 not hardware by any rule above
+    (y BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV)               ; :6 not hardware by any rule above
+    (y BR2_PACKAGE_FREESCALE_IMX)                              ; :20 not hardware by any rule above
+    (y BR2_PACKAGE_FREESCALE_IMX_PLATFORM_IMX8MP)              ; :21 not hardware by any rule above
+    (y BR2_TARGET_ROOTFS_EXT2)                                 ; :23 not hardware by any rule above
+    (y BR2_TARGET_ROOTFS_EXT2_4)                               ; :24 not hardware by any rule above
+    (value BR2_TARGET_ROOTFS_EXT2_SIZE "256M")                 ; :25 not hardware by any rule above
+  ))

@@ -1,0 +1,13 @@
+;; First boot on an i.MX 8M Plus EVK (8MPLUS-BB baseboard).
+;;
+;; Both FlexCAN controllers have transceivers on this baseboard, so silt-can
+;; can drive a real bus here, not only vcan0. Two Ethernet ports, which is
+;; the shape a gateway wants.
+
+(image imx8mp-evk-bringup
+  (compose
+    image:imx8mp-evk
+    feature:dev-ssh
+    feature:modbus
+    feature:fieldbus-test)
+  (verified-against (buildroot "2025.02.16")))

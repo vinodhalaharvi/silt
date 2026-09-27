@@ -1,0 +1,65 @@
+;; Imported by silt import from configs/imx8mp-evk_defconfig, buildroot 2025.02.16.
+;; The target/profile split is a first cut by rule; the rule is noted on
+;; every line. Move lines between the two fragments freely.
+
+(fragment target:imx8mp-evk
+  (doc "target part of imx8mp-evk_defconfig")
+
+  ;; Derived from kbuild's .config of the source, not asserted.
+  (provides
+    (capability compiler)
+    (capability glibc)
+    (capability mmu))
+
+  ;; A defconfig cannot answer these: no symbol says whether the board
+  ;; has the hardware. Uncomment what it has, delete the rest. Until
+  ;; then a feature requiring one of them will not compose onto it.
+  ;; (provides
+  ;;   (capability csi-camera)
+  ;;   (capability sdcard)
+  ;;   (capability serial-console)
+  ;;   (capability virtio)
+  ;;   (capability wifi-sdio))
+
+  (buildroot
+    (y BR2_aarch64)                                            ; :1 defined under arch/
+    (y BR2_ARM_FPU_VFPV3)                                      ; :2 defined under arch/
+    (y BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_12)             ; :3 kernel headers follow the kernel
+    (value BR2_GLOBAL_PATCH_DIR "board/freescale/imx8mp-evk/patches") ; :4 board integration hook
+    (value BR2_TARGET_GENERIC_GETTY_PORT "ttymxc1")            ; :7 serial console is hardware
+    (value BR2_ROOTFS_POST_BUILD_SCRIPT "board/freescale/imx8mp-evk/post-build.sh") ; :8 board integration hook
+    (value BR2_ROOTFS_POST_IMAGE_SCRIPT "support/scripts/genimage.sh") ; :9 board integration hook
+    (value BR2_ROOTFS_POST_SCRIPT_ARGS "-c $(BINARIES_DIR)/genimage.cfg") ; :10 board integration hook
+    (y BR2_LINUX_KERNEL)                                       ; :11 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_CUSTOM_VERSION)                        ; :12 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE "6.12.16")    ; :13 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG)               ; :14 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_DTS_SUPPORT)                           ; :15 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_INTREE_DTS_NAME "freescale/imx8mp-evk") ; :16 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_DTB_KEEP_DIRNAME)                      ; :17 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_INSTALL_TARGET)                        ; :18 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL)                    ; :19 defined under linux/ (kernel)
+    (y BR2_PACKAGE_FIRMWARE_IMX)                               ; :22 firmware package
+    (y BR2_TARGET_ARM_TRUSTED_FIRMWARE)                        ; :26 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_ARM_TRUSTED_FIRMWARE_CUSTOM_VERSION)         ; :27 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_ARM_TRUSTED_FIRMWARE_CUSTOM_VERSION_VALUE "v2.12") ; :28 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_ARM_TRUSTED_FIRMWARE_PLATFORM "imx8mp")  ; :29 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT)                                       ; :30 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_BUILD_SYSTEM_KCONFIG)                  ; :31 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_CUSTOM_VERSION)                        ; :32 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_UBOOT_CUSTOM_VERSION_VALUE "2025.01")    ; :33 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_UBOOT_BOARD_DEFCONFIG "imx8mp_evk")      ; :34 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_DTC)                             ; :35 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_PYLIBFDT)                        ; :36 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_OPENSSL)                         ; :37 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_GNUTLS)                          ; :38 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_UTIL_LINUX)                      ; :39 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_ATF_BL31)                        ; :40 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_IMX_FIRMWARE)                    ; :41 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_FORMAT_CUSTOM)                         ; :42 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_UBOOT_FORMAT_CUSTOM_NAME "flash.bin")    ; :43 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_SPL)                                   ; :44 defined under boot/ (bootloader or firmware)
+    (y BR2_PACKAGE_HOST_GENIMAGE)                              ; :45 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_UBOOT_TOOLS)                           ; :46 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_UBOOT_TOOLS_FIT_SUPPORT)               ; :47 host tool, typically for boot media
+  ))

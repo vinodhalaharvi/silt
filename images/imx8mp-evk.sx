@@ -1,0 +1,8 @@
+;; Imported by silt import from configs/imx8mp-evk_defconfig.
+;; silt import --kbuild checks this composes back to the source exactly.
+
+(image imx8mp-evk
+  (compose
+    target:imx8mp-evk
+    profile:imx8mp-evk)
+  (verified-against (buildroot "2025.02.16")))
