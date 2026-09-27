@@ -1,0 +1,35 @@
+;; A Raspberry Pi 5 as the way into your own network.
+;;
+;; The same thing raspberrypi3-64-tailscale is, on a board that boots. The Pi
+;; 3 build of that image reached the firmware's rainbow test pattern and no
+;; further - the card was right, the board was fine, the kernel never started
+;; - which is a diagnosis for another day and not one worth having on the day
+;; the garage door is meant to work.
+;;
+;; It joins the tailnet at boot and advertises the LAN it sits on, so an
+;; ESPHome relay is reachable from a phone with nothing installed on the
+;; relay and nothing forwarded on the router.
+;;
+;; Set TS_AUTHKEY and TS_ROUTES in /etc/default/tailscale, approve the route
+;; once in the admin console, and turn off key expiry for the node or it
+;; drops off the tailnet in a few months and the door stops answering.
+;;
+;; A /32 for the one device you want reached is tighter than the whole /24,
+;; and mDNS does not cross the tunnel, so use the address rather than a
+;; .local name.
+;;
+;; No appliance daemons: a route into a network and a simulated device have
+;; no reason to share an image.
+
+(image raspberrypi5-tailscale
+  (compose
+    image:raspberrypi5
+    feature:dev-ssh
+    feature:tailscale)
+
+  ;; tailscaled is a Go binary carrying its own WireGuard, DNS handling and
+  ;; network stack, and its state directory grows.
+  (override
+    (value buildroot:BR2_TARGET_ROOTFS_EXT2_SIZE "512M"))
+
+  (verified-against (buildroot "2025.02.16")))
