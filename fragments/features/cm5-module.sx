@@ -1,0 +1,65 @@
+;; The Compute Module 5 itself: the SoC, the kernel and the toolchain.
+;;
+;; A CM5 is a Pi 5 with the connectors removed, so this is the Pi 5 target
+;; with one line taken out: the device tree. Which device tree a CM5 boots is
+;; a property of the board it is plugged into, not of the module, and it is
+;; the only thing most carriers change.
+;;
+;; It is a feature rather than a target, and silt insisted on that: an image
+;; composing two targets is refused, because "a target is exactly one board".
+;; Which is right, and with a compute module the board is the carrier - the
+;; thing with the connectors, the Ethernet ports, the transceivers. The
+;; module is something you plug into it. So the carrier is the target and the
+;; module composes onto it, which is also the order the hardware goes
+;; together in.
+;;
+;; Buildroot has no CM5 defconfig, so this is derived from
+;; configs/raspberrypi5_defconfig rather than imported: same BCM2712, same
+;; bcm2712 kernel defconfig, same firmware and the same board scripts, which
+;; discover the device trees from the binaries directory rather than naming
+;; them.
+;;
+;; Nothing composes this alone. Without a carrier there is no device tree,
+;; and BR2_LINUX_KERNEL_INTREE_DTS_NAME is left for one to state - which
+;; also means two carriers can never disagree about it in one image, because
+;; only one of them is ever composed.
+;;
+;; The module comes in two shapes and the device tree says which: cm5 with
+;; eMMC, cm5l for the Lite, which boots from the carrier's SD slot. That is
+;; a carrier-and-module question, so it lives with the carrier too.
+
+(fragment feature:cm5-module
+  (doc "Raspberry Pi Compute Module 5: SoC, kernel, firmware")
+
+  ;; No capability claims here, and silt insisted on that too: only targets
+  ;; and profiles may provide them, "or composition becomes order-dependent".
+  ;; So the carrier claims what the pair can do - mmu, glibc and a compiler
+  ;; as much as its own connectors - which is the truthful arrangement
+  ;; anyway, since a carrier is only ever a board with a module in it.
+
+  (buildroot
+    ;; BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES is not stated here even though
+    ;; the 4k-page fragment is the module's business. silt emits its own
+    ;; kernel fragment into that symbol, and a value stated by a feature then
+    ;; does not survive - so the carriers state it, as the Pi 5 target does.
+    (y BR2_aarch64)                                            ; :1 defined under arch/
+    (y BR2_cortex_a76)                                         ; :2 defined under arch/
+    (y BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_6)              ; :3 kernel headers follow the kernel
+    (value BR2_GLOBAL_PATCH_DIR "board/raspberrypi/patches")   ; :5 board integration hook
+    (value BR2_ROOTFS_POST_BUILD_SCRIPT "board/raspberrypi5/post-build.sh") ; :8 board integration hook
+    (value BR2_ROOTFS_POST_IMAGE_SCRIPT "board/raspberrypi5/post-image.sh") ; :9 board integration hook
+    (y BR2_LINUX_KERNEL)                                       ; :10 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_CUSTOM_TARBALL)                        ; :11 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION "$(call github,raspberrypi,linux,576cc10e1ed50a9eacffc7a05c796051d7343ea4)/linux-576cc10e1ed50a9eacffc7a05c796051d7343ea4.tar.gz") ; :12 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_DEFCONFIG "bcm2712")               ; :13 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_DTS_SUPPORT)                           ; :15 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL)                    ; :17 defined under linux/ (kernel)
+    (y BR2_PACKAGE_RPI_FIRMWARE)                               ; :20 firmware package
+    (value BR2_PACKAGE_RPI_FIRMWARE_CONFIG_FILE "board/raspberrypi5/config_5.txt") ; :21 firmware package
+    (value BR2_PACKAGE_RPI_FIRMWARE_CMDLINE_FILE "board/raspberrypi5/cmdline_5.txt") ; :22 firmware package
+    (n BR2_PACKAGE_RPI_FIRMWARE_INSTALL_DTB_OVERLAYS)          ; :23 firmware package
+    (y BR2_PACKAGE_HOST_DOSFSTOOLS)                            ; :30 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_GENIMAGE)                              ; :31 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_KMOD_XZ)                               ; :32 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_MTOOLS)                                ; :33 host tool, typically for boot media
+  ))

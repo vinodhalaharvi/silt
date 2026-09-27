@@ -1,0 +1,41 @@
+;; Waveshare CM5-ETH-RS485-4G-BASE.
+;;
+;; The gateway carrier: one gigabit and one 2.5G Ethernet port, four RS485
+;; ports on terminal blocks, M.2 M-key for NVMe, M.2 B-key for 4G/5G, a
+;; digital input, a relay, 7-36V input and a DIN-rail enclosure option. Two
+;; Ethernet legs is the shape a gateway wants - one on the plant network,
+;; one on the office network - which the single-Ethernet carriers cannot do.
+;;
+;; No CAN on this one. That is the trade against CM5-IO-WIRELESS-BASE: four
+;; RS485 ports and two Ethernet, or two RS485 and a CAN.
+;;
+;; UNVERIFIED, exactly as for the wireless carrier: the device tree here is
+;; the official IO board's, and the second Ethernet and the RS485 ports will
+;; need overlays the vendor's wiki names. Worth being precise about which
+;; port becomes eth0 before anything routes through it: a gateway that has
+;; them backwards puts the plant on the office leg.
+
+(fragment target:cm5-dual-eth
+  (doc "Waveshare CM5-ETH-RS485-4G-BASE: dual Ethernet, 4x RS485, cellular")
+
+  (provides
+    ;; The module's, claimed here because a carrier is only ever a board
+    ;; with a module in it, and only a target may claim a capability.
+    (capability compiler)
+    (capability glibc)
+    (capability mmu)
+
+    (capability csi-camera)
+    (capability sdcard)
+    (capability serial-console)
+    (capability nvme)
+    (capability rs485)
+    (capability dual-ethernet)
+    (capability cellular))
+
+  (buildroot
+    ;; The BCM2712's 4k page size fragment, stated by the target for the same
+    ;; reason every Raspberry Pi target states it: silt writes its own kernel
+    ;; fragment into this symbol, and only a target's value survives that.
+    (value BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES "board/raspberrypi/linux-4k-page-size.fragment")
+    (value BR2_LINUX_KERNEL_INTREE_DTS_NAME "broadcom/bcm2712-rpi-cm5-cm5io")))

@@ -1,0 +1,19 @@
+;; The appliance on a Compute Module 5, official IO board.
+;;
+;; The same device as the Pi 3 and Pi Zero images serve - Modbus, OPC UA,
+;; CAN on vcan0, MQTT, config over HTTP - on the board a CM5 development kit
+;; ships with. This is the one to build first, because it is the carrier
+;; that exists on the desk rather than in a listing.
+;;
+;; When the industrial carriers arrive, the same three lines with
+;; target:cm5-io swapped for target:cm5-io-wireless give a board with real
+;; RS485 and a real CAN bus, and the build is a minute rather than an hour,
+;; because everything below the carrier is already in the store.
+
+(image cm5-io-appliance
+  (compose
+    image:cm5-io
+    feature:dev-ssh
+    feature:modbus
+    feature:fieldbus-test)
+  (verified-against (buildroot "2025.02.16")))

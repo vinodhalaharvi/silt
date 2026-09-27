@@ -1,0 +1,6 @@
+(image cm5-io-wireless
+  (compose
+    target:cm5-io-wireless
+    feature:cm5-module
+    profile:raspberrypi5)
+  (verified-against (buildroot "2025.02.16")))

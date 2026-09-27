@@ -55,6 +55,26 @@
     (symbol buildroot:BR2_PACKAGE_DROPBEAR)
     (symbol buildroot:BR2_PACKAGE_OPENSSH))
 
+  ;; What a carrier board has populated. A Compute Module has no connectors,
+  ;; so every one of these is a property of the board it is plugged into, and
+  ;; a feature that needs one cannot compose onto a carrier that lacks it.
+  ;; None binds to a symbol: a board either has the transceiver fitted or it
+  ;; does not, and no Kconfig option knows.
+  (capability rs485
+    (doc "The board has an RS485 transceiver on a serial port."))
+
+  (capability can-bus
+    (doc "The board has a CAN transceiver on a CAN controller."))
+
+  (capability dual-ethernet
+    (doc "The board has two Ethernet ports, so it can sit between networks."))
+
+  (capability nvme
+    (doc "The board has an M.2 slot wired to PCIe for an NVMe drive."))
+
+  (capability cellular
+    (doc "The board has an M.2 or Mini-PCIe slot for a 4G/5G or LoRa module."))
+
   (capability compiler
     (doc "The image carries a compiler or assembler usable on the target.")
     (symbol buildroot:BR2_PACKAGE_GCC_FINAL)
