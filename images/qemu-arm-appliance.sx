@@ -1,0 +1,56 @@
+;; The appliance on a machine QEMU actually models.
+;;
+;; The CM5 and Pi images cannot be booted in QEMU: there is no bcm2712 machine,
+;; and QEMU's Raspberry Pi support stops at the Pi 4. That is not a limitation
+;; worth working around, because an image is a board plus a userspace, and only
+;; the board half is missing. Compose the same features onto target:qemu-aarch64-virt
+;; and the same device answers on the same ports, on a machine that exists.
+;;
+;; Which is the argument for the language in its cheapest form: the appliance
+;; is four features, the board is one fragment, and swapping the board is what
+;; this file does.
+;;
+;; What it is for. Continuous integration, because a protocol regression should
+;; be caught by a machine rather than by flashing a card. A demonstration
+;; anybody can run without hardware. And an evaluation image: someone deciding
+;; whether this device is worth buying can boot it in QEMU first, which is a
+;; better answer than a screenshot.
+;;
+;;   qemu-system-aarch64 -M virt -cpu cortex-a53 -m 512 -nographic \
+;;     -kernel build/images/Image -drive file=build/images/rootfs.ext4,if=none,id=hd \
+;;     -device virtio-blk-device,drive=hd -append "root=/dev/vda console=ttyAMA0" \
+;;     -netdev user,id=n,hostfwd=tcp::5020-:502,hostfwd=tcp::4840-:4840,hostfwd=tcp::8080-:8080 \
+;;     -device virtio-net-device,netdev=n
+;;
+;; Then mbpoll, uaread and curl against localhost, on 5020, 4840 and 8080.
+;;
+;; No feature:dev-ssh here. The console is the console, and a key baked into an
+;; image anyone can download is worse than no key at all.
+;;
+;; profile:standard rather than profile:minimal, and the checker is why. minimal
+;; states BR2_STATIC_LIBS, kmod has depends on !BR2_STATIC_LIBS, and
+;; feature:fieldbus-test needs kmod because BusyBox modprobe cannot read the
+;; xz-compressed modules the Pi kernels build. Composing the appliance onto the
+;; smaller profile is refused with all three lines named - the same shape as the
+;; libcamera conflict this project opens with, met while writing this file.
+
+(image qemu-arm-appliance
+  (compose
+    target:qemu-aarch64-virt
+    profile:standard
+    feature:networking
+    feature:modbus
+    feature:fieldbus-test)
+
+  ;; As qemu-arm-dev explains at length: this board directory's patch set
+  ;; serves every QEMU target, MIPS included, and applying it here breaks the
+  ;; build before anything is compiled.
+  (opaque
+    (value buildroot:BR2_ROOTFS_POST_IMAGE_SCRIPT "board/qemu/post-image.sh")
+    (value buildroot:BR2_ROOTFS_POST_SCRIPT_ARGS  "$(BR2_DEFCONFIG)"))
+
+  (unmanaged
+    buildroot:BR2_TARGET_UBOOT_*
+    buildroot:BR2_PACKAGE_BUSYBOX_CONFIG_*)
+
+  (verified-against (buildroot "2025.02.16")))
