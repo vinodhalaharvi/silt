@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<meta name="description" content="{{description}}">
+<link rel="canonical" href="{{canonical}}">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="{{title}}">
+<meta property="og:description" content="{{description}}">
+<meta property="og:url" content="{{canonical}}">
+<meta name="twitter:card" content="summary">
+
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><text y=%2213%22 font-size=%2214%22>⚙</text></svg>">
+{{schema}}
+</head>
+<body>
+
+<header class="top">
+  <a class="wordmark" href="/">{{product}}</a>
+  <nav>
+    <a href="/docs/">Docs</a>
+    <a href="/blog/">Notes</a>
+    <a href="{{buy_url}}">Buy ${{price}}</a>
+  </nav>
+</header>
+
+<main>
+{{date}}
+{{body}}
+</main>
+
+<footer>
+  <p>{{product}} &middot; built with <a href="https://github.com/vinodhalaharvi/silt">silt</a> &middot;
+     <a href="mailto:{{email}}">{{email}}</a></p>
+  <p class="small">&copy; {{year}} {{product}}. Modbus is a registered trademark of Schneider Electric.
+     OPC UA is a trademark of the OPC Foundation. Raspberry Pi is a trademark of Raspberry Pi Ltd.
+     This product is not affiliated with or endorsed by any of them.</p>
+</footer>
+
+</body>
+</html>

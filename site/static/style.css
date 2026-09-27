@@ -1,0 +1,126 @@
+/* One stylesheet, no framework, no web fonts: the page should be readable
+   before anything finishes loading, and there is nothing here worth a
+   render-blocking request. */
+
+:root {
+  --ink: #14181d;
+  --muted: #5a6572;
+  --line: #dfe4ea;
+  --bg: #ffffff;
+  --panel: #f6f8fa;
+  --accent: #1c6b5a;
+  --code: #0f1419;
+  --code-bg: #f2f4f7;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e6eaf0;
+    --muted: #9aa5b3;
+    --line: #2a313a;
+    --bg: #11151a;
+    --panel: #171d24;
+    --accent: #63c9b0;
+    --code: #dfe6ee;
+    --code-bg: #1a2029;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+main, .top, footer {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 0 1.2rem;
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .6rem 1.2rem;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-top: 1.4rem;
+  padding-bottom: 1.4rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 2rem;
+}
+
+.wordmark { font-weight: 650; letter-spacing: -.01em; text-decoration: none; color: var(--ink); }
+nav a { margin-left: 1rem; font-size: .95rem; }
+nav a:first-child { margin-left: 0; }
+
+a { color: var(--accent); text-underline-offset: 2px; }
+
+h1 { font-size: 2rem; line-height: 1.2; letter-spacing: -.02em; margin: .2em 0 .4em; }
+h2 { font-size: 1.3rem; margin-top: 2.2rem; letter-spacing: -.01em; }
+h3 { font-size: 1.05rem; margin-top: 1.8rem; }
+
+p, ul, ol { margin: 0 0 1.1rem; }
+li { margin-bottom: .35rem; }
+
+code {
+  font: .89em/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: var(--code-bg);
+  color: var(--code);
+  padding: .12em .35em;
+  border-radius: 4px;
+}
+
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: .9rem 1rem;
+  overflow-x: auto;
+  margin: 0 0 1.3rem;
+}
+
+pre code { background: none; padding: 0; font-size: .86rem; line-height: 1.55; }
+
+table { border-collapse: collapse; width: 100%; margin: 0 0 1.4rem; font-size: .93rem; display: block; overflow-x: auto; }
+th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--line); }
+th { font-weight: 600; }
+
+blockquote { margin: 0 0 1.2rem; padding-left: 1rem; border-left: 3px solid var(--line); color: var(--muted); }
+
+.meta { color: var(--muted); font-size: .9rem; }
+.small { font-size: .82rem; color: var(--muted); }
+
+.lede { font-size: 1.15rem; color: var(--muted); margin-bottom: 1.8rem; }
+
+.buy {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  padding: .7rem 1.4rem;
+  border-radius: 8px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem 1.2rem;
+  margin-bottom: 1.4rem;
+}
+
+footer {
+  border-top: 1px solid var(--line);
+  margin-top: 3.5rem;
+  padding-top: 1.4rem;
+  padding-bottom: 3rem;
+  color: var(--muted);
+  font-size: .9rem;
+}

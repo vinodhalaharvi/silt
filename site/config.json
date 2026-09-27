@@ -1,0 +1,13 @@
+{
+  "product": "Fieldbus Sim Appliance",
+  "tagline": "A Raspberry Pi that answers Modbus, OPC UA, CAN and MQTT. Flash a card, get a device on your network in five minutes.",
+  "domain": "https://example.com",
+  "price": "19",
+  "currency": "USD",
+  "buy_url": "https://gumroad.com/l/CHANGE-ME",
+  "contact_email": "vinod.halaharvi@gmail.com",
+  "author": "Vinod Halaharvi",
+  "twitter": "",
+  "newsletter": false,
+  "_note": "domain and buy_url must be set before deploying: they go into canonical URLs, the sitemap and the schema markup."
+}
