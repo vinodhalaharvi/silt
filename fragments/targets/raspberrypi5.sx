@@ -33,7 +33,7 @@
     (y BR2_LINUX_KERNEL_CUSTOM_TARBALL)                        ; :11 defined under linux/ (kernel)
     (value BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION "$(call github,raspberrypi,linux,576cc10e1ed50a9eacffc7a05c796051d7343ea4)/linux-576cc10e1ed50a9eacffc7a05c796051d7343ea4.tar.gz") ; :12 defined under linux/ (kernel)
     (value BR2_LINUX_KERNEL_DEFCONFIG "bcm2712")               ; :13 defined under linux/ (kernel)
-    (value BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES "board/raspberrypi/linux-4k-page-size.fragment") ; :14 defined under linux/ (kernel)
+    (path-append BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES "board/raspberrypi/linux-4k-page-size.fragment") ; :14 defined under linux/ (kernel)
     (y BR2_LINUX_KERNEL_DTS_SUPPORT)                           ; :15 defined under linux/ (kernel)
     (value BR2_LINUX_KERNEL_INTREE_DTS_NAME "broadcom/bcm2712-rpi-5-b broadcom/bcm2712d0-rpi-5-b") ; :16 defined under linux/ (kernel)
     (y BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL)                    ; :17 defined under linux/ (kernel)

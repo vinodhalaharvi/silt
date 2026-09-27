@@ -86,9 +86,33 @@ func buildrootDefconfig(r *compose.Result, paths map[string]string, hash string)
 			return "", fmt.Errorf("tree %s has constraints but no (consumed-by BR2_...) "+
 				"symbol to hand its config to Buildroot", tree)
 		}
+
+		// A board may already name a fragment file of its own: every
+		// Raspberry Pi 5 target points at linux-4k-page-size.fragment,
+		// because the bcm2712 defconfig would otherwise build a 16k-page
+		// kernel. Overwriting that symbol dropped it, silently, and the
+		// image booted with the wrong page size - the halves-disagreeing
+		// failure this project exists to remove, committed by silt itself.
+		//
+		// Buildroot takes a space-separated list here and merges in order,
+		// so the board's fragment goes first and silt's second: where they
+		// disagree, the image's stated constraints win.
+		if stated := statedValue(r, decl.ConsumedBy); stated != "" && stated != path {
+			path = stated + " " + path
+		}
 		fmt.Fprintf(&extra, "%s=%q\n", decl.ConsumedBy, path)
 	}
 	return out + extra.String(), nil
+}
+
+// statedValue returns the value a fragment gave a Buildroot symbol, or "".
+func statedValue(r *compose.Result, sym string) string {
+	for _, c := range r.Constraints[lang.Buildroot] {
+		if c.IsValue && c.Sym.Name == sym {
+			return c.Value
+		}
+	}
+	return ""
 }
 
 func Defconfig(r *compose.Result, sc lang.Scope) string {

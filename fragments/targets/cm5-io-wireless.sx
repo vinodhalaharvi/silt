@@ -38,5 +38,5 @@
     ;; The BCM2712's 4k page size fragment, stated by the target for the same
     ;; reason every Raspberry Pi target states it: silt writes its own kernel
     ;; fragment into this symbol, and only a target's value survives that.
-    (value BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES "board/raspberrypi/linux-4k-page-size.fragment")
+    (path-append BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES "board/raspberrypi/linux-4k-page-size.fragment")
     (value BR2_LINUX_KERNEL_INTREE_DTS_NAME "broadcom/bcm2712-rpi-cm5-cm5io")))

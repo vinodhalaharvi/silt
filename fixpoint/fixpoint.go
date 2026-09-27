@@ -86,6 +86,27 @@ func Holds(c lang.Constraint, cfg Config) bool {
 		if !present {
 			return false
 		}
+		// A path-append constraint states one entry of a space-separated
+		// list, not the whole value. BR2_ROOTFS_OVERLAY and
+		// BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES are both lists, and both
+		// gain entries from other fragments and from silt's own emitted
+		// files - so demanding equality reported a constraint as dropped
+		// when it had in fact been honoured alongside others.
+		if c.List {
+			// compose merges several path-append constraints into one
+			// whose value is the joined list, so every entry stated must
+			// appear - not the joined string as a single item.
+			have := map[string]bool{}
+			for _, item := range strings.Fields(unquote(got)) {
+				have[item] = true
+			}
+			for _, want := range strings.Fields(c.Value) {
+				if !have[want] {
+					return false
+				}
+			}
+			return true
+		}
 		return unquote(got) == c.Value
 	}
 	have := lang.N
