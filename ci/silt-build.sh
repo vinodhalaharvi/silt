@@ -6,6 +6,24 @@
 #   ci/silt-build.sh --list        what is in the store
 #   ci/silt-build.sh --prune N     keep trees for the N most recent slots
 #
+# Two checks bracket the build, and they ask different questions.
+#
+# silt solve, first: can this image exist at all? It composes, so a conflict
+# between two fragments fails here, and it asks the Kconfig model whether the
+# result is satisfiable. 400ms. (silt check over the whole tree would be the
+# thorough answer and takes seventeen seconds, most of it spent on forty
+# images this build does not involve; and naming one image file does not work,
+# because an image composing image:something needs the file that defines it.)
+#
+# silt fixpoint, after make defconfig and before the long make: did kbuild
+# write what silt predicted? solve and complete trust silt's model of
+# Kconfig; this trusts nothing and reads the .config kbuild produced. It is
+# the check that matters most here, because the store's safety rests on
+# complete being right about what a build becomes - without it, nothing in
+# this loop ever confirms that. A disagreement costs a second instead of
+# forty minutes, and it is how "asked for y, kbuild would write absent" gets
+# caught on a board nobody has tried.
+#
 # Three kinds of answer, in order of how little work they are:
 #
 #   hit      this exact image was built before: copy the artifact out.
@@ -149,8 +167,15 @@ if command -v flock >/dev/null 2>&1; then
 	fi
 fi
 
-# Composing first means this fails on anything silt check would have caught,
-# before a directory is touched.
+# The gate. Everything below assumes this image can exist; without it an
+# incoherent one surfaces as a Buildroot error deep in a build rather than as
+# a sentence now.
+if ! "$SILT" solve "$IMAGE" --buildroot "$BUILDROOT" >/dev/null 2>&1; then
+	echo "$0: this image does not compose:" >&2
+	"$SILT" solve "$IMAGE" --buildroot "$BUILDROOT" >&2 || true
+	exit 1
+fi
+
 solution=$("$SILT" hash --solution "$IMAGE" --buildroot "$BUILDROOT" | head -1 | awk '{print $1}')
 [ -n "$solution" ] || { echo "$0: could not compute a solution hash" >&2; exit 1; }
 
@@ -233,6 +258,18 @@ fi
 make -C "$BUILDROOT" O="$WORK/build" \
 	${externals:+BR2_EXTERNAL="$externals"} \
 	defconfig BR2_DEFCONFIG="$WORK/defconfig"
+
+# The audit. silt check trusts silt's model of Kconfig; this trusts nothing
+# and reads what kbuild wrote. A disagreement is a bug in silt, and it is
+# worth finding here rather than in an image someone flashed.
+if ! "$SILT" fixpoint "$IMAGE" --buildroot "$BUILDROOT" \
+	--config "$WORK/build/.config" >/dev/null 2>&1; then
+	echo "$0: kbuild did not write what silt predicted:" >&2
+	"$SILT" fixpoint "$IMAGE" --buildroot "$BUILDROOT" \
+		--config "$WORK/build/.config" >&2 || true
+	echo "$0: refusing to build on a prediction that is wrong" >&2
+	exit 1
+fi
 
 start=$(date +%s)
 make -C "$BUILDROOT" O="$WORK/build" -j"$JOBS"
