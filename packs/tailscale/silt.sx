@@ -1,0 +1,25 @@
+;; Tailscale for Buildroot.
+;;
+;; Buildroot has no tailscale package, so this pack carries one. Two things
+;; make it more than a boilerplate .mk file:
+;;
+;; Tailscale ships no vendor/ directory, and Buildroot's Go infrastructure
+;; builds offline. Buildroot handles that itself - support/download/go-post-process
+;; runs go mod vendor at download time and repacks the tarball - but the
+;; hash then belongs to the repacked tarball, not to anything upstream
+;; publishes, so it has to be computed once locally. tailscale.hash says how.
+;;
+;; And the daemon earns a secret at runtime, which an image regenerated from
+;; a config file has nowhere natural to keep. See feature:tailscale.
+
+(pack tailscale
+  (version "0.1.0")
+  (doc "tailscaled on a Buildroot image, with state and subnet routing")
+
+  (requires
+    (buildroot "2025.02.16"))
+
+  (external "br2-external")
+
+  (provides
+    (feature tailscale)))

@@ -1,0 +1,100 @@
+#!/bin/sh
+#
+# tailscaled, and the one-shot "tailscale up" that joins the tailnet.
+#
+# State lives in /var/lib/tailscale/tailscaled.state. It holds the node key,
+# so a board that loses it is a new node next boot: it reauthenticates,
+# appears again in the admin console, and any approved routes need approving
+# again. On this image the rootfs is writable, so state survives a reboot -
+# but not a reflash, which is worth knowing before you flash over a working
+# node.
+#
+# The auth key in /etc/default/tailscale is used only when there is no state
+# yet. After the first join it is not needed, and deleting it from the file
+# costs nothing.
+#
+# Ephemeral vs reusable keys matter here: a one-off key works for a board you
+# join by hand, and a reusable or pre-authorised key is what you want for an
+# image you flash more than once.
+
+DAEMON=/usr/sbin/tailscaled
+CTL=/usr/bin/tailscale
+STATE=/var/lib/tailscale/tailscaled.state
+SOCKET=/var/run/tailscale/tailscaled.sock
+PIDFILE=/var/run/tailscaled.pid
+LOG=/var/log/tailscaled.log
+
+TS_AUTHKEY=
+TS_HOSTNAME=
+TS_ROUTES=
+TS_EXTRA_ARGS=
+[ -r /etc/default/tailscale ] && . /etc/default/tailscale
+
+case "$1" in
+start)
+	printf "Starting tailscaled: "
+
+	mkdir -p /var/lib/tailscale /var/run/tailscale
+	chmod 0700 /var/lib/tailscale
+
+	# tailscaled needs /dev/net/tun. The device node is created by the
+	# kernel's tun module; on a static /dev it may not exist yet.
+	if [ ! -c /dev/net/tun ]; then
+		modprobe tun 2>/dev/null
+		mkdir -p /dev/net
+		[ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200
+	fi
+
+	# Advertising routes means forwarding packets that are not ours.
+	if [ -n "$TS_ROUTES" ]; then
+		echo 1 > /proc/sys/net/ipv4/ip_forward
+		echo 1 > /proc/sys/net/ipv6/conf/all/forwarding 2>/dev/null
+	fi
+
+	start-stop-daemon -S -q -b -m -p "$PIDFILE" \
+		-x /bin/sh -- -c "exec $DAEMON --state=$STATE --socket=$SOCKET >> $LOG 2>&1" \
+		|| { echo "FAIL"; exit 1; }
+	echo "OK"
+
+	# Joining is separate from running: tailscaled comes up either way, and
+	# a board with state already joined needs no key.
+	printf "Joining tailnet: "
+	i=0
+	while [ ! -S "$SOCKET" ] && [ "$i" -lt 15 ]; do
+		sleep 1
+		i=$((i + 1))
+	done
+	if [ ! -S "$SOCKET" ]; then
+		echo "FAIL (tailscaled did not come up, see $LOG)"
+		exit 1
+	fi
+
+	set --
+	[ -n "$TS_AUTHKEY" ]  && set -- "$@" --authkey="$TS_AUTHKEY"
+	[ -n "$TS_HOSTNAME" ] && set -- "$@" --hostname="$TS_HOSTNAME"
+	[ -n "$TS_ROUTES" ]   && set -- "$@" --advertise-routes="$TS_ROUTES"
+	# shellcheck disable=SC2086
+	if "$CTL" --socket="$SOCKET" up "$@" $TS_EXTRA_ARGS >> "$LOG" 2>&1; then
+		echo "OK ($("$CTL" --socket=$SOCKET ip -4 2>/dev/null | head -1))"
+	else
+		echo "FAIL (see $LOG; an auth key may be needed in /etc/default/tailscale)"
+	fi
+	;;
+stop)
+	printf "Stopping tailscaled: "
+	"$CTL" --socket="$SOCKET" down >/dev/null 2>&1
+	start-stop-daemon -K -q -p "$PIDFILE" && rm -f "$PIDFILE" \
+		&& echo "OK" || echo "FAIL"
+	;;
+status)
+	"$CTL" --socket="$SOCKET" status
+	;;
+restart)
+	"$0" stop
+	sleep 2
+	"$0" start
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart|status}"
+	exit 1
+esac

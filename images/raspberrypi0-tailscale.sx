@@ -1,0 +1,28 @@
+;; A Raspberry Pi Zero as a way into your own network.
+;;
+;; It joins the tailnet at boot and advertises the LAN it sits on, so
+;; everything else there - an ESPHome relay, a printer, a NAS - is reachable
+;; from a phone without installing anything on those devices or forwarding
+;; anything on the router. Set TS_AUTHKEY and TS_ROUTES in
+;; /etc/default/tailscale, or on the board over the serial console.
+;;
+;; No appliance daemons here: this board is a router, not a simulated
+;; device, and the two have no reason to share an image.
+;;
+;; The rootfs is larger than the board profile's 120M default because
+;; tailscaled is a Go binary carrying its own WireGuard, DNS and network
+;; stack, and because its state directory grows.
+
+(image raspberrypi0-tailscale
+  (compose
+    image:raspberrypi0
+    feature:usb-gadget-net
+    feature:dev-ssh
+    feature:tailscale)
+
+  (override
+    (value buildroot:BR2_PACKAGE_RPI_FIRMWARE_CONFIG_FILE
+           "$(BR2_EXTERNAL_USB_GADGET_PATH)/files/config.txt")
+    (value buildroot:BR2_TARGET_ROOTFS_EXT2_SIZE "512M"))
+
+  (verified-against (buildroot "2025.02.16")))

@@ -1,0 +1,25 @@
+# Joining the tailnet.
+#
+# TS_AUTHKEY is used only on the first boot, when there is no state yet.
+# Generate one in the admin console under Settings, Keys. For an image you
+# flash more than once, make it reusable and pre-authorised; for a single
+# board, a one-off key is fine and can be deleted from this file afterwards.
+#
+# TS_ROUTES turns the board into a subnet router: the other machines on its
+# LAN become reachable from the tailnet without installing anything on them.
+# That is what makes an ESPHome device, a printer or a NAS reachable from a
+# phone. Routes must also be approved once in the admin console.
+#
+#   TS_AUTHKEY=tskey-auth-...
+#   TS_HOSTNAME=garage
+#   TS_ROUTES=192.168.68.0/24
+#   TS_EXTRA_ARGS="--accept-dns=false"
+#
+# --accept-dns=false is worth knowing about: by default a node takes DNS
+# settings from the tailnet, which on a headless board is rarely what you
+# want and occasionally breaks name resolution it already had.
+
+TS_AUTHKEY=
+TS_HOSTNAME=
+TS_ROUTES=
+TS_EXTRA_ARGS=

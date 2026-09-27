@@ -1,0 +1,1 @@
+source "$BR2_EXTERNAL_TAILSCALE_PATH/package/tailscale/Config.in"

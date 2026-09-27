@@ -1,0 +1,14 @@
+[Unit]
+Description=Tailscale node agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=-/etc/default/tailscale
+ExecStartPre=/bin/mkdir -p /var/lib/tailscale /var/run/tailscale
+ExecStart=/usr/sbin/tailscaled --state=/var/lib/tailscale/tailscaled.state
+ExecStartPost=/bin/sh -c 'test -n "$TS_AUTHKEY" && /usr/bin/tailscale up --authkey="$TS_AUTHKEY" ${TS_HOSTNAME:+--hostname=$TS_HOSTNAME} ${TS_ROUTES:+--advertise-routes=$TS_ROUTES} $TS_EXTRA_ARGS || true'
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
