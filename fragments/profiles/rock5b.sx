@@ -1,0 +1,17 @@
+;; Imported by silt import from configs/rock5b_defconfig, buildroot 2025.02.16.
+;; The target/profile split is a first cut by rule; the rule is noted on
+;; every line. Move lines between the two fragments freely.
+
+(fragment profile:rock5b
+  (doc "profile part of rock5b_defconfig")
+
+  (buildroot
+    (y BR2_DOWNLOAD_FORCE_CHECK_HASHES)                        ; :5 not hardware by any rule above
+    (y BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_MDEV)                ; :8 not hardware by any rule above
+    (value BR2_SYSTEM_DHCP "eth0")                             ; :9 not hardware by any rule above
+    (y BR2_PACKAGE_ROCKCHIP_RKBIN)                             ; :27 not hardware by any rule above
+    (value BR2_PACKAGE_ROCKCHIP_RKBIN_TPL_FILENAME "bin/rk35/rk3588_ddr_lp4_2112MHz_lp5_2736MHz_v1.12.bin") ; :28 not hardware by any rule above
+    (y BR2_TARGET_ROOTFS_EXT2)                                 ; :29 not hardware by any rule above
+    (y BR2_TARGET_ROOTFS_EXT2_4)                               ; :30 not hardware by any rule above
+    (value BR2_TARGET_ROOTFS_EXT2_SIZE "250M")                 ; :31 not hardware by any rule above
+  ))

@@ -1,0 +1,76 @@
+;; Imported by silt import from configs/rock5b_defconfig, buildroot 2025.02.16.
+;; The target/profile split is a first cut by rule; the rule is noted on
+;; every line. Move lines between the two fragments freely.
+
+(fragment target:rock5b
+  (doc "target part of rock5b_defconfig")
+
+  ;; Derived from kbuild's .config of the source, not asserted.
+  (provides
+    (capability compiler)
+    (capability glibc)
+    (capability mmu))
+
+  ;; A defconfig cannot answer these: no symbol says whether the board
+  ;; has the hardware. A Rock 5B has an SD slot, a serial console on the
+  ;; GPIO header, two CSI camera connectors, an M.2 M-key for NVMe and two
+  ;; Ethernet-capable interfaces - though only one RJ45 is populated, so
+  ;; dual-ethernet is not claimed.
+  (provides
+    (capability csi-camera)
+    (capability sdcard)
+    (capability serial-console)
+    (capability nvme))
+
+  ;; Not claimed: dual-ethernet (one RJ45 is populated), can-bus and
+  ;; cellular (no transceiver, no modem slot), wifi-sdio (the M.2 E-key is
+  ;; empty), virtio (not a VM).
+
+  (buildroot
+    (y BR2_aarch64)                                            ; :1 defined under arch/
+    (y BR2_cortex_a76_a55)                                     ; :2 defined under arch/
+    (y BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_12)             ; :3 kernel headers follow the kernel
+    (value BR2_GLOBAL_PATCH_DIR "board/radxa/rock5b/patches")  ; :4 board integration hook
+    (value BR2_TARGET_GENERIC_HOSTNAME "rock5b")               ; :6 names the board
+    (value BR2_TARGET_GENERIC_ISSUE "Welcome to the rock5b board") ; :7 names the board
+    (value BR2_ROOTFS_POST_BUILD_SCRIPT "board/radxa/rock5b/post-build.sh") ; :10 board integration hook
+    (value BR2_ROOTFS_POST_IMAGE_SCRIPT "support/scripts/genimage.sh") ; :11 board integration hook
+    (value BR2_ROOTFS_POST_SCRIPT_ARGS "-c board/radxa/rock5b/genimage.cfg") ; :12 board integration hook
+    (y BR2_LINUX_KERNEL)                                       ; :13 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_CUSTOM_VERSION)                        ; :14 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE "6.12.4")     ; :15 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG)               ; :16 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES "board/radxa/rock5b/linux.fragment") ; :17 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_DTS_SUPPORT)                           ; :18 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_INTREE_DTS_NAME "rockchip/rk3588-rock-5b") ; :19 defined under linux/ (kernel)
+    (value BR2_LINUX_KERNEL_INTREE_DTSO_NAMES "rockchip/rk3588-rock-5b-pcie-srns rockchip/rk3588-rock-5b-pcie-ep") ; :20 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_DTB_OVERLAY_SUPPORT)                   ; :21 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_INSTALL_TARGET)                        ; :22 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL)                    ; :23 defined under linux/ (kernel)
+    (y BR2_LINUX_KERNEL_NEEDS_HOST_PYTHON3)                    ; :24 defined under linux/ (kernel)
+    (y BR2_PACKAGE_LINUX_FIRMWARE)                             ; :25 firmware package
+    (y BR2_PACKAGE_LINUX_FIRMWARE_RTL_8169)                    ; :26 firmware package
+    (y BR2_TARGET_ARM_TRUSTED_FIRMWARE)                        ; :32 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_ARM_TRUSTED_FIRMWARE_CUSTOM_VERSION)         ; :33 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_ARM_TRUSTED_FIRMWARE_CUSTOM_VERSION_VALUE "v2.12") ; :34 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_ARM_TRUSTED_FIRMWARE_PLATFORM "rk3588")  ; :35 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_ARM_TRUSTED_FIRMWARE_IMAGES "bl31/bl31.elf") ; :36 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT)                                       ; :37 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_BUILD_SYSTEM_KCONFIG)                  ; :38 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_CUSTOM_VERSION)                        ; :39 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_UBOOT_CUSTOM_VERSION_VALUE "2025.01")    ; :40 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_UBOOT_BOARD_DEFCONFIG "rock5b-rk3588")   ; :41 defined under boot/ (bootloader or firmware)
+    (value BR2_TARGET_UBOOT_CONFIG_FRAGMENT_FILES "board/radxa/rock5b/u-boot.fragment") ; :42 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_PYLIBFDT)                        ; :43 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_PYELFTOOLS)                      ; :44 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_OPENSSL)                         ; :45 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_GNUTLS)                          ; :46 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_UTIL_LINUX)                      ; :47 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_ATF_BL31)                        ; :48 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_ATF_BL31_ELF)                    ; :49 defined under boot/ (bootloader or firmware)
+    (y BR2_TARGET_UBOOT_NEEDS_ROCKCHIP_RKBIN)                  ; :50 defined under boot/ (bootloader or firmware)
+    (y BR2_PACKAGE_HOST_DOSFSTOOLS)                            ; :51 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_DTC)                                   ; :52 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_GENIMAGE)                              ; :53 host tool, typically for boot media
+    (y BR2_PACKAGE_HOST_MTOOLS)                                ; :54 host tool, typically for boot media
+  ))

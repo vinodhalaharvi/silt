@@ -1,0 +1,24 @@
+;; The appliance on a Radxa Rock 5B.
+;;
+;; RK3588: four A76 and four A55, up to 32GB, NVMe on M.2, and the fastest
+;; board here by some distance. Imported from Buildroot's own rock5b_defconfig
+;; rather than assembled by hand, so the bootloader chain - ATF v2.12 for
+;; rk3588, U-Boot with the rkbin DDR blob, the idbloader layout - is the one
+;; the release ships and was proven to round-trip.
+;;
+;; The rootfs is larger than the board profile's 250M. An earlier hand-built
+;; attempt at this image failed at the last step, after twenty-eight minutes,
+;; because the RK3588's kernel modules do not fit a small rootfs; a size is a
+;; value rather than a minimum, so an image that needs more says so here.
+
+(image rock5b-bringup
+  (compose
+    image:rock5b
+    feature:dev-ssh
+    feature:modbus
+    feature:fieldbus-test)
+
+  (override
+    (value buildroot:BR2_TARGET_ROOTFS_EXT2_SIZE "512M"))
+
+  (verified-against (buildroot "2025.02.16")))

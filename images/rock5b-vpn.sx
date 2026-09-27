@@ -1,0 +1,13 @@
+;; The Rock 5B appliance, reachable across a network it is not on.
+;;
+;; The simulated device on Modbus, OPC UA, CAN and MQTT, plus WireGuard: the
+;; kernel's tunnel and wg(8) to drive it. Configuration is
+;; /etc/wireguard/wg0.conf, which this image deliberately does not carry,
+;; because a private key baked into an image is a private key shared by
+;; everyone who flashes it.
+
+(image rock5b-vpn
+  (compose
+    image:rock5b-bringup
+    feature:wireguard)
+  (verified-against (buildroot "2025.02.16")))

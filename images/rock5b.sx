@@ -1,0 +1,8 @@
+;; Imported by silt import from configs/rock5b_defconfig.
+;; silt import --kbuild checks this composes back to the source exactly.
+
+(image rock5b
+  (compose
+    target:rock5b
+    profile:rock5b)
+  (verified-against (buildroot "2025.02.16")))

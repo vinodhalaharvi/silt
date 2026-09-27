@@ -1,0 +1,32 @@
+;; A Raspberry Pi 3 as the way into your own network.
+;;
+;; It joins the tailnet at boot and advertises the LAN it sits on, so
+;; everything else there - an ESPHome relay on a garage door, a printer, a
+;; NAS - is reachable from a phone without installing anything on those
+;; devices and without forwarding anything on the router.
+;;
+;; Set TS_AUTHKEY and TS_ROUTES in /etc/default/tailscale. Routes are inert
+;; until approved once in the admin console, and a route of /32 for the one
+;; device you want reached is tighter than the whole /24. Turn off key expiry
+;; for the node, or it drops off the tailnet in a few months and the door
+;; stops answering.
+;;
+;; Why this rather than the WireGuard image beside it: WireGuard needs an
+;; inbound port, which means a port forward, a dynamic DNS name and a public
+;; address to forward from. This needs none of them. The cost is a dependency
+;; on a coordination service, and a Go binary where WireGuard is a kernel
+;; module - the rootfs goes from 120M to 512M for that reason.
+;;
+;; No appliance daemons: this board is a route into a network, not a
+;; simulated device, and the two have no reason to share an image.
+
+(image raspberrypi3-64-tailscale
+  (compose
+    image:raspberrypi3-64
+    feature:dev-ssh
+    feature:tailscale)
+
+  (override
+    (value buildroot:BR2_TARGET_ROOTFS_EXT2_SIZE "512M"))
+
+  (verified-against (buildroot "2025.02.16")))
