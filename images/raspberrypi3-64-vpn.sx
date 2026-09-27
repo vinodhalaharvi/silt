@@ -1,0 +1,20 @@
+;; The appliance, plus a tunnel.
+;;
+;; A field device that is reachable from somewhere else: the simulated
+;; device on Modbus, OPC UA, CAN and MQTT as before, with WireGuard so a
+;; client can reach it across a network it is not on.
+;;
+;; The tunnel is the kernel's; feature:wireguard adds wg(8) and wg-quick(8)
+;; to drive it. Configuration is /etc/wireguard/wg0.conf, which this image
+;; deliberately does not carry: a private key baked into an image is a
+;; private key everyone who flashes it shares.
+;;
+;; As a build this is the smallest thing worth caching: it extends
+;; raspberrypi3-64-bringup by one package, so with that tree in the store
+;; it is a minute rather than twenty.
+
+(image raspberrypi3-64-vpn
+  (compose
+    image:raspberrypi3-64-bringup
+    feature:wireguard)
+  (verified-against (buildroot "2025.02.16")))

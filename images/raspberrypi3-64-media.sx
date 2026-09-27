@@ -1,0 +1,27 @@
+;; The appliance, plus a camera.
+;;
+;; Everything raspberrypi3-64-bringup serves, and a USB webcam or a CSI
+;; camera on top: MJPEG in a browser, MP4 segments, H.264 over RTP. One
+;; board that answers four industrial protocols and shows you what the
+;; machine looks like, which is closer to a real edge device than either
+;; half alone.
+;;
+;; A Pi 3 is not a Pi 5: four A53 cores at 1.2GHz, and the same missing
+;; hardware encoder in the sense that matters here, since Buildroot's
+;; GStreamer will not use the Pi's H.264 block. MJPEG straight from a USB
+;; camera costs almost nothing because nothing is encoded; x264 at 720p30
+;; will not keep up. silt-media's mjpeg mode is the one to use here.
+;;
+;; The rootfs is larger than the board profile's default: GStreamer,
+;; libcamera-apps and ffmpeg are not small, and /var/www/rec fills with
+;; recordings.
+
+(image raspberrypi3-64-media
+  (compose
+    image:raspberrypi3-64-bringup
+    feature:media-kit)
+
+  (override
+    (value buildroot:BR2_TARGET_ROOTFS_EXT2_SIZE "2G"))
+
+  (verified-against (buildroot "2025.02.16")))
