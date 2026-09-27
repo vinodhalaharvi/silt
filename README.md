@@ -462,9 +462,16 @@ Ten images, three architectures, all checked and most of them built:
 | `imx8mp-evk-bringup` | NXP i.MX 8M Plus EVK | the appliance on aarch64 with real CAN |
 | `cm5-io`, `cm5-io-wireless`, `cm5-dual-eth` | Compute Module 5 | one module, three carrier boards |
 
-The CM5 set is the argument for the whole language. A carrier fragment states
-its device tree and what it has populated; the module composes onto it; and
-swapping carriers is three lines:
+The CM5 set is the argument for the whole language. A Compute Module has no
+connectors, so what a board can do belongs to the carrier it is plugged into:
+
+![One Compute Module 5, three carrier boards](docs/cm5-carriers.svg)
+
+Silt arrived at that shape by refusing the first one. A target for the module
+and a target for the carrier is two targets, and "a target is exactly one
+board" — which is right, because with a compute module the board is the
+carrier. So a carrier fragment states its device tree and what it has
+populated, the module composes onto it, and swapping carriers is one line:
 
 ```lisp
 (image cm5-io-appliance

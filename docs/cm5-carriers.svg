@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 420" width="760" height="420"
+     font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+  <title>One Compute Module 5, three carrier boards, three images</title>
+  <desc>feature:cm5-module carries the SoC, kernel and toolchain. Three target
+  fragments describe carrier boards, each stating its device tree and the
+  capabilities it has populated. An image composes one carrier with the module.</desc>
+
+  <style>
+    .card  { fill: #f6f8fa; stroke: #d0d7de; stroke-width: 1; rx: 8; }
+    .mod   { fill: #eef6f3; stroke: #1c6b5a; stroke-width: 1.5; rx: 8; }
+    .t     { font-size: 13px; fill: #14181d; }
+    .th    { font-size: 13px; font-weight: 650; fill: #14181d; }
+    .code  { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+             font-size: 12px; fill: #1c6b5a; }
+    .small { font-size: 11.5px; fill: #5a6572; }
+    .cap   { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+             font-size: 11px; fill: #14181d; }
+    .line  { stroke: #8c959f; stroke-width: 1.5; fill: none; }
+    @media (prefers-color-scheme: dark) {
+      .card { fill: #171d24; stroke: #2a313a; }
+      .mod  { fill: #14211e; stroke: #63c9b0; }
+      .t, .th, .cap { fill: #e6eaf0; }
+      .code { fill: #63c9b0; }
+      .small { fill: #9aa5b3; }
+      .line { stroke: #6b747d; }
+    }
+  </style>
+
+  <!-- the module -->
+  <rect class="mod" x="240" y="16" width="280" height="76"/>
+  <text class="code" x="380" y="40" text-anchor="middle">feature:cm5-module</text>
+  <text class="small" x="380" y="60" text-anchor="middle">SoC, kernel, firmware, toolchain</text>
+  <text class="small" x="380" y="78" text-anchor="middle">no device tree: that is the carrier's</text>
+
+  <!-- fan-out -->
+  <path class="line" d="M380 92 L380 116"/>
+  <path class="line" d="M130 116 L630 116"/>
+  <path class="line" d="M130 116 L130 140"/>
+  <path class="line" d="M380 116 L380 140"/>
+  <path class="line" d="M630 116 L630 140"/>
+
+  <!-- carrier 1 -->
+  <rect class="card" x="20" y="140" width="220" height="176"/>
+  <text class="code" x="36" y="164">target:cm5-io</text>
+  <text class="small" x="36" y="184">Raspberry Pi CM5 IO Board</text>
+  <text class="cap" x="36" y="212">bcm2712-rpi-cm5-cm5io</text>
+  <text class="small" x="36" y="238">provides</text>
+  <text class="cap" x="36" y="258">nvme  csi-camera</text>
+  <text class="cap" x="36" y="276">sdcard  serial-console</text>
+  <text class="small" x="36" y="302">1 Ethernet · the dev kit board</text>
+
+  <!-- carrier 2 -->
+  <rect class="card" x="270" y="140" width="220" height="176"/>
+  <text class="code" x="286" y="164">target:cm5-io-wireless</text>
+  <text class="small" x="286" y="184">Waveshare, industrial</text>
+  <text class="cap" x="286" y="212">bcm2712-rpi-cm5-cm5io</text>
+  <text class="small" x="286" y="238">provides</text>
+  <text class="cap" x="286" y="258">rs485  can-bus  nvme</text>
+  <text class="cap" x="286" y="276">cellular  csi-camera</text>
+  <text class="small" x="286" y="302">1 Ethernet · isolated terminals</text>
+
+  <!-- carrier 3 -->
+  <rect class="card" x="520" y="140" width="220" height="176"/>
+  <text class="code" x="536" y="164">target:cm5-dual-eth</text>
+  <text class="small" x="536" y="184">Waveshare, gateway</text>
+  <text class="cap" x="536" y="212">bcm2712-rpi-cm5-cm5io</text>
+  <text class="small" x="536" y="238">provides</text>
+  <text class="cap" x="536" y="258">dual-ethernet  rs485</text>
+  <text class="cap" x="536" y="276">nvme  cellular</text>
+  <text class="small" x="536" y="302">1G + 2.5G · 4x RS485</text>
+
+  <!-- images row -->
+  <path class="line" d="M130 316 L130 340"/>
+  <path class="line" d="M380 316 L380 340"/>
+  <path class="line" d="M630 316 L630 340"/>
+
+  <rect class="card" x="20" y="340" width="720" height="62"/>
+  <text class="th" x="380" y="364" text-anchor="middle">an image composes one carrier, the module, a profile and features</text>
+  <text class="code" x="380" y="386" text-anchor="middle">(compose target:cm5-io-wireless feature:cm5-module profile:raspberrypi5 feature:fieldbus-test)</text>
+</svg>
