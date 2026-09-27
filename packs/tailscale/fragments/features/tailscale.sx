@@ -7,6 +7,14 @@
 ;; The cost is a dependency on that service, and a Go binary where WireGuard
 ;; is a kernel module.
 ;;
+;; Buildroot ships the package - tailscale 1.78.1 in 2025.02.16, with the
+;; vendored-tarball hash already computed and kernel fixups of its own. This
+;; pack carried a second one for a while, which Buildroot rejected with
+;; "Package 'tailscale' defined a second time", and rightly: the first thing
+;; to do before packaging something is to look for it. What the pack carries
+;; now is the part upstream does not have, which is a sysv init script; the
+;; package installs a systemd unit only, and these images are BusyBox init.
+;;
 ;; Size, because it is the first thing anyone asks: tailscaled and tailscale
 ;; together are tens of megabytes against a few hundred kilobytes for
 ;; wireguard-tools, since this carries its own WireGuard, its own DNS
@@ -35,16 +43,27 @@
     (capability mmu))
 
   (buildroot
-    ;; ca-certificates is selected by the package: without it the TLS
-    ;; handshake to the coordination server fails, and the error looks like
-    ;; a network problem rather than a missing trust store.
-    (y BR2_PACKAGE_TAILSCALE))
+    (y BR2_PACKAGE_TAILSCALE)
+
+    ;; Upstream's Config.in does not select this, and without it the TLS
+    ;; handshake to the coordination server fails with an error that looks
+    ;; like a network problem rather than a missing trust store.
+    (y BR2_PACKAGE_CA_CERTIFICATES)
+
+    ;; /etc/init.d/S41tailscale and /etc/default/tailscale.
+    (path-append BR2_ROOTFS_OVERLAY "overlay"))
 
   (linux
-    ;; tailscaled routes packets through /dev/net/tun. Without this the
-    ;; daemon starts, fails to create the interface, and falls back to
-    ;; userspace networking where it can reach out but nothing can route
-    ;; through it - so a subnet router silently does not route.
+    ;; The package has LINUX_CONFIG_FIXUPS that enable these too, which is
+    ;; Buildroot reaching into the kernel config from a package. Stating them
+    ;; here as well is not redundant: a fixup is applied during the build,
+    ;; while these are checked before it, and an image whose kernel cannot
+    ;; support the feature should fail at check time.
+    ;;
+    ;; tailscaled routes packets through /dev/net/tun. Without it the daemon
+    ;; starts, fails to create the interface, and falls back to userspace
+    ;; networking where it can reach out but nothing can route through it -
+    ;; so a subnet router silently does not route.
     (at-least m CONFIG_TUN)
 
     ;; Advertising routes means forwarding, and forwarding for hosts that do

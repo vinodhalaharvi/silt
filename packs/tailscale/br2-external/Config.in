@@ -1,1 +1,1 @@
-source "$BR2_EXTERNAL_TAILSCALE_PATH/package/tailscale/Config.in"
+# no packages of its own: Buildroot ships tailscale. Files only.
