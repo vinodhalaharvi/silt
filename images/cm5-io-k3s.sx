@@ -1,0 +1,39 @@
+;; Kubernetes on a Compute Module 5.
+;;
+;; The same feature:k3s that runs on the QEMU machine, on real silicon: four
+;; A76 cores and up to 16GB, which is the first board here that k3s is a
+;; reasonable thing to ask of rather than a demonstration.
+;;
+;; profile:standard rather than profile:raspberrypi5, because k3s states what
+;; it needs of userspace as capabilities - systemd-init and glibc - and the
+;; board's own profile is BusyBox init. That is the composition doing its job:
+;; the wrong pairing does not build and then misbehave, it does not compose.
+;;
+;; Storage is the thing to get right on hardware. k3s writes to
+;; /var/lib/rancher constantly, and an SD card will not survive it for long.
+;; The CM5 carriers all have an M.2 slot on PCIe, so the data directory
+;; belongs on NVMe: that is a runtime decision, not a configuration one, and
+;; this image does not make it. Flash it, add the drive, mount it there.
+;;
+;; Why bother, when the appliance daemons are 200KB binaries reading shared
+;; memory and the image is already the deployment unit: because a customer
+;; who runs k3s at the edge manages fleets with tooling they already have,
+;; and being a workload in it is worth more to them than being a better
+;; process on a board.
+
+(image cm5-io-k3s
+
+  (compose
+    target:cm5-io
+    feature:cm5-module
+    profile:standard
+    feature:networking
+    feature:k3s)
+
+  ;; As with qemu-arm-k3s: a value has no "at least", so the size cannot be
+  ;; asked for by the feature that needs it. 60MB of binary plus the images
+  ;; it unpacks, plus room for the container store before NVMe is mounted.
+  (override
+    (value buildroot:BR2_TARGET_ROOTFS_EXT2_SIZE "4G"))
+
+  (verified-against (buildroot "2025.02.16")))
