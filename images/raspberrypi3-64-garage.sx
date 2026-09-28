@@ -1,0 +1,33 @@
+;; The garage door box, built on the Pi 3 image that is known to boot.
+;;
+;; raspberrypi3-64-tailscale composed feature:tailscale onto the bare board
+;; and produced a firmware rainbow screen with no kernel. This one composes
+;; it onto raspberrypi3-64-bringup instead - the image that has been running
+;; on this bench all week - so the only difference from something proven is
+;; the tailscale package and the rootfs size.
+;;
+;; That makes it a test as well as a box: if this boots, the problem in the
+;; other image was the bare-board composition or the 512M override, and we
+;; know which by having changed one thing.
+;;
+;; The appliance daemons come along for the ride. On a board whose job is to
+;; route a /32 to a garage relay they do nothing, and they cost a few hundred
+;; kilobytes, which is a better trade than another twenty-minute build to
+;; find out.
+;;
+;;   TS_AUTHKEY, TS_HOSTNAME, TS_ROUTES in /etc/default/tailscale
+;;   approve the route in the admin console, then turn off key expiry
+;;   use the relay's address: mDNS does not cross the tunnel
+
+(image raspberrypi3-64-garage
+  (compose
+    image:raspberrypi3-64-bringup
+    feature:tailscale)
+
+  ;; 256M rather than the 512M the other image asked for: tailscaled and
+  ;; tailscale are about 40MB together, and the appliance fits in 120M, so
+  ;; this is generous without being a change worth suspecting.
+  (override
+    (value buildroot:BR2_TARGET_ROOTFS_EXT2_SIZE "256M"))
+
+  (verified-against (buildroot "2025.02.16")))
