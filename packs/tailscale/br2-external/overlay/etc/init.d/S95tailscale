@@ -2,6 +2,20 @@
 #
 # tailscaled, and the one-shot "tailscale up" that joins the tailnet.
 #
+# S95, not S41, and the number is the whole point. BusyBox init runs these
+# in numeric order and waits for each one, networking is S40, and this
+# script waits up to fifteen seconds for tailscaled's socket before running
+# "tailscale up". At S41 that wait happened before the network existed, so
+# the wait always ran its course - and every later script waited behind it:
+# dropbear at S50, the appliance daemons at S88 through S94, the getty.
+#
+# The symptom was a board that answered ping and had every port closed.
+# Linux was up, eth0 had an address, and userspace had stopped at script
+# 41. Nothing in the logs said so, because the thing that would have
+# written the logs had not started yet.
+#
+# So: last. Nothing waits behind this one.
+#
 # State lives in /var/lib/tailscale/tailscaled.state. It holds the node key,
 # so a board that loses it is a new node next boot: it reauthenticates,
 # appears again in the admin console, and any approved routes need approving

@@ -50,7 +50,10 @@
     ;; like a network problem rather than a missing trust store.
     (y BR2_PACKAGE_CA_CERTIFICATES)
 
-    ;; /etc/init.d/S41tailscale and /etc/default/tailscale.
+    ;; /etc/init.d/S95tailscale and /etc/default/tailscale. S95 because the
+    ;; script waits for tailscaled and for the network, and BusyBox init
+    ;; waits for each script in turn: earlier in the sequence it blocked
+    ;; everything behind it, including ssh.
     (path-append BR2_ROOTFS_OVERLAY "overlay"))
 
   (linux
