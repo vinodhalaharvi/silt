@@ -50,6 +50,13 @@
     ;; like a network problem rather than a missing trust store.
     (y BR2_PACKAGE_CA_CERTIFICATES)
 
+    ;; And a clock, for the same handshake. A Raspberry Pi has no RTC, so
+    ;; every boot starts at 1970 and every certificate is "not yet valid".
+    ;; chrony's init script is S49, before this feature's S95, and the
+    ;; overlay carries a chrony.conf because chrony's default policy refuses
+    ;; a step of fifty-six years - which is exactly the step required.
+    (y BR2_PACKAGE_CHRONY)
+
     ;; /etc/init.d/S95tailscale and /etc/default/tailscale. S95 because the
     ;; script waits for tailscaled and for the network, and BusyBox init
     ;; waits for each script in turn: earlier in the sequence it blocked

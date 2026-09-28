@@ -70,6 +70,26 @@ start)
 		|| { echo "FAIL"; exit 1; }
 	echo "OK"
 
+	# Wait for a plausible clock before going near TLS. A board with no RTC
+	# boots at 1970, chronyd needs a moment to reach a time server once the
+	# network is up, and until then every certificate on the internet is
+	# "not yet valid". Without this the join fails with an x509 error that
+	# reads like a certificate problem and is a clock problem.
+	printf "Waiting for the clock: "
+	i=0
+	while [ "$(date -u +%Y)" -lt 2024 ] && [ "$i" -lt 60 ]; do
+		sleep 1
+		i=$((i + 1))
+	done
+	if [ "$(date -u +%Y)" -lt 2024 ]; then
+		echo "FAIL (still $(date -u +%Y))"
+		echo "  chronyd has not set the clock, and tailscale cannot verify a" >&2
+		echo "  certificate without one. Check the network, or set it by hand:" >&2
+		echo "    date -s 'YYYY-MM-DD HH:MM:SS' && $0 restart" >&2
+		exit 1
+	fi
+	echo "OK ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+
 	# Joining is separate from running: tailscaled comes up either way, and
 	# a board with state already joined needs no key.
 	printf "Joining tailnet: "
