@@ -195,6 +195,26 @@ without waiting for the set.
 single work directory and a flock to match. Two runs would queue on the machine
 anyway, and the second would look like a hang rather than a queue.
 
+## The remote side is a script, not a string
+
+`ci/ci-build.sh` is what runs on the builder: the runner copies it across and
+runs it with the commit to build. It was a shell string inside build.yml, and
+four runs failed on it in a row - a tilde that expanded to the runner's home
+rather than the builder's, a PATH a non-interactive shell does not have, a
+Buildroot tree in a directory the CI account cannot read. Each one a
+twenty-minute round trip to learn something a local shell says immediately.
+
+Shell inside YAML inside an ssh command argument is three levels of quoting
+with no way to test any of it. As a file it can be run by hand, checked with
+shellcheck, and tested against a fake layout before it ever touches the
+builder - which is how the Buildroot path problem was found rather than
+discovered on the fifth run.
+
+It also does not borrow anything from a person's home. Buildroot is cloned to
+/srv/buildroot if absent, the store is /srv/silt, and the clone and scratch
+space are under the CI account's own ~/ci. Each of those is checked before the
+build starts, with the command that fixes it named in the error.
+
 ## Where the images end up
 
 Two destinations, answering different questions.

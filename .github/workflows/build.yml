@@ -122,38 +122,19 @@ jobs:
           echo "    -> set SSH_FLAGS to --tunnel-through-iap and grant roles/iap.tunnelResourceAccessor" >&2
           exit 1
 
+      # The remote side is a script in the repository, not a string in this
+      # file. Four runs failed on the string version - a tilde that expanded
+      # to the wrong home, a PATH a non-interactive shell does not have, a
+      # Buildroot tree in a directory this account cannot read - each one a
+      # round trip to learn something a local shell says immediately. Shell
+      # inside YAML inside an ssh argument is three levels of quoting and no
+      # way to test any of it.
       - name: build
         run: |
-          # The builder has its own clone; bring it to this commit rather than
-          # to whatever main happens to be, so a tag builds what the tag says.
+          gcloud compute scp --zone "$ZONE" --project "$PROJECT" --quiet $SSH_FLAGS \
+            ci/ci-build.sh "$INSTANCE":ci-build.sh
           gcloud compute ssh "$INSTANCE" --zone "$ZONE" --project "$PROJECT" --quiet $SSH_FLAGS \
-            --command "set -e
-              # ssh host 'command' runs a non-interactive shell, which reads
-              # no profile and no bashrc, so nothing a login session puts on
-              # PATH is there. Go is installed system-wide on the builder and
-              # the failure without this line is the terse and misleading
-              # 'make: go: No such file or directory'.
-              export PATH=/usr/local/go/bin:/usr/local/bin:\$PATH
-              mkdir -p '$CI_ROOT'
-              if [ ! -d '$CI_ROOT/silt/.git' ]; then
-                git clone --quiet https://github.com/${{ github.repository }}.git '$CI_ROOT/silt'
-              fi
-              cd '$CI_ROOT/silt'
-              git fetch --all --quiet
-              git checkout --quiet --detach ${{ github.sha }}
-              make
-              export BUILDROOT=/home/vinodhalaharvi/buildroot
-              export SILT_CACHE='$SILT_STORE'
-              export SILT_WORK='$CI_ROOT/work'
-              export SILT_LOCK='$CI_ROOT/lock'
-              images='${{ inputs.image }}'
-              [ -n \"\$images\" ] || images=\$(./bin/silt images --ci build)
-              for i in \$images; do
-                echo \"::group::\$i\"
-                ./ci/silt-build.sh \"\$i\"
-                echo '::endgroup::'
-              done
-              ./ci/silt-build.sh --list"
+            --command "chmod +x ci-build.sh && CI_ROOT='$CI_ROOT' SILT_STORE='$SILT_STORE' ./ci-build.sh ${{ github.sha }} ${{ inputs.image }}"
 
       # Two destinations, because they answer different questions. The bucket
       # is the archive: every image from every build, addressed by commit.
