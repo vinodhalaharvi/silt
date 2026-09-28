@@ -209,6 +209,87 @@ beside the artifacts listing each image with its solution hash. That is a
 product decision rather than a CI one, and it can wait until there is an image
 worth publishing.
 
+## Sharing the machine without sharing a home
+
+The builder is also the machine somebody works on. The first run failed with
+"cd: /home/runner/silt: No such file or directory", because gcloud compute ssh
+logs in as the local username and on a GitHub runner that is `runner`, which it
+created as a fresh account on the instance.
+
+The obvious fix - log in as the person who owns the clone - is the wrong one. A
+job running as a person has that person's ssh private keys, their gcloud
+credentials, and everything else in their home directory. The people who can
+put code into that job are not only the repository's owner: it runs three
+third-party actions, and whoever controls their tags controls what executes.
+
+So CI keeps the account the accident created. `runner` has a clone, a scratch
+directory and nothing worth stealing.
+
+That leaves the store, which is worth sharing: it is keyed by content, so the
+same image computes the same key whoever builds it, and it is twenty-seven
+gigabytes of warm output trees. Giving CI its own would make every first build
+half an hour. It lives in `/srv/silt`, owned by group `siltbuild`, setgid so
+new directories inherit the group, with `umask 002` in silt-build.sh so what is
+written stays group-writable.
+
+```
+  /home/vinodhalaharvi/        a person
+      silt/                    their clone
+      .ssh/  .config/gcloud/   what a CI job should not be able to read
+      .cache/silt/work         their scratch tree
+
+  /home/runner/                CI
+      ci/silt/                 detached at the commit being built
+      ci/work/  ci/lock        its scratch tree
+                               nothing else
+
+  /srv/silt/slots              shared, group siltbuild, setgid
+```
+
+The work directories are separate because that is scratch space, wiped at the
+start of every build that is not an exact hit: two builds sharing one would
+delete each other's tree. `SILT_WORK` and `SILT_LOCK` split them from the
+store, and the scratch files the prefix test writes are named after the work
+directory, so concurrent builds cannot overwrite each other's predicted
+configs.
+
+What they do share is the machine's cores and disk, which is a slower build
+rather than a broken one.
+
+### One-time setup on the builder
+
+Run as the person, once. The `runner` account already exists if a CI job has
+connected; `useradd` is there for the case where none has.
+
+```sh
+sudo groupadd -f siltbuild
+sudo useradd -m runner 2>/dev/null || true
+sudo usermod -aG siltbuild vinodhalaharvi
+sudo usermod -aG siltbuild runner
+
+sudo mkdir -p /srv/silt
+sudo mv ~/.cache/silt/slots /srv/silt/slots     # same filesystem, instant
+sudo chown -R vinodhalaharvi:siltbuild /srv/silt
+sudo chmod -R g+rwX /srv/silt
+sudo find /srv/silt -type d -exec chmod g+s {} +
+
+# Buildroot and its downloads are read-mostly and shared as they are
+sudo chgrp -R siltbuild ~/buildroot ~/.cache/buildroot-dl
+sudo chmod -R g+rX ~/buildroot ~/.cache/buildroot-dl
+```
+
+Then a person builds against the shared store like this, which is worth putting
+in a shell profile:
+
+```sh
+export SILT_CACHE=/srv/silt
+export SILT_WORK=$HOME/.cache/silt/work
+export BUILDROOT=$HOME/buildroot
+```
+
+A group change takes effect on the next login, so log out and back in before
+the first build.
+
 ## When ssh will not connect
 
 The builder is reached with `gcloud compute ssh`, which needs more than

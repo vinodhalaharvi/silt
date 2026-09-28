@@ -85,6 +85,8 @@
 #
 # Environment:
 #   SILT_CACHE       the store (default ~/.cache/silt)
+#   SILT_WORK        this build's scratch tree (default $SILT_CACHE/work)
+#   SILT_LOCK        the lock guarding SILT_WORK (default $SILT_CACHE/lock)
 #   BR2_DL_DIR       shared downloads (default ~/.cache/buildroot-dl)
 #   BUILDROOT        the Buildroot tree (default ~/buildroot)
 #   SILT             the silt binary (default ./bin/silt)
@@ -93,6 +95,13 @@
 
 set -e
 
+# The store may be shared between accounts - a person at a terminal and a CI
+# job that deliberately runs as somebody with nothing in their home directory.
+# 002 makes what is written here group-writable, which with a setgid store
+# directory lets either account prune or replace what the other wrote.
+# Harmless when the store is private: the group is then the owner's own.
+umask 002
+
 SILT=${SILT:-./bin/silt}
 BUILDROOT=${BUILDROOT:-$HOME/buildroot}
 SILT_CACHE=${SILT_CACHE:-$HOME/.cache/silt}
@@ -100,7 +109,23 @@ JOBS=${JOBS:-$(nproc 2>/dev/null || echo 4)}
 SILT_KEEP_TREES=${SILT_KEEP_TREES:-1}
 
 STORE=$SILT_CACHE/slots
-WORK=$SILT_CACHE/work
+
+# The work directory and the lock are separable from the store, and CI wants
+# them separate. The store is keyed by content - what was composed and what it
+# was composed from - so two people building the same image produce the same
+# key and can share every tree in it. The work directory cannot be shared: it
+# is one build's scratch space, wiped at the start of every build that is not
+# an exact hit.
+#
+# So a person at a terminal and a CI job on the same machine share the warm
+# store, which is the expensive thing, and keep their own work directories and
+# their own locks, which is the thing that would otherwise have one delete the
+# other's tree mid-build.
+#
+# They do then compete for the machine's cores and disk, which is a slower
+# build rather than a broken one.
+WORK=${SILT_WORK:-$SILT_CACHE/work}
+LOCK=${SILT_LOCK:-$SILT_CACHE/lock}
 
 BR2_DL_DIR=${BR2_DL_DIR:-$HOME/.cache/buildroot-dl}
 export BR2_DL_DIR
@@ -179,9 +204,10 @@ mkdir -p "$STORE"
 # tree, and the second would look like a mysterious build failure rather
 # than a mistake. A lock turns it into a sentence.
 if command -v flock >/dev/null 2>&1; then
-	exec 9>"$SILT_CACHE/lock"
+	mkdir -p "$(dirname "$LOCK")"
+	exec 9>"$LOCK"
 	if ! flock -n 9; then
-		echo "$0: another build is running (holding $SILT_CACHE/lock)" >&2
+		echo "$0: another build is running (holding $LOCK)" >&2
 		exit 1
 	fi
 fi
@@ -230,8 +256,8 @@ if [ -f "$slot/sdcard.img" ]; then
 fi
 
 # The predicted .config, which is what makes a prefix decidable.
-"$SILT" complete "$IMAGE" --buildroot "$BUILDROOT" -o "$SILT_CACHE/target.config" >/dev/null
-grep -v '^#' "$SILT_CACHE/target.config" | not_build_affecting | LC_ALL=C sort > "$SILT_CACHE/target.sorted"
+"$SILT" complete "$IMAGE" --buildroot "$BUILDROOT" -o "$WORK.target.config" >/dev/null
+grep -v '^#' "$WORK.target.config" | not_build_affecting | LC_ALL=C sort > "$WORK.target.sorted"
 
 best=
 best_lines=0
@@ -241,14 +267,14 @@ for cand in "$STORE"/*/; do
 		continue
 	fi
 
-	grep -v '^#' "$cand/predicted.config" | not_build_affecting | LC_ALL=C sort > "$SILT_CACHE/cand.sorted"
+	grep -v '^#' "$cand/predicted.config" | not_build_affecting | LC_ALL=C sort > "$WORK.cand.sorted"
 
 	# Every line of the candidate must appear in the target, symbol and
 	# value alike. One line that does not, and the tree is unsafe.
-	if [ -n "$(comm -23 "$SILT_CACHE/cand.sorted" "$SILT_CACHE/target.sorted" | head -1)" ]; then
+	if [ -n "$(comm -23 "$WORK.cand.sorted" "$WORK.target.sorted" | head -1)" ]; then
 		continue
 	fi
-	lines=$(grep -c . "$SILT_CACHE/cand.sorted" || true)
+	lines=$(grep -c . "$WORK.cand.sorted" || true)
 	if [ "${lines:-0}" -gt "$best_lines" ]; then
 		best=$cand
 		best_lines=$lines
@@ -294,7 +320,7 @@ fi
 # invocation are excluded, and symbols silt knows about because it loads
 # every pack while make was given two are skipped: kbuild never saw them.
 if ! awk -f "$(dirname "$0")/config-agrees.awk" \
-	"$WORK/build/.config" "$SILT_CACHE/target.config"; then
+	"$WORK/build/.config" "$WORK.target.config"; then
 	echo "$0: silt's prediction does not match kbuild's .config" >&2
 	echo "$0: the cache decides prefix reuse from that prediction, so this" >&2
 	echo "$0: is not safe to build on" >&2
@@ -311,7 +337,7 @@ img=$WORK/build/images/sdcard.img
 mkdir -p "$slot"
 cp "$img" "$slot/sdcard.img"
 cp "$WORK/defconfig" "$slot/defconfig"
-cp "$SILT_CACHE/target.config" "$slot/predicted.config"
+cp "$WORK.target.config" "$slot/predicted.config"
 
 if [ "$SILT_KEEP_TREES" = 1 ]; then
 	printf "       storing tree: "

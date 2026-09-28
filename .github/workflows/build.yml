@@ -40,6 +40,21 @@ env:
   PROJECT: buildroot-vh-c2
   ZONE: us-east1-b
   INSTANCE: br2-builder
+  # CI logs in as "runner", which is the local username on a GitHub runner and
+  # the account gcloud compute ssh created on the instance when the first run
+  # failed inside it: "cd: /home/runner/silt: No such file or directory".
+  #
+  # The obvious fix - log in as the person who owns the clone - is the wrong
+  # one. A job running as a person has that person's ssh private keys, their
+  # gcloud credentials and everything else in their home. The people who can
+  # put code in this job are not only this repository's owner: it runs three
+  # third-party actions, and whoever controls their tags controls what
+  # executes. So CI keeps the account with nothing worth stealing in it.
+  CI_ROOT: /home/runner/ci
+  # The store is the one thing worth sharing - keyed by content, and
+  # twenty-seven gigabytes of warm trees - so it lives where neither home owns
+  # it. Group siltbuild, setgid, umask 002; see docs/CI.md for the setup.
+  SILT_STORE: /srv/silt
   BUCKET: gs://silt-images-353644819277
   # --tunnel-through-iap routes ssh over Identity-Aware Proxy instead of the
   # instance's external address, which is the answer when a firewall does not
@@ -109,11 +124,18 @@ jobs:
           # to whatever main happens to be, so a tag builds what the tag says.
           gcloud compute ssh "$INSTANCE" --zone "$ZONE" --project "$PROJECT" --quiet $SSH_FLAGS \
             --command "set -e
-              cd ~/silt
+              mkdir -p '$CI_ROOT'
+              if [ ! -d '$CI_ROOT/silt/.git' ]; then
+                git clone --quiet https://github.com/${{ github.repository }}.git '$CI_ROOT/silt'
+              fi
+              cd '$CI_ROOT/silt'
               git fetch --all --quiet
-              git checkout --quiet ${{ github.sha }}
+              git checkout --quiet --detach ${{ github.sha }}
               make
-              export BUILDROOT=\$HOME/buildroot
+              export BUILDROOT=/home/vinodhalaharvi/buildroot
+              export SILT_CACHE='$SILT_STORE'
+              export SILT_WORK='$CI_ROOT/work'
+              export SILT_LOCK='$CI_ROOT/lock'
               images='${{ inputs.image }}'
               [ -n \"\$images\" ] || images=\$(./bin/silt images --ci build)
               for i in \$images; do
@@ -136,7 +158,7 @@ jobs:
         run: |
           gcloud compute ssh "$INSTANCE" --zone "$ZONE" --project "$PROJECT" --quiet $SSH_FLAGS \
             --command "set -e
-              cd ~/.cache/silt/slots
+              cd '$SILT_STORE/slots'
               for s in */; do
                 [ -f \"\$s/sdcard.img\" ] || continue
                 name=\$(sed -n 's/^image  *//p' \"\$s/manifest\" | head -1)
@@ -156,7 +178,7 @@ jobs:
           gcloud compute ssh "$INSTANCE" --zone "$ZONE" --project "$PROJECT" --quiet $SSH_FLAGS \
             --command "set -e
               rm -rf ~/ci-artifacts && mkdir -p ~/ci-artifacts
-              cd ~/.cache/silt/slots
+              cd '$SILT_STORE/slots'
               for s in */; do
                 [ -f \"\$s/sdcard.img\" ] || continue
                 name=\$(sed -n 's/^image  *//p' \"\$s/manifest\" | head -1)
