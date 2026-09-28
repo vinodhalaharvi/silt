@@ -151,10 +151,12 @@ jobs:
             --command "set -e
               cd '$SILT_STORE/slots'
               for s in */; do
-                [ -f \"\$s/sdcard.img\" ] || continue
+                [ -s \"\$s/artifacts\" ] || continue
                 name=\$(sed -n 's/^image  *//p' \"\$s/manifest\" | head -1)
-                gcloud storage cp --quiet \"\$s/sdcard.img\" \
-                  '$BUCKET/${{ github.sha }}'/\"\$name\".img
+                while read -r a; do
+                  [ -n \"\$a\" ] && gcloud storage cp --quiet \"\$s/\$a\" \
+                    '$BUCKET/${{ github.sha }}'/\"\$name\"/\"\$a\"
+                done < \"\$s/artifacts\"
                 gcloud storage cp --quiet \"\$s/defconfig\" \"\$s/predicted.config\" \"\$s/manifest\" \
                   '$BUCKET/${{ github.sha }}'/\"\$name\"/
               done"
@@ -171,15 +173,18 @@ jobs:
               rm -rf ~/ci-artifacts && mkdir -p ~/ci-artifacts
               cd '$SILT_STORE/slots'
               for s in */; do
-                [ -f \"\$s/sdcard.img\" ] || continue
+                [ -s \"\$s/artifacts\" ] || continue
                 name=\$(sed -n 's/^image  *//p' \"\$s/manifest\" | head -1)
-                size=\$(stat -c %s \"\$s/sdcard.img\")
+                size=\$(du -cb \$(sed \"s|^|\$s/|\" \"\$s/artifacts\") | tail -1 | cut -f1)
                 if [ \"\$size\" -gt 1800000000 ]; then
                   echo \"skipping \$name: \$((size / 1000000))MB is over the artifact limit\"
                   continue
                 fi
                 mkdir -p ~/ci-artifacts/\"\$name\"
-                cp \"\$s/sdcard.img\" \"\$s/defconfig\" \"\$s/manifest\" ~/ci-artifacts/\"\$name\"/
+                while read -r a; do
+                  [ -n \"\$a\" ] && cp \"\$s/\$a\" ~/ci-artifacts/\"\$name\"/
+                done < \"\$s/artifacts\"
+                cp \"\$s/defconfig\" \"\$s/manifest\" ~/ci-artifacts/\"\$name\"/
               done
               ls -la ~/ci-artifacts/"
           gcloud compute scp --recurse --zone "$ZONE" --project "$PROJECT" --quiet $SSH_FLAGS \

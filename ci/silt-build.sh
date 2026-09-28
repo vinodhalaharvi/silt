@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 #
 # silt-build - build an image, reusing whatever has already been built.
 #
@@ -151,6 +151,35 @@ not_build_affecting() {
 	grep -vE '^(BR2_ROOTFS_OVERLAY|BR2_ROOTFS_POST_BUILD_SCRIPT|BR2_ROOTFS_POST_IMAGE_SCRIPT|BR2_ROOTFS_POST_SCRIPT_ARGS|BR2_TARGET_ROOTFS_EXT2_SIZE|BR2_TARGET_ROOTFS_TAR|BR2_PACKAGE_RPI_FIRMWARE_CONFIG_FILE|BR2_PACKAGE_RPI_FIRMWARE_CMDLINE_FILE|BR2_DEFCONFIG|BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES|BR2_DL_DIR|BR2_CCACHE_DIR|BR2_JLEVEL|BR2_EXTERNAL[A-Z_0-9]*)='
 }
 
+# What counts as the built thing, which is not the same on every board.
+#
+# A Raspberry Pi, a Rock 5B and an i.MX EVK all produce sdcard.img, so the
+# store assumed one. A QEMU target does not: it produces a kernel and a
+# filesystem, to be passed to qemu-system-* separately, and the build that
+# revealed this had succeeded - every package compiled, the rootfs assembled -
+# and then failed at "built, but no sdcard.img to store".
+#
+# So: whatever the board makes. sdcard.img when there is one, otherwise the
+# kernel and the filesystem, and the manifest records which.
+artifacts_in() {
+	local dir=$1 found=()
+	local candidate
+	for candidate in sdcard.img disk.img; do
+		if [ -f "$dir/$candidate" ]; then
+			printf '%s\n' "$candidate"
+			return 0
+		fi
+	done
+	# A QEMU image, or any board whose output is loose files. rootfs.ext4 is
+	# a symlink to rootfs.ext2 in Buildroot, so both are listed and the copy
+	# dereferences.
+	for candidate in Image zImage bzImage rootfs.ext4 rootfs.squashfs rootfs.cpio.gz; do
+		[ -f "$dir/$candidate" ] && found+=("$candidate")
+	done
+	[ ${#found[@]} -gt 0 ] || return 1
+	printf '%s\n' "${found[@]}"
+}
+
 cmd_list() {
 	[ -d "$STORE" ] || { echo "empty store at $STORE"; return 0; }
 	for slot in "$STORE"/*/; do
@@ -245,13 +274,16 @@ unset IFS
 hash=$(printf '%s' "$key" | sha256sum | cut -c1-24)
 slot=$STORE/$hash
 
-if [ -f "$slot/sdcard.img" ]; then
+if [ -s "$slot/artifacts" ]; then
 	touch "$slot"
 	echo "hit    $name  $hash"
 	mkdir -p "$OUT/build/images"
-	cp "$slot/sdcard.img" "$OUT/build/images/sdcard.img"
+	while read -r a; do
+		[ -n "$a" ] || continue
+		cp "$slot/$a" "$OUT/build/images/$a"
+		echo "       $OUT/build/images/$a"
+	done < "$slot/artifacts"
 	cp "$slot/defconfig" "$OUT/defconfig" 2>/dev/null || true
-	echo "       $OUT/build/images/sdcard.img"
 	exit 0
 fi
 
@@ -331,11 +363,19 @@ start=$(date +%s)
 make -C "$BUILDROOT" O="$WORK/build" -j"$JOBS"
 took=$(( $(date +%s) - start ))
 
-img=$WORK/build/images/sdcard.img
-[ -f "$img" ] || { echo "$0: built, but no $img to store" >&2; exit 1; }
+if ! mapfile -t built < <(artifacts_in "$WORK/build/images"); then
+	echo "$0: the build finished and left nothing this script recognises in" >&2
+	echo "  $WORK/build/images" >&2
+	ls -la "$WORK/build/images" >&2
+	echo "  add the file this board produces to artifacts_in()" >&2
+	exit 1
+fi
 
 mkdir -p "$slot"
-cp "$img" "$slot/sdcard.img"
+for a in "${built[@]}"; do
+	cp -L "$WORK/build/images/$a" "$slot/$a"
+done
+printf '%s\n' "${built[@]}" > "$slot/artifacts"
 cp "$WORK/defconfig" "$slot/defconfig"
 cp "$WORK.target.config" "$slot/predicted.config"
 
@@ -356,12 +396,15 @@ fi
 	echo "hash   $hash"
 	echo "built  $(date -u +%Y-%m-%dT%H:%M:%SZ) in ${took}s"
 	echo "solution $solution"
-	echo "size   $(du -h "$img" | cut -f1)"
+	echo "artifacts ${built[*]}"
+	echo "size   $(du -ch "${built[@]/#/$slot/}" | tail -1 | cut -f1)"
 } > "$slot/manifest"
 
 mkdir -p "$OUT/build/images"
-cp "$img" "$OUT/build/images/sdcard.img"
+for a in "${built[@]}"; do
+	cp -L "$WORK/build/images/$a" "$OUT/build/images/$a"
+done
 cp "$WORK/defconfig" "$OUT/defconfig"
 
 echo "store  $name  $hash  (${took}s)"
-echo "       $OUT/build/images/sdcard.img"
+printf '       %s\n' "${built[@]/#/$OUT/build/images/}"

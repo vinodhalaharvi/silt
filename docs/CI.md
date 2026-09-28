@@ -215,6 +215,22 @@ It also does not borrow anything from a person's home. Buildroot is cloned to
 space are under the CI account's own ~/ci. Each of those is checked before the
 build starts, with the command that fixes it named in the error.
 
+## What "the image" is, per board
+
+A Raspberry Pi, a Rock 5B and an i.MX EVK all produce `sdcard.img`, so the
+store assumed one and every path in it was named after that file. A QEMU target
+produces no such thing: it produces a kernel and a filesystem, passed to
+qemu-system-* separately. The first CI build to get all the way through the
+compile - every package built, the rootfs assembled - then failed with "built,
+but no sdcard.img to store".
+
+`artifacts_in()` in silt-build.sh decides per board: `sdcard.img` or `disk.img`
+when there is one, otherwise the kernel and filesystem images it recognises.
+Each slot records what it stored in an `artifacts` file, and the hit path, the
+bucket copy and the run's artifacts all read that rather than assuming a name.
+A board producing something not on the list fails with a listing of what the
+build actually left and where to add it.
+
 ## Where the images end up
 
 Two destinations, answering different questions.
