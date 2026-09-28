@@ -119,6 +119,17 @@ func parseImage(n *sexpr.Node) (*Image, error) {
 				im.VerifiedAgainst[h] = a.Args()[0].Text
 			}
 
+		case "ci":
+			s, err := oneSymbol(cl)
+			if err != nil {
+				return nil, err
+			}
+			lvl, ok := ParseCILevel(s)
+			if !ok {
+				return nil, errf(cl, "unknown ci level %q: check, build or boot", s)
+			}
+			im.CI = lvl
+
 		case "repair-policy":
 			if err := parsePolicy(cl, &im.Policy); err != nil {
 				return nil, err

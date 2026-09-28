@@ -38,6 +38,7 @@ const usage = `silt — composable S-expressions over Kconfig
         [--buildroot DIR]           let rules see select-implied symbols
   silt fmt [-w] [PATH...]           canonical form
   silt externals IMAGE.sx           BR2_EXTERNAL for that image, colon-joined
+  silt images [--ci LEVEL]          list images; --ci check|build|boot to filter
   silt hash [PATH...]               content address of each file
   silt hash --solution IMAGE.sx --buildroot DIR [--linux DIR]
                                     content address of a composed image: its
@@ -122,6 +123,8 @@ func main() {
 		err = cmdHash(args)
 	case "externals":
 		err = cmdExternals(args)
+	case "images":
+		err = cmdImages(args)
 	case "why":
 		err = cmdWhy(args)
 	case "solve":
@@ -871,6 +874,67 @@ func cmdSolutionHash(args []string) error {
 			strings.HasPrefix(line, "fragment ") || strings.HasPrefix(line, "component ") {
 			fmt.Printf("  %s\n", line)
 		}
+	}
+	return nil
+}
+
+// cmdImages lists images, optionally only those CI should do something with.
+//
+// This exists so continuous integration can ask rather than be told. A list of
+// images to build, kept in a workflow file, is correct until someone adds an
+// image and forgets - the same failure as the hand-maintained BR2_EXTERNAL
+// lines. The image itself says what CI should do with it, and this reports it:
+//
+//	for i in $(silt images --ci build); do ci/silt-build.sh "$i"; done
+//
+// Absent from an image, the level is check: composed and verified on every
+// commit, built by nobody. That is the right default when most images here
+// describe boards that do not exist yet.
+func cmdImages(args []string) error {
+	level := ""
+	var rest []string
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--ci" {
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("--ci needs a level: check, build or boot")
+			}
+			level = args[i]
+			continue
+		}
+		rest = append(rest, args[i])
+	}
+
+	var want lang.CILevel
+	if level != "" {
+		l, ok := lang.ParseCILevel(level)
+		if !ok {
+			return fmt.Errorf("unknown ci level %q: check, build or boot", level)
+		}
+		want = l
+	}
+
+	files, err := loadAll(rest)
+	if err != nil {
+		return err
+	}
+
+	var out []string
+	for _, f := range files {
+		for _, im := range f.Images {
+			if level != "" && im.CI != want {
+				continue
+			}
+			if level == "" {
+				out = append(out, fmt.Sprintf("%-28s %-6s %s", im.Name, im.CI, f.Path))
+				continue
+			}
+			out = append(out, f.Path)
+		}
+	}
+	sort.Strings(out)
+	for _, line := range out {
+		fmt.Println(line)
 	}
 	return nil
 }

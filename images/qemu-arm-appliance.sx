@@ -53,4 +53,7 @@
     buildroot:BR2_TARGET_UBOOT_*
     buildroot:BR2_PACKAGE_BUSYBOX_CONFIG_*)
 
+  ;; CI boots this one. It is the only appliance a machine can run without
+  (ci boot)
+
   (verified-against (buildroot "2025.02.16")))

@@ -10,4 +10,7 @@
     feature:dev-ssh
     feature:modbus
     feature:fieldbus-test)
+  ;; CI builds this one: it is the product, and it runs on hardware here.
+  (ci build)
+
   (verified-against (buildroot "2025.02.16")))

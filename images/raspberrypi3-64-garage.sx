@@ -30,4 +30,7 @@
   (override
     (value buildroot:BR2_TARGET_ROOTFS_EXT2_SIZE "256M"))
 
+  ;; CI builds this one: it runs on a board in the house, doing a job.
+  (ci build)
+
   (verified-against (buildroot "2025.02.16")))

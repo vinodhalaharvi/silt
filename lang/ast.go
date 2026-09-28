@@ -214,7 +214,56 @@ type Image struct {
 	// deleting it. Not inherited: an image derived from a fixture is not
 	// itself one, and inheriting the marker would excuse its failures.
 	ExpectProblems string
-	Pos            sexpr.Pos
+	// CI is what continuous integration should do with this image, and
+	// absent means check only. Most images here describe boards nobody has,
+	// or variants kept to prove a composition works; those are worth
+	// checking on every commit, which costs a second, and not worth building
+	// on any, which costs twenty minutes of a machine somebody pays for.
+	//
+	// It lives in the image rather than in a list somewhere because a list
+	// is right until someone forgets it - the same failure as the
+	// hand-maintained BR2_EXTERNAL lines that silt externals replaced.
+	CI  CILevel
+	Pos sexpr.Pos
+}
+
+// CILevel is how much work CI does for an image.
+type CILevel int
+
+const (
+	// CICheck is the default and the absence of a (ci ...) form: parse,
+	// compose, predict, and verify every claim against the tree. No build.
+	CICheck CILevel = iota
+	// CIBuild builds the image and keeps the artifact.
+	CIBuild
+	// CIBoot builds it and boots it. Only images a machine can run - the
+	// QEMU targets - can say this, which the checker enforces rather than
+	// trusting the author to remember.
+	CIBoot
+)
+
+func (l CILevel) String() string {
+	switch l {
+	case CIBuild:
+		return "build"
+	case CIBoot:
+		return "boot"
+	default:
+		return "check"
+	}
+}
+
+// ParseCILevel maps the word in a (ci ...) form to a level.
+func ParseCILevel(s string) (CILevel, bool) {
+	switch s {
+	case "check":
+		return CICheck, true
+	case "build":
+		return CIBuild, true
+	case "boot":
+		return CIBoot, true
+	}
+	return CICheck, false
 }
 
 // File is everything parsed out of one .sx file.

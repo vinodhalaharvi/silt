@@ -478,6 +478,17 @@ func oneString(n *sexpr.Node) (string, error) {
 	return a[0].Text, nil
 }
 
+// oneSymbol is oneString for a bare word: (ci build) rather than (ci "build").
+// A level is one of a fixed few, so it reads as a symbol like every other
+// choice in this language, not as free text.
+func oneSymbol(n *sexpr.Node) (string, error) {
+	a := n.Args()
+	if len(a) != 1 || a[0].Kind != sexpr.KindSymbol {
+		return "", errf(n, "(%s SYMBOL) takes one bare word", n.Head())
+	}
+	return a[0].Text, nil
+}
+
 func parseCapabilityDecls(n *sexpr.Node) (*Capabilities, error) {
 	c := &Capabilities{Pos: n.Pos}
 	for _, item := range n.Args() {
