@@ -128,6 +128,12 @@ jobs:
           # to whatever main happens to be, so a tag builds what the tag says.
           gcloud compute ssh "$INSTANCE" --zone "$ZONE" --project "$PROJECT" --quiet $SSH_FLAGS \
             --command "set -e
+              # ssh host 'command' runs a non-interactive shell, which reads
+              # no profile and no bashrc, so nothing a login session puts on
+              # PATH is there. Go is installed system-wide on the builder and
+              # the failure without this line is the terse and misleading
+              # 'make: go: No such file or directory'.
+              export PATH=/usr/local/go/bin:/usr/local/bin:\$PATH
               mkdir -p '$CI_ROOT'
               if [ ! -d '$CI_ROOT/silt/.git' ]; then
                 git clone --quiet https://github.com/${{ github.repository }}.git '$CI_ROOT/silt'

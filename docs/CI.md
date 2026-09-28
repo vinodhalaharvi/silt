@@ -297,6 +297,18 @@ export BUILDROOT=$HOME/buildroot
 A group change takes effect on the next login, so log out and back in before
 the first build.
 
+## What a non-interactive ssh does not have
+
+`ssh host "command"` runs a non-interactive shell, which reads no profile and
+no bashrc. Anything a login session puts on PATH is absent, and the failure is
+terse: `make: go: No such file or directory`, on a machine where go is plainly
+installed and works the moment you log in.
+
+The build step exports PATH for that reason. The general form is worth keeping
+in mind: anything a person's shell sets up is missing from a CI job by
+construction, so if a build comes to depend on an environment variable it
+belongs in the workflow rather than in somebody's bashrc.
+
 ## When ssh will not connect
 
 The builder is reached with `gcloud compute ssh`, which needs more than
