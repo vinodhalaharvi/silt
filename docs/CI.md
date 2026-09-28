@@ -169,11 +169,18 @@ service_account:
 
 ## The workflows
 
-`.github/workflows/check.yml` runs on every push and pull request: build, test,
-`silt fmt --check`, and `silt check` against a cached shallow clone of the
-pinned Buildroot tag. It also prints what is marked `(ci build)` into the job
-summary, so a pull request that marks an image shows what it has signed the
-machine up for.
+`.github/workflows/ci.yml` is the cheap half and predates all of this: gofmt,
+vet, unit tests, then the real work - the importer and fixpoint tests against a
+cached Buildroot tree, the evaluator checked against Buildroot's own conf
+binary, CONFIG_* claims against a real kernel's Kconfig, and `ci/check-images.sh`
+over every image. A weekly job imports and round-trips every defconfig
+Buildroot ships.
+
+A second workflow was added here and then deleted: it duplicated a weaker
+version of that, and called `silt fmt --check`, which is not a flag silt has.
+What it had that was worth keeping is one step, now in ci.yml: printing what is
+marked `(ci build)` into the job summary, so a pull request that marks an image
+shows what it has signed the builder up for.
 
 `.github/workflows/build.yml` is gated: manual dispatch, a `v*` tag, or the
 nightly schedule. It authenticates with WIF, starts the instance, checks the

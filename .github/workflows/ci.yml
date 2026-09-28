@@ -116,6 +116,22 @@ jobs:
       - name: check images against buildroot and the kernel
         run: ci/check-images.sh "$PWD/buildroot" bin/silt "$PWD/linux"
 
+      # What a build run would build, printed rather than built. An image says
+      # what CI should do with it - (ci build), (ci boot), absent for check
+      # only - so a pull request that marks one shows here what it has signed
+      # the builder up for. The building itself is build.yml, which is gated
+      # and runs on the machine that has the cache.
+      - name: what build.yml would build
+        run: |
+          {
+            echo "### Marked for the builder"
+            echo
+            echo '```'
+            ./bin/silt images --ci build
+            ./bin/silt images --ci boot
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   every-defconfig:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
