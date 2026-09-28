@@ -1,0 +1,126 @@
+# The expensive half: start the one machine that has the cache, build what the
+# images ask for, put the artifacts somewhere, stop the machine.
+#
+# Gated deliberately. Every image here is checked on every commit by check.yml,
+# which costs seconds; building is twenty minutes of a machine somebody pays
+# for, so it happens when asked - a manual run, a tag, or the nightly schedule.
+#
+# Which images get built is not written here. The images say, and this asks:
+#
+#   silt images --ci build
+#
+# A list in this file would be right until someone adds an image and forgets.
+#
+# Authentication is Workload Identity Federation: GitHub signs a token saying
+# which repository is asking, GCP is configured to trust that for this
+# repository only, and mints an hour-long credential. There is no key in this
+# repository to leak. See docs/CI.md.
+
+name: build
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "one image path, or empty for everything marked (ci build)"
+        required: false
+        type: string
+  push:
+    tags: ["v*"]
+  schedule:
+    # 07:00 UTC, which is the small hours in US Eastern: a nightly that has
+    # finished before anyone looks.
+    - cron: "0 7 * * *"
+
+permissions:
+  contents: read
+  id-token: write        # required for the OIDC token; without it, auth fails
+
+env:
+  PROJECT: buildroot-vh-c2
+  ZONE: us-east1-b
+  INSTANCE: br2-builder
+  BUCKET: gs://silt-images-353644819277
+
+concurrency:
+  # One build at a time. The builder has a single work directory and a flock to
+  # match; two runs would only queue behind each other on the machine, and the
+  # second would look like a hang rather than a queue.
+  group: br2-builder
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/353644819277/locations/global/workloadIdentityPools/github/providers/silt
+          service_account: silt-ci@buildroot-vh-c2.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: start the builder
+        run: |
+          gcloud compute instances start "$INSTANCE" \
+            --zone "$ZONE" --project "$PROJECT"
+          # The instance is running before sshd is; retry rather than sleep a
+          # guessed number of seconds.
+          for i in $(seq 1 30); do
+            if gcloud compute ssh "$INSTANCE" --zone "$ZONE" --project "$PROJECT" \
+                 --command "true" --quiet 2>/dev/null; then
+              echo "reachable after $((i * 10))s"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "the builder did not become reachable" >&2
+          exit 1
+
+      - name: build
+        run: |
+          # The builder has its own clone; bring it to this commit rather than
+          # to whatever main happens to be, so a tag builds what the tag says.
+          gcloud compute ssh "$INSTANCE" --zone "$ZONE" --project "$PROJECT" --quiet \
+            --command "set -e
+              cd ~/silt
+              git fetch --all --quiet
+              git checkout --quiet ${{ github.sha }}
+              make
+              export BUILDROOT=\$HOME/buildroot
+              images='${{ inputs.image }}'
+              [ -n \"\$images\" ] || images=\$(./bin/silt images --ci build)
+              for i in \$images; do
+                echo \"::group::\$i\"
+                ./ci/silt-build.sh \"\$i\"
+                echo '::endgroup::'
+              done
+              ./ci/silt-build.sh --list"
+
+      - name: publish the artifacts
+        run: |
+          gcloud compute ssh "$INSTANCE" --zone "$ZONE" --project "$PROJECT" --quiet \
+            --command "set -e
+              cd ~/.cache/silt/slots
+              for s in */; do
+                [ -f \"\$s/sdcard.img\" ] || continue
+                name=\$(sed -n 's/^image  *//p' \"\$s/manifest\" | head -1)
+                gcloud storage cp --quiet \"\$s/sdcard.img\" \
+                  '$BUCKET/${{ github.sha }}'/\"\$name\".img
+                gcloud storage cp --quiet \"\$s/defconfig\" \"\$s/predicted.config\" \"\$s/manifest\" \
+                  '$BUCKET/${{ github.sha }}'/\"\$name\"/
+              done"
+          echo "images at $BUCKET/${{ github.sha }}/" >> "$GITHUB_STEP_SUMMARY"
+
+      # always(), so a failed build still stops the machine. It does not cover
+      # a cancelled run or a runner that disappears, which is what the
+      # watchdog in docs/CI.md is for.
+      - name: stop the builder
+        if: always()
+        run: |
+          gcloud compute instances stop "$INSTANCE" \
+            --zone "$ZONE" --project "$PROJECT" --quiet

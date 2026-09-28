@@ -167,12 +167,34 @@ service_account:
   silt-ci@buildroot-vh-c2.iam.gserviceaccount.com
 ```
 
+## The workflows
+
+`.github/workflows/check.yml` runs on every push and pull request: build, test,
+`silt fmt --check`, and `silt check` against a cached shallow clone of the
+pinned Buildroot tag. It also prints what is marked `(ci build)` into the job
+summary, so a pull request that marks an image shows what it has signed the
+machine up for.
+
+`.github/workflows/build.yml` is gated: manual dispatch, a `v*` tag, or the
+nightly schedule. It authenticates with WIF, starts the instance, checks the
+builder's clone out at the commit being built rather than at main, runs
+`ci/silt-build.sh` for everything `silt images --ci build` reports, copies the
+artifacts to the bucket, and stops the instance in an `always()` step.
+
+It takes an optional image path on manual dispatch, for building one thing
+without waiting for the set.
+
+`concurrency: br2-builder` allows one run at a time, because the builder has a
+single work directory and a flock to match. Two runs would queue on the machine
+anyway, and the second would look like a hang rather than a queue.
+
 ## Decisions still open
 
-**Self-hosted runner, or ssh from the workflow.** A runner installed on the VM
-as a service gives live logs in the Actions UI and survives restarts;
-`gcloud compute ssh` from the job is fewer moving parts but streams nothing
-until the command ends. Leaning runner.
+**ssh from the workflow, for now.** `gcloud compute ssh --command` is what
+build.yml uses: no runner to install, nothing to keep updated on the box, and
+the output streams into the Actions log as it happens. A self-hosted runner
+would give nicer step boundaries and survive a dropped connection mid-build,
+which is the argument for switching if a long build ever gets cut off.
 
 **Stopping the VM when a job dies.** The workflow stops it in an `always()`
 step, which covers a failed build but not a cancelled run or a runner that
