@@ -61,6 +61,10 @@ env:
   # allow 22 from a GitHub runner. It needs roles/iap.tunnelResourceAccessor
   # on the service account. Empty means a direct connection.
   SSH_FLAGS: ""
+  # While the workflow is still being got right: leave the instance running
+  # when a build fails, so the failure can be looked at. Set to false once
+  # this is boring, or the 3am nightly will leave a machine on.
+  KEEP_ON_FAILURE: "true"
 
 concurrency:
   # One build at a time. The builder has a single work directory and a flock to
@@ -202,11 +206,31 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
-      # always(), so a failed build still stops the machine. It does not cover
-      # a cancelled run or a runner that disappears, which is what the
-      # watchdog in docs/CI.md is for.
+      # Stop the machine when the build worked, and leave it running when it
+      # did not.
+      #
+      # This was if: always(), which is right for cost and wrong for
+      # debugging: every failed run shut down the instance somebody was on,
+      # and the next attempt paid a minute to start it again and lost whatever
+      # state the failure had left behind. A failed build is exactly when you
+      # want to log in and look.
+      #
+      # The cost of that is a machine left running after a failure nobody is
+      # watching - the 3am nightly, say - so KEEP_ON_FAILURE is here to be
+      # turned off once the workflow is boring. Until then the watchdog in
+      # docs/CI.md is the backstop, and "gcloud compute instances stop" is one
+      # command away.
       - name: stop the builder
-        if: always()
+        if: success() || env.KEEP_ON_FAILURE != 'true'
         run: |
           gcloud compute instances stop "$INSTANCE" \
             --zone "$ZONE" --project "$PROJECT" --quiet
+
+      - name: left running for inspection
+        if: failure() && env.KEEP_ON_FAILURE == 'true'
+        run: |
+          echo "the build failed and $INSTANCE is still running, so you can look:" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "gcloud compute ssh $INSTANCE --zone $ZONE --project $PROJECT" >> "$GITHUB_STEP_SUMMARY"
+          echo "gcloud compute instances stop $INSTANCE --zone $ZONE --project $PROJECT" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

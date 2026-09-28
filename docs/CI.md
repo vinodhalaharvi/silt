@@ -324,10 +324,16 @@ the output streams into the Actions log as it happens. A self-hosted runner
 would give nicer step boundaries and survive a dropped connection mid-build,
 which is the argument for switching if a long build ever gets cut off.
 
-**Stopping the VM when a job dies.** The workflow stops it in an `always()`
-step, which covers a failed build but not a cancelled run or a runner that
-disappears. A watchdog on the box — stop myself if no job has touched me for an
-hour — is the belt to that braces.
+**Stopping the VM when a job dies.** The workflow stops it on success, and on
+failure only when `KEEP_ON_FAILURE` is not "true". It is "true" now, because a
+failing run that shuts down the machine takes the evidence with it and costs a
+minute to start again - and a failed build is exactly when you want to log in
+and look. Set it to false once the workflow is boring, or the nightly will
+leave a machine running at 3am.
+
+Neither setting covers a cancelled run or a runner that disappears mid-job. A
+watchdog on the box - stop myself if no job has touched me for an hour - is the
+belt to those braces, and is worth writing before the nightly is trusted.
 
 **What to assert beyond "it built."** `ci/silt-build.sh` already runs
 `silt solve` before and `config-agrees.awk` after `make defconfig`, so every CI
