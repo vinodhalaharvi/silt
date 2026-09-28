@@ -81,11 +81,37 @@ fail() { printf '\n\033[31mFAILED: %s\033[0m\n' "$*" >&2; exit 1; }
 
 say "1. the tunnel"
 
-command -v tailscale >/dev/null || fail "tailscale is not installed here"
-run "tailscale status | head -20" || fail "tailscale status failed"
+# Running this on the appliance's own LAN makes every step below pass whether
+# the tunnel works or not, which would make the recording worthless. Warn
+# loudly; do not refuse, because there are reasons to run it locally while
+# developing the script itself.
+if ping -c1 -W1 "$DEVICE" >/dev/null 2>&1 &&
+   ! ip route get "$DEVICE" 2>/dev/null | grep -q tailscale; then
+	printf '\033[33m'
+	echo "warning: $DEVICE answers without going through the tunnel, so this"
+	echo "machine appears to be on the appliance's own LAN. Every step below"
+	echo "will pass whether the tunnel works or not. Tether to a phone and"
+	echo "run it again for a recording that proves anything."
+	printf '\033[0m'
+	sleep 3
+fi
 
-tailscale status 2>/dev/null | grep -q "$TAILNET" ||
+command -v tailscale >/dev/null || fail "tailscale is not installed here"
+
+# --peers=false, and no pipe into head. Piping it hangs: with fewer lines
+# than head asks for, head waits for EOF and tailscale status keeps its
+# connection open watching for changes, so the recording stops on step one
+# with the cursor blinking.
+run "tailscale status --peers=false" || fail "tailscale status failed"
+run "tailscale status --json | grep -E '\"(BackendState|TailscaleIPs)\"' || true"
+
+# The peer list is needed here, so ask for it once and with a timeout: a
+# tailnet this machine is not on would otherwise wait rather than answer.
+peers=$(timeout 20 tailscale status 2>/dev/null || true)
+grep -q "$TAILNET" <<<"$peers" ||
 	fail "$TAILNET is not in this machine's tailnet - is the appliance connected?"
+
+printf '%s\n' "$peers" | grep -E "garage|$TAILNET" || true
 
 # 100.64.0.0/10 is the CGNAT range Tailscale assigns from. Saying so out loud
 # matters: the address looks private because it is, and the traffic reaching
