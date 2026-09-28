@@ -188,6 +188,46 @@ without waiting for the set.
 single work directory and a flock to match. Two runs would queue on the machine
 anyway, and the second would look like a hang rather than a queue.
 
+## Where the images end up
+
+Two destinations, answering different questions.
+
+The bucket is the archive: every image from every build, addressed by the
+commit that produced it, alongside its defconfig, its predicted config and its
+manifest. Nothing expires, and a build from months ago can be reproduced or
+compared.
+
+The run's artifacts are the convenience: click and download from the Actions
+page, no cloud console and no credentials. That is what you want when someone
+asks for an image and the answer should be a link. Artifacts are capped at 2GB
+a file and expire after the retention window, so the collection step skips
+anything too large - the appliance images are 120-160MB and fit easily, while
+the media and k3s images are gigabytes and go only to the bucket.
+
+A public download page, if one is ever wanted, is a static index written
+beside the artifacts listing each image with its solution hash. That is a
+product decision rather than a CI one, and it can wait until there is an image
+worth publishing.
+
+## When ssh will not connect
+
+The builder is reached with `gcloud compute ssh`, which needs more than
+permission to start the instance. The first run failed here for five minutes
+saying only "the builder did not become reachable", because the retry loop sent
+the error to /dev/null - the first attempt now prints its output in a group,
+and the loop is three minutes rather than five.
+
+The usual causes, in the order they are worth checking:
+
+- the service account cannot write ssh keys to project metadata:
+  `roles/compute.instanceAdmin.v1` at the project level, or
+  `roles/compute.osAdminLogin` if OS Login is enforced
+- OS Login is enforced and the account has no login role: add
+  `roles/compute.osAdminLogin` and `roles/iam.serviceAccountUser`
+- no firewall rule allows 22 from the runner's address: set `SSH_FLAGS` to
+  `--tunnel-through-iap` in the workflow and grant
+  `roles/iap.tunnelResourceAccessor`
+
 ## Decisions still open
 
 **ssh from the workflow, for now.** `gcloud compute ssh --command` is what

@@ -41,6 +41,11 @@ env:
   ZONE: us-east1-b
   INSTANCE: br2-builder
   BUCKET: gs://silt-images-353644819277
+  # --tunnel-through-iap routes ssh over Identity-Aware Proxy instead of the
+  # instance's external address, which is the answer when a firewall does not
+  # allow 22 from a GitHub runner. It needs roles/iap.tunnelResourceAccessor
+  # on the service account. Empty means a direct connection.
+  SSH_FLAGS: ""
 
 concurrency:
   # One build at a time. The builder has a single work directory and a flock to
@@ -68,24 +73,41 @@ jobs:
         run: |
           gcloud compute instances start "$INSTANCE" \
             --zone "$ZONE" --project "$PROJECT"
-          # The instance is running before sshd is; retry rather than sleep a
-          # guessed number of seconds.
-          for i in $(seq 1 30); do
+
+          # The instance is running before sshd is, so retry rather than sleep
+          # a guessed number of seconds. The first attempt's output is kept:
+          # an earlier version sent it to /dev/null and the job failed after
+          # five and a half minutes saying only "did not become reachable",
+          # which is the least useful sentence a five-minute wait can produce.
+          echo "::group::first ssh attempt, with its output"
+          gcloud compute ssh "$INSTANCE" --zone "$ZONE" --project "$PROJECT" \
+            --command "true" --quiet $SSH_FLAGS || true
+          echo "::endgroup::"
+
+          for i in $(seq 1 18); do
             if gcloud compute ssh "$INSTANCE" --zone "$ZONE" --project "$PROJECT" \
-                 --command "true" --quiet 2>/dev/null; then
+                 --command "true" --quiet $SSH_FLAGS >/dev/null 2>&1; then
               echo "reachable after $((i * 10))s"
               exit 0
             fi
             sleep 10
           done
-          echo "the builder did not become reachable" >&2
+
+          echo "the builder did not become reachable in three minutes" >&2
+          echo "the grouped output above is the actual error; usually one of:" >&2
+          echo "  the service account cannot write ssh keys to project metadata" >&2
+          echo "    -> roles/compute.osAdminLogin, or roles/compute.instanceAdmin.v1 at project level" >&2
+          echo "  OS Login is enforced and the account lacks a login role" >&2
+          echo "    -> roles/compute.osAdminLogin plus roles/iam.serviceAccountUser" >&2
+          echo "  no firewall rule allows 22 from the runner's address" >&2
+          echo "    -> set SSH_FLAGS to --tunnel-through-iap and grant roles/iap.tunnelResourceAccessor" >&2
           exit 1
 
       - name: build
         run: |
           # The builder has its own clone; bring it to this commit rather than
           # to whatever main happens to be, so a tag builds what the tag says.
-          gcloud compute ssh "$INSTANCE" --zone "$ZONE" --project "$PROJECT" --quiet \
+          gcloud compute ssh "$INSTANCE" --zone "$ZONE" --project "$PROJECT" --quiet $SSH_FLAGS \
             --command "set -e
               cd ~/silt
               git fetch --all --quiet
@@ -101,9 +123,18 @@ jobs:
               done
               ./ci/silt-build.sh --list"
 
-      - name: publish the artifacts
+      # Two destinations, because they answer different questions. The bucket
+      # is the archive: every image from every build, addressed by commit.
+      # The run's artifacts are the convenience: click and download, no cloud
+      # console and no credentials, which is what you want when someone asks
+      # for an image and the answer should be a link.
+      #
+      # Artifacts have limits worth knowing: 2GB a file on the free plan, and
+      # they expire. The appliance images are 120-160MB and fit easily; the
+      # media and k3s ones are gigabytes and only go to the bucket.
+      - name: publish to the bucket
         run: |
-          gcloud compute ssh "$INSTANCE" --zone "$ZONE" --project "$PROJECT" --quiet \
+          gcloud compute ssh "$INSTANCE" --zone "$ZONE" --project "$PROJECT" --quiet $SSH_FLAGS \
             --command "set -e
               cd ~/.cache/silt/slots
               for s in */; do
@@ -115,6 +146,39 @@ jobs:
                   '$BUCKET/${{ github.sha }}'/\"\$name\"/
               done"
           echo "images at $BUCKET/${{ github.sha }}/" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: collect the small images for this run
+        run: |
+          mkdir -p artifacts
+          # The builder names the output directory after the image, and
+          # silt-build.sh leaves the defconfig beside it. Anything over the
+          # artifact limit is skipped rather than failing the upload.
+          gcloud compute ssh "$INSTANCE" --zone "$ZONE" --project "$PROJECT" --quiet $SSH_FLAGS \
+            --command "set -e
+              rm -rf ~/ci-artifacts && mkdir -p ~/ci-artifacts
+              cd ~/.cache/silt/slots
+              for s in */; do
+                [ -f \"\$s/sdcard.img\" ] || continue
+                name=\$(sed -n 's/^image  *//p' \"\$s/manifest\" | head -1)
+                size=\$(stat -c %s \"\$s/sdcard.img\")
+                if [ \"\$size\" -gt 1800000000 ]; then
+                  echo \"skipping \$name: \$((size / 1000000))MB is over the artifact limit\"
+                  continue
+                fi
+                mkdir -p ~/ci-artifacts/\"\$name\"
+                cp \"\$s/sdcard.img\" \"\$s/defconfig\" \"\$s/manifest\" ~/ci-artifacts/\"\$name\"/
+              done
+              ls -la ~/ci-artifacts/"
+          gcloud compute scp --recurse --zone "$ZONE" --project "$PROJECT" --quiet $SSH_FLAGS \
+            "$INSTANCE":~/ci-artifacts/. artifacts/
+          ls -laR artifacts | head -40
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: images-${{ github.sha }}
+          path: artifacts/
+          retention-days: 30
+          if-no-files-found: warn
 
       # always(), so a failed build still stops the machine. It does not cover
       # a cancelled run or a runner that disappears, which is what the
