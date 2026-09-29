@@ -364,6 +364,25 @@ The usual causes, in the order they are worth checking:
   `--tunnel-through-iap` in the workflow and grant
   `roles/iap.tunnelResourceAccessor`
 
+## Running what CI runs, before pushing
+
+    make ci BUILDROOT=~/buildroot
+    make ci BUILDROOT=~/buildroot LINUX=~/linux
+
+Five minutes on a machine that already has the trees, against twenty in CI, and
+it is the same commands in the same order. `make ci-fast` leaves out the kbuild
+experiments - most of those five minutes - for a change that cannot touch a
+defconfig.
+
+This target existed and stopped after check-images, skipping the two steps that
+then failed in CI for a week: the kbuild experiments, which run every imported
+board and every image through Buildroot's own conf, and the Linux checks. A
+local target that covers less than CI is worse than none, because it is trusted.
+
+`ci-linux` says out loud that it is skipping when LINUX is unset, for the same
+reason: a silent skip is how a check stops being run without anyone deciding
+that.
+
 ## Decisions still open
 
 **ssh from the workflow, for now.** `gcloud compute ssh --command` is what
