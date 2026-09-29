@@ -165,10 +165,40 @@ jobs:
                 [ -s \"\$s/artifacts\" ] || continue
                 name=\$(sed -n 's/^image  *//p' \"\$s/manifest\" | head -1)
                 mkdir -p ~/ci-artifacts/\"\$name\"
+                # The images compress enormously - a rootfs is a mostly empty
+                # filesystem - and every one of them is kept in the bucket
+                # forever, so the saving compounds. It also shortens the copy
+                # down, which matters more than the storage for a 2GB media
+                # image. -T0 uses every core; the builder has plenty.
                 while read -r a; do
-                  [ -n \"\$a\" ] && cp \"\$s/\$a\" ~/ci-artifacts/\"\$name\"/
+                  [ -n \"\$a\" ] && zstd -q -3 -T0 \"\$s/\$a\" \
+                    -o ~/ci-artifacts/\"\$name\"/\"\$a\".zst
                 done < \"\$s/artifacts\"
+                # The three small text files stay as they are: they are read
+                # rather than written to a card, and a page that lists what an
+                # image contains should not have to decompress anything first.
                 cp \"\$s/defconfig\" \"\$s/predicted.config\" \"\$s/manifest\" ~/ci-artifacts/\"\$name\"/
+                # How to use what was just compressed, beside it, because a
+                # download is worthless if the reader has to guess.
+                {
+                  echo 'Each image here is zstd-compressed. To write one to a card:'
+                  echo
+                  echo '  zstd -dc sdcard.img.zst | sudo dd of=/dev/diskN bs=4m status=progress'
+                  echo
+                  echo 'or to decompress in place:'
+                  echo
+                  echo '  zstd -d sdcard.img.zst'
+                  echo
+                  echo 'zstd: brew install zstd, apt install zstd, dnf install zstd.'
+                  echo
+                  echo 'A QEMU image is a kernel and a filesystem rather than a card image:'
+                  echo
+                  echo '  zstd -d Image.zst rootfs.ext4.zst'
+                  echo '  qemu-system-aarch64 -M virt -cpu cortex-a53 -m 512 -nographic \\'
+                  echo '    -kernel Image -drive file=rootfs.ext4,if=none,id=hd,format=raw \\'
+                  echo '    -device virtio-blk-device,drive=hd \\'
+                  echo '    -append \"root=/dev/vda rootwait console=ttyAMA0\"'
+                } > ~/ci-artifacts/\"\$name\"/README.txt
               done
               du -sh ~/ci-artifacts/*"
           gcloud compute scp --recurse --zone "$ZONE" --project "$PROJECT" --quiet $SSH_FLAGS \
@@ -188,8 +218,9 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       # Artifacts are capped at 2GB a file, so anything larger is dropped from
-      # the upload and lives only in the bucket. The appliance images are
-      # 120-160MB; the media and k3s ones are gigabytes.
+      # the upload and lives only in the bucket. Compressed, an appliance image
+      # is tens of megabytes and nothing comes close to the cap; the check
+      # stays for the day something does.
       - name: drop anything too large for an artifact
         run: |
           find artifacts -type f -size +1800M -print -delete || true

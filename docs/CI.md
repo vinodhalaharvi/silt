@@ -254,6 +254,21 @@ manifest beside it. Nothing expires, and a download page can be built over it -
 the predicted config and the solution hash mean such a page can say what each
 image *is*, not just what it is called.
 
+Images are stored zstd-compressed. A rootfs is a mostly empty filesystem, so
+the saving is large, and every image is kept forever: the storage compounds
+where a single build's does not. It also shortens the copy down from the
+builder, which matters more than the storage for a two-gigabyte media image.
+
+The three small text files are stored as they are, because they are read rather
+than written to a card, and a page listing what an image contains should not
+have to decompress anything to do it.
+
+Each image directory carries a README.txt saying how to use what is in it -
+`zstd -dc sdcard.img.zst | sudo dd of=/dev/diskN`, and the qemu-system-aarch64
+line for the QEMU images. One line of instruction and one small install is a
+fair price for images that are a fraction of the size; a download nobody knows
+how to use is not.
+
 The run's artifacts are the convenience: click and download from the Actions
 page, no cloud console and no credentials. Artifacts are capped at 2GB a file,
 so anything larger is dropped from the upload and lives only in the bucket. The
