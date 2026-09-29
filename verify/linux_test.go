@@ -2,7 +2,6 @@ package verify_test
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/vinodhalaharvi/silt/compose"
@@ -46,13 +45,11 @@ func TestLibraryAgainstLinux(t *testing.T) {
 
 	lib := compose.NewLibrary()
 	var images []*lang.Image
-	a, _ := filepath.Glob("../fragments/*.sx")
-	b, _ := filepath.Glob("../fragments/*/*.sx")
-	// Packs are part of the library too; qemu-arm-boot composes one.
-	pk, _ := filepath.Glob("../packs/*/fragments/*/*.sx")
-	b = append(b, pk...)
-	c, _ := filepath.Glob("../images/*.sx")
-	for _, p := range append(append(a, b...), c...) {
+	// compose.LibraryPaths, rather than a set of globs written here: three
+	// tests each had their own and no two agreed, which is how this one came
+	// to fail with "no such fragment feature:dev-ssh" for a pack that keeps
+	// its fragments one directory higher than the glob expected.
+	for _, p := range compose.LibraryPaths("..") {
 		data, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)

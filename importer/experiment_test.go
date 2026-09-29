@@ -391,11 +391,12 @@ func TestImportedTargetsTakeLibraryProfiles(t *testing.T) {
 	root, tree, ver := kbuildEnv(t)
 	kb := &Kbuild{Root: root, Out: t.TempDir()}
 
-	libFiles, _ := filepath.Glob("../fragments/*/*.sx")
-	caps, _ := filepath.Glob("../fragments/*.sx")
-	libFiles = append(libFiles, caps...)
-	pk, _ := filepath.Glob("../packs/*/fragments/*/*.sx")
-	libFiles = append(libFiles, pk...)
+	// compose.LibraryPaths: the same list every other test uses. This one
+	// had its own three globs, which is why every locked-profile row in the
+	// table below read "compose error: provides capability no-console-login,
+	// which is not declared" - the declaration is in packs/locked/silt.sx,
+	// which these globs never looked at.
+	libFiles := compose.LibraryPaths("..")
 	var library []string
 	profiles := map[string][]lang.Constraint{}
 	for _, p := range libFiles {
