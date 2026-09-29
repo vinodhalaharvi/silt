@@ -145,29 +145,18 @@ jobs:
       # Artifacts have limits worth knowing: 2GB a file on the free plan, and
       # they expire. The appliance images are 120-160MB and fit easily; the
       # media and k3s ones are gigabytes and only go to the bucket.
-      - name: publish to the bucket
-        run: |
-          gcloud compute ssh "$INSTANCE" --zone "$ZONE" --project "$PROJECT" --quiet $SSH_FLAGS \
-            --command "set -e
-              cd '$SILT_STORE/slots'
-              for s in */; do
-                [ -s \"\$s/artifacts\" ] || continue
-                name=\$(sed -n 's/^image  *//p' \"\$s/manifest\" | head -1)
-                while read -r a; do
-                  [ -n \"\$a\" ] && gcloud storage cp --quiet \"\$s/\$a\" \
-                    '$BUCKET/${{ github.sha }}'/\"\$name\"/\"\$a\"
-                done < \"\$s/artifacts\"
-                gcloud storage cp --quiet \"\$s/defconfig\" \"\$s/predicted.config\" \"\$s/manifest\" \
-                  '$BUCKET/${{ github.sha }}'/\"\$name\"/
-              done"
-          echo "images at $BUCKET/${{ github.sha }}/" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: collect the small images for this run
+      # Everything the builder produced, gathered on the builder and copied
+      # down in one go. It writes nothing outward: the VM needs no cloud
+      # permission at all, which is both simpler and safer, and it sidesteps a
+      # failure that cost two runs - gcloud on the builder caches its access
+      # token per user, so the "runner" account kept presenting a token minted
+      # under the old read-only storage scope long after the scope was widened.
+      #
+      # Everything that leaves this machine leaves from the runner, using the
+      # job's own short-lived WIF credential.
+      - name: collect what was built
         run: |
           mkdir -p artifacts
-          # The builder names the output directory after the image, and
-          # silt-build.sh leaves the defconfig beside it. Anything over the
-          # artifact limit is skipped rather than failing the upload.
           gcloud compute ssh "$INSTANCE" --zone "$ZONE" --project "$PROJECT" --quiet $SSH_FLAGS \
             --command "set -e
               rm -rf ~/ci-artifacts && mkdir -p ~/ci-artifacts
@@ -175,21 +164,35 @@ jobs:
               for s in */; do
                 [ -s \"\$s/artifacts\" ] || continue
                 name=\$(sed -n 's/^image  *//p' \"\$s/manifest\" | head -1)
-                size=\$(du -cb \$(sed \"s|^|\$s/|\" \"\$s/artifacts\") | tail -1 | cut -f1)
-                if [ \"\$size\" -gt 1800000000 ]; then
-                  echo \"skipping \$name: \$((size / 1000000))MB is over the artifact limit\"
-                  continue
-                fi
                 mkdir -p ~/ci-artifacts/\"\$name\"
                 while read -r a; do
                   [ -n \"\$a\" ] && cp \"\$s/\$a\" ~/ci-artifacts/\"\$name\"/
                 done < \"\$s/artifacts\"
-                cp \"\$s/defconfig\" \"\$s/manifest\" ~/ci-artifacts/\"\$name\"/
+                cp \"\$s/defconfig\" \"\$s/predicted.config\" \"\$s/manifest\" ~/ci-artifacts/\"\$name\"/
               done
-              ls -la ~/ci-artifacts/"
+              du -sh ~/ci-artifacts/*"
           gcloud compute scp --recurse --zone "$ZONE" --project "$PROJECT" --quiet $SSH_FLAGS \
             "$INSTANCE":~/ci-artifacts/. artifacts/
-          ls -laR artifacts | head -40
+          du -sh artifacts/*
+
+      # The archive, addressed by commit, written from here rather than from
+      # the builder. A download page can be built over this later; artifacts
+      # expire, a bucket does not.
+      - name: publish to the bucket
+        run: |
+          gcloud storage cp --recursive --quiet \
+            artifacts/* "$BUCKET/${{ github.sha }}/"
+          echo "### Images" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          gcloud storage ls -r "$BUCKET/${{ github.sha }}/**" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      # Artifacts are capped at 2GB a file, so anything larger is dropped from
+      # the upload and lives only in the bucket. The appliance images are
+      # 120-160MB; the media and k3s ones are gigabytes.
+      - name: drop anything too large for an artifact
+        run: |
+          find artifacts -type f -size +1800M -print -delete || true
 
       - uses: actions/upload-artifact@v4
         with:

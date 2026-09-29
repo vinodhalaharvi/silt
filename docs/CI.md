@@ -233,24 +233,31 @@ build actually left and where to add it.
 
 ## Where the images end up
 
+The builder gathers what it produced; the runner copies it down and sends it
+outward. Nothing leaves the VM by the VM's own hand, which means it needs no
+cloud permission at all - everything that goes anywhere goes with the job's
+short-lived WIF credential.
+
+That was not the first design. The builder used to write to the bucket itself,
+which cost two runs to an unobvious failure: gcloud caches an access token per
+user, and the "runner" account on the builder kept presenting one minted under
+the old read-only storage scope long after the scope had been widened. The same
+command as a different user on the same machine worked, which is exactly the
+kind of difference that eats an evening. Doing it from the runner removes the
+question.
+
 Two destinations, answering different questions.
 
 The bucket is the archive: every image from every build, addressed by the
-commit that produced it, alongside its defconfig, its predicted config and its
-manifest. Nothing expires, and a build from months ago can be reproduced or
-compared.
+commit that produced it, with its defconfig, its predicted config and its
+manifest beside it. Nothing expires, and a download page can be built over it -
+the predicted config and the solution hash mean such a page can say what each
+image *is*, not just what it is called.
 
 The run's artifacts are the convenience: click and download from the Actions
-page, no cloud console and no credentials. That is what you want when someone
-asks for an image and the answer should be a link. Artifacts are capped at 2GB
-a file and expire after the retention window, so the collection step skips
-anything too large - the appliance images are 120-160MB and fit easily, while
-the media and k3s images are gigabytes and go only to the bucket.
-
-A public download page, if one is ever wanted, is a static index written
-beside the artifacts listing each image with its solution hash. That is a
-product decision rather than a CI one, and it can wait until there is an image
-worth publishing.
+page, no cloud console and no credentials. Artifacts are capped at 2GB a file,
+so anything larger is dropped from the upload and lives only in the bucket. The
+appliance images are 120-160MB; the media and k3s images are gigabytes.
 
 ## Sharing the machine without sharing a home
 
