@@ -3,6 +3,7 @@ package fixpoint
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/vinodhalaharvi/silt/compose"
@@ -33,8 +34,21 @@ func TestLibraryImagesAgainstKbuild(t *testing.T) {
 	files, _ := filepath.Glob("../fragments/*.sx")
 	more, _ := filepath.Glob("../fragments/*/*.sx")
 	// Packs are part of the library too; qemu-arm-boot composes one.
+	// Everything silt's own loader would load, which is more than a glob of
+	// fragments: packs keep fragments at two depths, a pack's silt.sx
+	// declares the capabilities its fragments provide, and an image
+	// composing image:something needs the file that defines it. Each of
+	// these was missing, and each failed as something that looked like a
+	// source bug: "no such image", "no such fragment", "provides capability
+	// no-console-login, which is not declared".
 	pk, _ := filepath.Glob("../packs/*/fragments/*/*.sx")
 	more = append(more, pk...)
+	pk2, _ := filepath.Glob("../packs/*/fragments/*.sx")
+	more = append(more, pk2...)
+	decl, _ := filepath.Glob("../packs/*/silt.sx")
+	more = append(more, decl...)
+	im, _ := filepath.Glob("../images/*.sx")
+	more = append(more, im...)
 	for _, p := range append(files, more...) {
 		data, _ := os.ReadFile(p)
 		f, err := lang.ParseFile(string(data), p)
@@ -49,7 +63,17 @@ func TestLibraryImagesAgainstKbuild(t *testing.T) {
 	if out == "" {
 		out = t.TempDir()
 	}
-	kb := &importer.Kbuild{Root: root, Out: out}
+	// Every pack's br2-external, so the symbols those packs define exist
+	// when kbuild reads the emitted defconfig. Without this, an image
+	// composing feature:fieldbus-test reports six dropped symbols that were
+	// never dropped: kbuild had simply never heard of BR2_PACKAGE_SILT_SIM.
+	ext, _ := filepath.Glob("../packs/*/br2-external")
+	for i, e := range ext {
+		if a, err := filepath.Abs(e); err == nil {
+			ext[i] = a
+		}
+	}
+	kb := &importer.Kbuild{Root: root, Out: out, External: strings.Join(ext, ":")}
 
 	images, _ := filepath.Glob("../images/*.sx")
 	for _, path := range images {

@@ -19,9 +19,17 @@ import (
 type Kbuild struct {
 	Root string // buildroot checkout
 	Out  string // O= directory; kconfig's conf is built once and reused
+	// External is BR2_EXTERNAL: the br2-external trees whose Config.in
+	// files must be read for their symbols to exist at all. Without it a
+	// package a pack defines is not unknown to kbuild, it is absent, and
+	// every symbol the image states about it looks like a dropped request.
+	External string
 }
 
 func (k *Kbuild) make(args ...string) error {
+	if k.External != "" {
+		args = append([]string{"BR2_EXTERNAL=" + k.External}, args...)
+	}
 	cmd := exec.Command("make", append([]string{"-s", "-C", k.Root, "O=" + k.Out}, args...)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

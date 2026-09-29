@@ -21,4 +21,14 @@
   ;; The host embeds wasmtime and is tens of megabytes; Buildroot's default
   ;; 60M rootfs is what the base image was content with.
   (override
-    (value buildroot:BR2_TARGET_ROOTFS_EXT2_SIZE "256M")))
+    (value buildroot:BR2_TARGET_ROOTFS_EXT2_SIZE "256M"))
+
+  ;; profile:locked states (n BR2_TARGET_GENERIC_GETTY), and
+  ;; BR2_TARGET_GENERIC_GETTY_PORT depends on it - so turning the getty off
+  ;; deletes the port symbol, taking target:qemu-aarch64-virt's value for it
+  ;; with it. The target states a port because the defconfig it was imported
+  ;; from had a getty; this image has none by design. Saying so here is the
+  ;; difference between a request that was dropped and a request nobody is
+  ;; making, and it is what silt check now verifies rather than assumes.
+  (unmanaged
+    buildroot:BR2_TARGET_GENERIC_GETTY_PORT))
