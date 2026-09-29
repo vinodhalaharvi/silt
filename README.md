@@ -741,6 +741,7 @@ fragments/rules/      cross-tree implications
 images/               compositions
 packs/                packs: fragments, their br2-external tree, their tests
 docs/CI.md            what CI checks, what it builds, and the GCP setup for it
+docs/wiki/            the GitHub wiki, versioned here and synced to it
 ci/                   image checks, the build-and-boot test, and the build store
 ci/silt-build.sh      build with hit / prefix / miss against the store
 ci/config-agrees.awk  every predicted symbol against kbuild's own .config
