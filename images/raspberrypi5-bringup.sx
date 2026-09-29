@@ -11,4 +11,11 @@
   (compose
     image:raspberrypi5
     feature:dev-ssh)
-  (verified-against (buildroot "2025.02.16")))
+  (verified-against (buildroot "2025.02.16"))
+
+  ;; CI builds this one: it is the test of whether rpi-6.12.y boots a Pi 5
+  ;; Rev 1.1, which is the question the board has been sitting on. Stock
+  ;; Buildroot's pinned 6.6.28 does not, and that was established with
+  ;; Buildroot alone - no silt involved - so the fix belongs in the target
+  ;; rather than in an image.
+  (ci build))

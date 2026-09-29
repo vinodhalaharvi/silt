@@ -25,13 +25,31 @@
   (buildroot
     (y BR2_aarch64)                                            ; :1 defined under arch/
     (y BR2_cortex_a76)                                         ; :2 defined under arch/
-    (y BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_6)              ; :3 kernel headers follow the kernel
+    ;; Headers follow the kernel: a 6.12 kernel with 6.6 headers is a
+    ;; mismatch Buildroot will not catch for you.
+    (y BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_12)
+    (n BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_6)
     (value BR2_GLOBAL_PATCH_DIR "board/raspberrypi/patches")   ; :5 board integration hook
     (value BR2_ROOTFS_POST_BUILD_SCRIPT "board/raspberrypi5/post-build.sh") ; :8 board integration hook
     (value BR2_ROOTFS_POST_IMAGE_SCRIPT "board/raspberrypi5/post-image.sh") ; :9 board integration hook
     (y BR2_LINUX_KERNEL)                                       ; :10 defined under linux/ (kernel)
     (y BR2_LINUX_KERNEL_CUSTOM_TARBALL)                        ; :11 defined under linux/ (kernel)
-    (value BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION "$(call github,raspberrypi,linux,576cc10e1ed50a9eacffc7a05c796051d7343ea4)/linux-576cc10e1ed50a9eacffc7a05c796051d7343ea4.tar.gz") ; :12 defined under linux/ (kernel)
+    ;; The Raspberry Pi kernel, bumped from the 6.6.28 tarball Buildroot
+    ;; 2025.02.16 pins (commit 576cc10e, April 2024) to the tip of
+    ;; rpi-6.12.y.
+    ;;
+    ;; The pinned one does not boot a Pi 5 Model B Rev 1.1. Not this image
+    ;; and not Buildroot's own raspberrypi5_defconfig, which is the test
+    ;; that showed the fault is upstream rather than here: stock Buildroot,
+    ;; no silt involved, firmware runs, kernel never starts. Raspberry Pi OS
+    ;; on the same board runs 6.18 and is fine, and the board is healthy - it
+    ;; boots, gets an address and answers ssh.
+    ;;
+    ;; rpi-6.12.y is a branch, so this is its tip at the time of writing
+    ;; rather than a tag: the Foundation does not tag these, and pinning a
+    ;; commit is the only reproducible thing available. To move it, take the
+    ;; tip of rpi-6.12.y and bump the headers below to match.
+    (value BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION "$(call github,raspberrypi,linux,a553c4648f68caaa9fe246adb40269af771a0ee7)/linux-a553c4648f68caaa9fe246adb40269af771a0ee7.tar.gz") ; :12 defined under linux/ (kernel)
     (value BR2_LINUX_KERNEL_DEFCONFIG "bcm2712")               ; :13 defined under linux/ (kernel)
     (path-append BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES "board/raspberrypi/linux-4k-page-size.fragment") ; :14 defined under linux/ (kernel)
     (y BR2_LINUX_KERNEL_DTS_SUPPORT)                           ; :15 defined under linux/ (kernel)

@@ -7,7 +7,20 @@
 
   (buildroot
     (y BR2_TOOLCHAIN_BUILDROOT_CXX)                            ; :4 not hardware by any rule above
-    (y BR2_DOWNLOAD_FORCE_CHECK_HASHES)                        ; :6 not hardware by any rule above
+    ;; Off for this board, and only this board.
+    ;;
+    ;; It is on everywhere else and should be: it makes Buildroot refuse a
+    ;; download it cannot verify. But this target pins the kernel to a commit
+    ;; on rpi-6.12.y rather than to a release, because the release Buildroot
+    ;; pins does not boot a Pi 5 Rev 1.1 - and the Foundation publishes no
+    ;; hash for a commit tarball, so there is nothing for the check to check.
+    ;; With it on, the build stops at "No hash found for linux-a553c464....tar.gz"
+    ;; after downloading 236MB.
+    ;;
+    ;; What is lost: Buildroot will not notice if that tarball changes
+    ;; underneath us. What replaces it is the commit itself - a GitHub archive
+    ;; of a fixed sha is the sha's content or it is nothing.
+    (n BR2_DOWNLOAD_FORCE_CHECK_HASHES)
     (value BR2_SYSTEM_DHCP "eth0")                             ; :7 not hardware by any rule above
     (y BR2_PACKAGE_BUSYBOX_SHOW_OTHERS)                        ; :18 not hardware by any rule above
     (y BR2_PACKAGE_XZ)                                         ; :19 not hardware by any rule above
