@@ -38,6 +38,21 @@ that waits last.
 
 ## The board does not boot
 
+**Compare the boot partition against a card that works.**
+
+    ci/boot-diff.sh /path/to/raspios.img build/images/sdcard.img
+
+The boot partition is the whole handoff from firmware to kernel: what to load,
+what to tell it, what the hardware is, what may be turned on. When a board boots
+one card and not another, the difference is often here rather than in either
+kernel - and it is invisible, because both partitions are inside image files.
+It takes an image, a mounted directory or an .img.zst, mounts nothing and needs
+no root.
+
+It says nothing about either kernel, deliberately: a kernel image carries no
+configuration. If the diff comes back with nothing that explains the failure,
+the difference is inside one of them and the next tool is a serial console.
+
 **Rainbow screen on a Pi, or a steady LED and nothing else.** Firmware ran, the
 kernel did not start. Distinguish image from hardware with one test: flash
 stock Raspberry Pi OS. If that boots and gets an address, the board is fine and
