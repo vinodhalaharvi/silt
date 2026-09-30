@@ -25,8 +25,12 @@
   (buildroot
     (y BR2_aarch64)                                            ; :1 defined under arch/
     (y BR2_cortex_a76)                                         ; :2 defined under arch/
-    ;; Headers follow the kernel: a 6.12 kernel with 6.6 headers is a
-    ;; mismatch Buildroot will not catch for you.
+    ;; Headers stay at 6.12 under a 6.18 kernel, which is correct rather
+    ;; than a compromise. Buildroot's own help: "the kernel headers must be
+    ;; at least as old as the oldest kernel you intend to run on your
+    ;; target" - older headers than the kernel is the supported direction,
+    ;; and newer headers than the kernel is the mistake. 6.12 is also the
+    ;; newest series Buildroot 2025.02.16 offers.
     (y BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_12)
     (n BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_6)
     (value BR2_GLOBAL_PATCH_DIR "board/raspberrypi/patches")   ; :5 board integration hook
@@ -45,11 +49,22 @@
     ;; on the same board runs 6.18 and is fine, and the board is healthy - it
     ;; boots, gets an address and answers ssh.
     ;;
-    ;; rpi-6.12.y is a branch, so this is its tip at the time of writing
-    ;; rather than a tag: the Foundation does not tag these, and pinning a
-    ;; commit is the only reproducible thing available. To move it, take the
-    ;; tip of rpi-6.12.y and bump the headers below to match.
-    (value BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION "$(call github,raspberrypi,linux,a553c4648f68caaa9fe246adb40269af771a0ee7)/linux-a553c4648f68caaa9fe246adb40269af771a0ee7.tar.gz") ; :12 defined under linux/ (kernel)
+    ;; 6.18 rather than 6.12, because the board is known to boot 6.18: that
+    ;; is what Raspberry Pi OS runs on it (6.18.50+rpt-rpi-2712), and
+    ;; matching the series that demonstrably works removes a variable rather
+    ;; than introducing a third untested one. rpi-6.18.y reports 6.18.54.
+    ;;
+    ;; Checked before changing it: bcm2712_defconfig is still there, both
+    ;; device trees are still there, CONFIG_ARM64_4K_PAGES still exists so
+    ;; Buildroot's page-size fragment still applies, the defconfig wants no
+    ;; Rust, no BTF, no module signing and no gcc plugins, and Buildroot
+    ;; 2025.02.16 has no kernel version gate.
+    ;;
+    ;; rpi-6.18.y is a branch, so this is its tip rather than a tag: the
+    ;; Foundation does not tag these and a commit is the only reproducible
+    ;; thing on offer. If this fails to build, a553c4648f68caaa9fe246adb40269af771a0ee7
+    ;; is the tip of rpi-6.12.y and the smaller jump.
+    (value BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION "$(call github,raspberrypi,linux,1e807154dbf9733995f5337e74602d3f82544c6e)/linux-1e807154dbf9733995f5337e74602d3f82544c6e.tar.gz") ; :12 defined under linux/ (kernel)
     (value BR2_LINUX_KERNEL_DEFCONFIG "bcm2712")               ; :13 defined under linux/ (kernel)
     (path-append BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES "board/raspberrypi/linux-4k-page-size.fragment") ; :14 defined under linux/ (kernel)
     (y BR2_LINUX_KERNEL_DTS_SUPPORT)                           ; :15 defined under linux/ (kernel)
