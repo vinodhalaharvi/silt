@@ -8,6 +8,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/vinodhalaharvi/silt/dt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -39,6 +40,8 @@ const usage = `silt — composable S-expressions over Kconfig
   silt fmt [-w] [PATH...]           canonical form
   silt externals IMAGE.sx           BR2_EXTERNAL for that image, colon-joined
   silt images [--ci LEVEL]          list images; --ci check|build|boot to filter
+  silt dt FILE.dtb [--linux DIR]    what hardware a device tree describes, and
+                                    which drivers it needs
   silt hash [PATH...]               content address of each file
   silt hash --solution IMAGE.sx --buildroot DIR [--linux DIR]
                                     content address of a composed image: its
@@ -125,6 +128,8 @@ func main() {
 		err = cmdExternals(args)
 	case "images":
 		err = cmdImages(args)
+	case "dt":
+		err = cmdDT(args)
 	case "why":
 		err = cmdWhy(args)
 	case "solve":
@@ -875,6 +880,131 @@ func cmdSolutionHash(args []string) error {
 			fmt.Printf("  %s\n", line)
 		}
 	}
+	return nil
+}
+
+// cmdDT reads a flattened device tree and says what hardware it describes.
+//
+// With --linux, it also says which kernel symbol each enabled node needs, by
+// scanning the kernel source for the driver that claims the node's compatible
+// string. That is the third configuration in an embedded Linux image and the
+// one nothing checks: Buildroot's .config says what is built, the kernel's says
+// what is compiled in, and the device tree says what exists and whether it is
+// turned on. A node enabled with no driver is hardware that silently does not
+// work; a driver built with no node to bind to is dead weight.
+//
+//	silt dt bcm2712-rpi-5-b.dtb
+//	silt dt bcm2712-rpi-5-b.dtb --linux ~/linux
+//	silt dt bcm2712-rpi-5-b.dtb --linux ~/linux --unbound
+func cmdDT(args []string) error {
+	var file, linux string
+	unbound := false
+	all := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--linux":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("--linux needs a kernel source directory")
+			}
+			linux = args[i]
+		case "--unbound":
+			unbound = true
+		case "--all":
+			all = true
+		default:
+			if file != "" {
+				return fmt.Errorf("one device tree at a time")
+			}
+			file = args[i]
+		}
+	}
+	if file == "" {
+		return fmt.Errorf("usage: silt dt FILE.dtb [--linux DIR] [--unbound] [--all]")
+	}
+
+	tree, err := dt.ReadFile(file)
+	if err != nil {
+		return err
+	}
+
+	if m := tree.Model(); m != "" {
+		fmt.Printf("%s\n", m)
+	}
+	if c := tree.Root.Compatible(); len(c) > 0 {
+		fmt.Printf("%s\n", strings.Join(c, ", "))
+	}
+
+	devices := tree.Devices()
+	enabled, disabled := 0, 0
+	for _, n := range devices {
+		if n.Enabled() {
+			enabled++
+		} else {
+			disabled++
+		}
+	}
+	fmt.Printf("%d device nodes, %d enabled, %d disabled\n\n", len(devices), enabled, disabled)
+
+	if linux == "" {
+		for _, n := range devices {
+			if !n.Enabled() && !all {
+				continue
+			}
+			mark := " "
+			if !n.Enabled() {
+				mark = "-"
+			}
+			fmt.Printf("%s %-44s %s\n", mark, n.Path, strings.Join(n.Compatible(), " "))
+		}
+		fmt.Printf("\npass --linux DIR to see which kernel symbol each one needs\n")
+		return nil
+	}
+
+	drv, err := dt.ScanKernel(linux)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s: %d compatible strings in %d files\n\n",
+		linux, drv.Compatibles(), drv.Files)
+
+	var missing []string
+	seen := map[string]bool{}
+	for _, n := range devices {
+		if !n.Enabled() {
+			if all {
+				fmt.Printf("- %-44s (disabled)\n", n.Path)
+			}
+			continue
+		}
+		m, ok := drv.Bind(n)
+		switch {
+		case ok:
+			if !unbound {
+				fmt.Printf("  %-44s %s\n", n.Path, m.Symbol)
+			}
+			seen[m.Symbol] = true
+		default:
+			// Not necessarily a fault: buses, fixed regulators and clocks are
+			// often handled by the core with no driver of their own, and a
+			// string no driver claims may simply be documentation. Reported
+			// rather than asserted.
+			missing = append(missing, fmt.Sprintf("  %-44s %s",
+				n.Path, strings.Join(n.Compatible(), " ")))
+		}
+	}
+
+	if len(missing) > 0 {
+		fmt.Printf("\n%d enabled node(s) no driver in this tree claims:\n", len(missing))
+		for _, l := range missing {
+			fmt.Println(l)
+		}
+		fmt.Printf("\nSome of these are expected: a bus, a fixed regulator or a clock is\n")
+		fmt.Printf("often handled by the core with no driver of its own. The ones worth\n")
+		fmt.Printf("looking at are the peripherals.\n")
+	}
+
+	fmt.Printf("\n%d distinct symbol(s) this tree needs\n", len(seen))
 	return nil
 }
 

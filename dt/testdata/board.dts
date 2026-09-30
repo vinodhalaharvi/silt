@@ -1,0 +1,38 @@
+/dts-v1/;
+/ {
+    model = "Test Board";
+    compatible = "test,board", "brcm,bcm2712";
+    #address-cells = <2>;
+    #size-cells = <1>;
+
+    soc {
+        compatible = "simple-bus";
+
+        uart0: serial@7d001000 {
+            compatible = "arm,pl011", "arm,primecell";
+            reg = <0x0 0x7d001000 0x200>;
+            status = "okay";
+        };
+
+        spi@7d004000 {
+            compatible = "brcm,bcm2835-spi";
+            reg = <0x0 0x7d004000 0x200>;
+
+            can@0 {
+                compatible = "microchip,mcp2515";
+                reg = <0x0>;
+                status = "okay";
+            };
+        };
+
+        i2c@7d005000 {
+            compatible = "brcm,bcm2835-i2c";
+            reg = <0x0 0x7d005000 0x200>;
+            status = "disabled";
+        };
+    };
+
+    chosen {
+        bootargs = "console=ttyAMA0,115200";
+    };
+};
