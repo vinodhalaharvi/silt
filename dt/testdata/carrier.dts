@@ -1,0 +1,69 @@
+/dts-v1/;
+/ {
+    model = "Carrier With Everything";
+    compatible = "waveshare,cm5-io-wireless", "brcm,bcm2712";
+    #address-cells = <1>;
+    #size-cells = <1>;
+
+    soc {
+        compatible = "simple-bus";
+        #address-cells = <1>;
+        #size-cells = <1>;
+
+        /* an enabled pcie root port: an M.2 slot is there */
+        pcie@1000120000 {
+            compatible = "brcm,bcm2712-pcie";
+            reg = <0x20000 0x1000>;
+            status = "okay";
+        };
+
+        mmc@fff000 {
+            compatible = "brcm,bcm2712-sdhci";
+            reg = <0xfff000 0x100>;
+            status = "okay";
+        };
+
+        spi@7d004000 {
+            compatible = "brcm,bcm2835-spi";
+            reg = <0x7d004000 0x200>;
+            #address-cells = <1>;
+            #size-cells = <0>;
+
+            can@0 {
+                compatible = "microchip,mcp2515";
+                reg = <0>;
+                status = "okay";
+            };
+
+            /* a four-port uart expander, two ports with transceivers */
+            sc16is752@1 {
+                compatible = "nxp,sc16is752";
+                reg = <1>;
+                status = "okay";
+
+                serial@0 {
+                    rs485-rts-active-low;
+                };
+            };
+        };
+
+        ethernet@1f00100000 {
+            compatible = "brcm,bcm2712-genet-v5";
+            reg = <0x100000 0x1000>;
+            status = "okay";
+        };
+
+        ethernet@1f00110000 {
+            compatible = "microchip,lan7431";
+            reg = <0x110000 0x1000>;
+            status = "okay";
+        };
+
+        /* present and deliberately off: not a capability */
+        csi@7c400000 {
+            compatible = "brcm,bcm2712-csi2";
+            reg = <0x7c400000 0x100>;
+            status = "disabled";
+        };
+    };
+};

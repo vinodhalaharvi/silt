@@ -900,6 +900,7 @@ func cmdDT(args []string) error {
 	var file, linux string
 	unbound := false
 	all := false
+	caps := false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--linux":
@@ -910,6 +911,8 @@ func cmdDT(args []string) error {
 			linux = args[i]
 		case "--unbound":
 			unbound = true
+		case "--capabilities":
+			caps = true
 		case "--all":
 			all = true
 		default:
@@ -920,7 +923,7 @@ func cmdDT(args []string) error {
 		}
 	}
 	if file == "" {
-		return fmt.Errorf("usage: silt dt FILE.dtb [--linux DIR] [--unbound] [--all]")
+		return fmt.Errorf("usage: silt dt FILE.dtb [--linux DIR] [--capabilities] [--unbound] [--all]")
 	}
 
 	tree, err := dt.ReadFile(file)
@@ -945,6 +948,42 @@ func cmdDT(args []string) error {
 		}
 	}
 	fmt.Printf("%d device nodes, %d enabled, %d disabled\n\n", len(devices), enabled, disabled)
+
+	if caps {
+		// Reported as an argument rather than written to a file. What this
+		// cannot see is a transceiver nobody described: a board with an RS485
+		// chip and no node for it looks, from here, exactly like a board
+		// without one. So a person still decides, and the reasons are here to
+		// decide with.
+		found := dt.Derive(tree)
+		if len(found) == 0 {
+			fmt.Printf("  ;; nothing this tool knows how to recognise\n")
+		} else {
+			fmt.Printf("  (provides\n")
+			for i, f := range found {
+				close := ""
+				if i == len(found)-1 {
+					close = ")"
+				}
+				fmt.Printf("    ;; %s\n", f.Why)
+				for _, p := range f.Nodes {
+					if p != "" {
+						fmt.Printf("    ;;   %s\n", p)
+					}
+				}
+				fmt.Printf("    (capability %s)%s\n", f.Capability, close)
+			}
+		}
+		if nf := dt.NotFound(found); len(nf) > 0 {
+			fmt.Printf("\n  ;; looked for and did not find: %s\n", strings.Join(nf, ", "))
+			fmt.Printf("  ;; absence is weaker evidence than presence - a modem on an M.2\n")
+			fmt.Printf("  ;; slot, or a transceiver nobody wrote a node for, is invisible here.\n")
+		}
+		fmt.Println()
+		if linux == "" {
+			return nil
+		}
+	}
 
 	if linux == "" {
 		for _, n := range devices {
@@ -1740,4 +1779,12 @@ func loadWithSiblings(libDir, target string) ([]*lang.File, error) {
 		files = append(files, f)
 	}
 	return files, nil
+}
+
+// max, until the module's Go version has the builtin.
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
