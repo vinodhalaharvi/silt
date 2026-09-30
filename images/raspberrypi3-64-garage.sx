@@ -22,7 +22,8 @@
 (image raspberrypi3-64-garage
   (compose
     image:raspberrypi3-64-bringup
-    feature:tailscale)
+    feature:tailscale
+    feature:garage-relay)
 
   ;; 256M rather than the 512M the other image asked for: tailscaled and
   ;; tailscale are about 40MB together, and the appliance fits in 120M, so
@@ -33,4 +34,16 @@
   ;; CI builds this one: it runs on a board in the house, doing a job.
   (ci build)
 
-  (verified-against (buildroot "2025.02.16")))
+  (verified-against (buildroot "2025.02.16"))
+
+  ;; The other half of this appliance: the ESP32 on the garage door itself.
+  ;; Its broker address, its topics and its pins come from the same
+  ;; composition that builds this image, so the two configurations cannot
+  ;; disagree about how to reach each other.
+  ;;
+  ;;   silt esphome images/raspberrypi3-64-garage.sx -o garage.yaml
+  ;;   esphome run garage.yaml
+  ;;
+  ;; silt does not build the firmware; esphome does, the way Buildroot builds
+  ;; this image.
+)

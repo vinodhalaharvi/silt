@@ -38,3 +38,25 @@
 (tree uclibc
   (kind kconfig)
   (consumed-by BR2_UCLIBC_CONFIG_FRAGMENT_FILES))
+
+;; The other half of an appliance.
+;;
+;; A gateway on a Linux board and a microcontroller on a wall are two
+;; computers, configured by two tools, in two files - and the things they must
+;; agree about are agreed by hand: the topic one publishes and the other
+;; subscribes to, the address one has and the route the other advertises,
+;; whether they speak MQTT or ESPHome's native API. Each is one fact written
+;; twice with nothing checking the copies, and a pair that builds, flashes and
+;; boots perfectly on both sides can be unable to talk.
+;;
+;; Silt does not build the firmware; esphome does, the way Buildroot builds
+;; images. And it does not model a configuration language that gains components
+;; every month. It models the interface - the surface where two configurations
+;; have to agree - because that is where the mistakes are.
+;;
+;; Settings are dotted paths rather than Kconfig symbols: mqtt.topic_prefix,
+;; switch.toggle.pin. The constraint model is unchanged. Two fragments setting
+;; one path to different values is a conflict, and an image resolves it with
+;; (override ...) exactly as anywhere else.
+(tree esphome
+  (kind esphome))

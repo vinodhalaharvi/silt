@@ -9,6 +9,7 @@ package main
 import (
 	"fmt"
 	"github.com/vinodhalaharvi/silt/dt"
+	"github.com/vinodhalaharvi/silt/esphome"
 	"os"
 	"path/filepath"
 	"sort"
@@ -42,6 +43,7 @@ const usage = `silt — composable S-expressions over Kconfig
   silt images [--ci LEVEL]          list images; --ci check|build|boot to filter
   silt dt FILE.dtb [--linux DIR]    what hardware a device tree describes, and
                                     which drivers it needs
+  silt esphome IMAGE.sx [-o FILE]   the ESPHome YAML this image's other half needs
   silt hash [PATH...]               content address of each file
   silt hash --solution IMAGE.sx --buildroot DIR [--linux DIR]
                                     content address of a composed image: its
@@ -130,6 +132,8 @@ func main() {
 		err = cmdImages(args)
 	case "dt":
 		err = cmdDT(args)
+	case "esphome":
+		err = cmdESPHome(args)
 	case "why":
 		err = cmdWhy(args)
 	case "solve":
@@ -880,6 +884,77 @@ func cmdSolutionHash(args []string) error {
 			fmt.Printf("  %s\n", line)
 		}
 	}
+	return nil
+}
+
+// cmdESPHome writes the ESPHome YAML an image's microcontroller half needs.
+//
+// Most appliances here are two computers: a Linux board running the gateway and
+// a microcontroller reading the sensor or closing the relay. They are built by
+// two tools and configured in two files, and the facts they must agree about -
+// a topic, an address, which protocol - are written twice with nothing checking
+// the copies. A pair that builds, flashes and boots perfectly on both sides can
+// be unable to talk.
+//
+// This emits the microcontroller's half from the same composition that produced
+// the Linux half, so the two cannot drift. esphome builds the firmware, the way
+// Buildroot builds the image:
+//
+//	silt esphome images/raspberrypi3-64-garage.sx -o garage.yaml
+//	esphome run garage.yaml
+func cmdESPHome(args []string) error {
+	var file, out string
+	var rest []string
+	for i := 0; i < len(args); i++ {
+		if args[i] == "-o" {
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("-o needs a file")
+			}
+			out = args[i]
+			continue
+		}
+		// Everything else goes to the composer, which understands
+		// --buildroot, --pack, --external and -L. An image's other half is
+		// composed the same way its own half is.
+		rest = append(rest, args[i])
+		if file == "" && strings.HasSuffix(args[i], ".sx") {
+			file = args[i]
+		}
+	}
+	if file == "" {
+		return fmt.Errorf("usage: silt esphome IMAGE.sx [-o FILE] [--buildroot DIR]")
+	}
+
+	res, _, _, err := composeWithTree(rest)
+	if err != nil {
+		return err
+	}
+
+	doc := esphome.New()
+	for _, c := range res.Constraints[lang.Scope("esphome")] {
+		if !c.IsValue {
+			// A tristate in a YAML tree is meaningless: there is no y, m or n
+			// in an ESPHome document, only settings with values.
+			return fmt.Errorf("%s: %s is a tristate, and an esphome setting takes a value",
+				c.Pos.Short(), c.Sym)
+		}
+		doc.Set(c.Sym.Name, c.Value)
+	}
+
+	if doc.Len() == 0 {
+		return fmt.Errorf("%s states nothing in the esphome tree: this image has no microcontroller half", file)
+	}
+
+	text := doc.Render()
+	if out == "" {
+		fmt.Print(text)
+		return nil
+	}
+	if err := os.WriteFile(out, []byte(text), 0o644); err != nil {
+		return err
+	}
+	fmt.Printf("%s: %d setting(s)\n", out, doc.Len())
 	return nil
 }
 

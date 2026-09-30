@@ -83,12 +83,33 @@ type TreeDecl struct {
 const (
 	KindKconfig       = "kconfig"
 	KindWasmComponent = "wasm-component"
+	// KindESPHome is a tree whose configuration is a YAML document rather
+	// than a set of Kconfig symbols: an ESP32 running ESPHome, which is the
+	// other half of most of the appliances here. The gateway on the Linux
+	// board and the microcontroller on the wall are configured in two files
+	// by two tools, and the things they must agree about - a topic, a pin, a
+	// device name, whether they speak MQTT or ESPHome's native API - are
+	// agreed by hand and checked by nobody.
+	//
+	// Symbols in such a tree are dotted paths rather than Kconfig names:
+	// mqtt.topic_prefix, switch.toggle.pin. They nest into YAML on the way
+	// out, and the constraint model is unchanged - a path takes a value, two
+	// fragments setting the same path to different values is a conflict, and
+	// an image resolves it with (override ...) exactly as elsewhere.
+	KindESPHome = "esphome"
 )
 
 // CheckOnly reports a tree that constrains what an image may contain but
 // configures nothing: it has no file to emit and no Buildroot symbol to hand
 // one to.
 func (d TreeDecl) CheckOnly() bool { return d.Kind == KindWasmComponent }
+
+// HandedToBuildroot reports a tree whose configuration Buildroot consumes as a
+// Kconfig fragment. An ESPHome tree is not one: its configuration is a YAML
+// document built by esphome, on a different processor, and Buildroot has no
+// symbol to hand it to. Without this distinction the emitter demands a
+// (consumed-by ...) that could not exist.
+func (d TreeDecl) HandedToBuildroot() bool { return d.Kind == KindKconfig }
 
 // BuiltinTrees are declared without a (tree ...) form, so a library written
 // before the registry existed keeps working. Anything else must be declared.
@@ -125,8 +146,8 @@ func parseTreeDecl(n *sexpr.Node) (*TreeDecl, error) {
 				return nil, errf(cl, "(kind KIND) takes one symbol")
 			}
 			d.Kind = cl.Args()[0].Text
-			if d.Kind != KindKconfig && d.Kind != KindWasmComponent {
-				return nil, errf(cl, "tree kind %q is not supported; kconfig and wasm-component are. "+
+			if d.Kind != KindKconfig && d.Kind != KindWasmComponent && d.Kind != KindESPHome {
+				return nil, errf(cl, "tree kind %q is not supported; kconfig, wasm-component and esphome are. "+
 					"Devicetree binds by compatible string at runtime and is not a constraint system", d.Kind)
 			}
 		case "prefix", "source":
@@ -230,15 +251,29 @@ func parseSymbolRef(n *sexpr.Node, scope Scope) (SymbolID, error) {
 	return SymbolID{Tree: string(scope), Name: text}, checkName(n, text)
 }
 
+// checkName accepts anything that could name a symbol in any tree: a Kconfig
+// name, or a dotted path for a tree whose configuration is structured. Which
+// of those is allowed depends on the tree's declared kind, and the tree
+// registry is not available here - compose.checkSymbol does that, where the
+// declaration is in hand.
 func checkName(n *sexpr.Node, name string) error {
 	for i, r := range name {
-		ok := r == '_' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' ||
+		ok := r == '_' || r == '.' ||
+			r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' ||
 			(r == '*' && i == len(name)-1)
 		if !ok {
-			return errf(n, "%q is not a Kconfig symbol name", name)
+			return errf(n, "%q is not a Kconfig symbol name (a dot is allowed "+
+				"only in a structured tree, where it names a path)", name)
 		}
 	}
 	return nil
+}
+
+// KconfigName reports whether a name is spelled the way Kconfig spells one.
+// A dot is the difference: it is how a structured tree names a path, and it is
+// not legal in a Kconfig symbol.
+func KconfigName(name string) bool {
+	return !strings.Contains(name, ".")
 }
 
 // CheckPrefix reports a symbol spelled against its tree's convention.

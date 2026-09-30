@@ -1,0 +1,56 @@
+;; The garage door, both halves of it.
+;;
+;; A relay on an ESP32 closes the door contact; a Raspberry Pi on the same LAN
+;; advertises a route to it over Tailscale, so a phone on a cellular network can
+;; reach it. That is two computers and two configurations, and three facts have
+;; to match across them:
+;;
+;;   the topic the ESP publishes, and the one the gateway subscribes to
+;;   the address the ESP has, and the /32 route the tunnel advertises
+;;   the protocol both speak
+;;
+;; Before this fragment those lived in an ESPHome YAML file, a shell command
+;; someone pasted into /etc/default/tailscale, and a tag table - three places,
+;; no checking. A DHCP lease changing breaks the door and nothing says why.
+;;
+;; Now they are written once. What the ESP is told and what the gateway is told
+;; come from the same statement, so the two cannot drift.
+
+(fragment feature:garage-relay
+  (doc "an esp32 relay on the garage door, and the gateway that reaches it")
+
+  (scope esphome
+    (value esphome.name "garage")
+    (value esphome.friendly_name "Garage Door")
+
+    (value esp32.board "esp32dev")
+    (value esp32.framework.type "arduino")
+
+    ;; MQTT rather than ESPHome's native API, because the other end of this is
+    ;; a Buildroot appliance running mosquitto rather than Home Assistant.
+    ;; Choosing the native API here and MQTT there is the mismatch this whole
+    ;; fragment exists to make impossible: both sides build, both boot, and
+    ;; nothing connects.
+    (value mqtt.broker "192.168.68.135")
+    (value mqtt.topic_prefix "garage")
+
+    (value ota.platform "esphome")
+    (value logger.level "INFO")
+
+    ;; The relay. A momentary pulse, because a garage opener wants a button
+    ;; press rather than a held contact - a switch left on would hold the
+    ;; button down forever.
+    (value switch.toggle.platform "gpio")
+    (value switch.toggle.pin "26")
+    (value switch.toggle.name "Toggle")
+    (value switch.toggle.on_turn_on.delay "500ms")
+
+    ;; The reed switch on the door frame, which is the half that reports.
+    (value binary_sensor.door.platform "gpio")
+    (value binary_sensor.door.pin "27")
+    (value binary_sensor.door.name "Door")
+    (value binary_sensor.door.device_class "garage_door"))
+
+  ;; And the gateway's half: the broker the ESP was just told to connect to.
+  (buildroot
+    (y BR2_PACKAGE_MOSQUITTO)))

@@ -91,6 +91,24 @@ func (l *Library) checkSymbol(id lang.SymbolID, pos string) error {
 		return fmt.Errorf("%s: %s names tree %q, which is not declared; add (tree %s (kind kconfig) ...)",
 			pos, id, id.Tree, id.Tree)
 	}
+	// A dotted path is how a structured tree names a setting and is not a
+	// legal Kconfig symbol, so each kind rejects the other's spelling. Caught
+	// here rather than at parse time because only the declaration says which
+	// kind this tree is.
+	switch decl.Kind {
+	case lang.KindESPHome:
+		if strings.HasPrefix(id.Name, "CONFIG_") || strings.HasPrefix(id.Name, "BR2_") {
+			return fmt.Errorf("%s: %s is a Kconfig symbol, and tree %q is configured by paths such as mqtt.topic_prefix",
+				pos, id, id.Tree)
+		}
+		return nil
+	default:
+		if !lang.KconfigName(strings.TrimSuffix(id.Name, "*")) {
+			return fmt.Errorf("%s: %s is a path, and tree %q is a Kconfig tree; paths name settings in a structured tree",
+				pos, id, id.Tree)
+		}
+	}
+
 	// An unmanaged pattern such as BR2_TARGET_UBOOT_* is checked on the part
 	// before the star, which may itself be shorter than the prefix.
 	name := strings.TrimSuffix(id.Name, "*")

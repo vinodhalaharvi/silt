@@ -24,7 +24,11 @@ import (
 func Trees(r *compose.Result) []string {
 	var out []string
 	for sc, cs := range r.Constraints {
-		if d, ok := r.Trees[string(sc)]; ok && d.CheckOnly() {
+		// CheckOnly trees configure nothing, and a tree whose configuration
+		// is not a Kconfig fragment is configured somewhere other than here -
+		// an ESPHome document is built by esphome on another processor, and
+		// Buildroot has no symbol to hand it to.
+		if d, ok := r.Trees[string(sc)]; ok && (d.CheckOnly() || !d.HandedToBuildroot()) {
 			continue
 		}
 		if sc != lang.Buildroot && hasHard(cs) {
