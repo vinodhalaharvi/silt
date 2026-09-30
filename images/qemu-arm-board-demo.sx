@@ -1,0 +1,32 @@
+;; The enumeration, on a machine anyone can run.
+;;
+;; feature:board-demo is for a board on a bench: it prints what bound at the end
+;; of boot, on the console, which is the one thing that works when nothing else
+;; does. This image is the same thing under QEMU, for two reasons.
+;;
+;; It is how the script is tested at all. A shell script that walks sysfs and
+;; joins two directory trees has edge cases - a node with no status, a device
+;; bound to a bus that is itself a device, a symlink that does not resolve - and
+;; none of them are visible until it runs against a real kernel. Under QEMU that
+;; costs a minute rather than a card and a power cycle.
+;;
+;; And it is the reference output. A virt machine's tree is small and completely
+;; known, so what this prints is what a working enumeration looks like. When a
+;; real board prints something surprising, this is what to compare it against.
+;;
+;;   silt dt build/images/*.dtb --linux ~/linux     what should bind
+;;   this image                                     what did
+;;
+;; Those two should agree, and QEMU is where that claim is cheap to check.
+
+(image qemu-arm-board-demo
+  (compose
+    target:qemu-aarch64-virt
+    profile:standard
+    feature:networking
+    feature:dev-ssh
+    feature:board-demo)
+
+  (ci boot)
+
+  (verified-against (buildroot "2025.02.16")))

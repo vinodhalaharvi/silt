@@ -1,0 +1,32 @@
+;; What a board actually brought up, printed at the end of boot.
+;;
+;; Compose this onto a board image and the console shows, once, every node the
+;; device tree describes: which bound to a driver, which did not, and which the
+;; tree says to leave alone. That is the state of a bring-up on one screen, and
+;; it is the difference between "it booted" and knowing what came up.
+;;
+;; It is the runtime counterpart of silt dt --linux, which predicts the same
+;; thing from the tree and the kernel source without booting anything. When the
+;; two disagree, one of them is wrong in a way worth knowing:
+;;
+;;   silt predicts a driver, the board says NO DRIVER
+;;     the symbol is set and the driver did not probe - check the hardware,
+;;     the clocks, the regulators
+;;
+;;   the board binds something silt did not predict
+;;     the scanner's Makefile parsing missed it; a bug in silt, not the image
+;;
+;; Needs nothing exotic. /sys/firmware/devicetree comes from CONFIG_OF, which
+;; any board booting from a device tree already has, and the of_node symlinks
+;; come with it.
+
+(fragment feature:board-demo
+  (doc "enumerate the device tree at boot and print what bound")
+
+  (buildroot
+    (path-append BR2_ROOTFS_OVERLAY "overlay"))
+
+  (linux
+    ;; The tree the kernel was given, published back. Without this the script
+    ;; has nothing to read and says so rather than reporting an empty board.
+    (y CONFIG_OF)))

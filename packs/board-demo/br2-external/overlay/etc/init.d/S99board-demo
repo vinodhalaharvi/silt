@@ -1,0 +1,24 @@
+#!/bin/sh
+#
+# Print the enumeration once, at the end of boot.
+#
+# S99, so everything that was going to bind has bound. A driver that probes
+# late - anything behind a bus that is itself a driver, which is most of an SPI
+# or I2C tree - would otherwise be reported as missing by a script that ran
+# before it.
+#
+# Output goes to the console rather than to a log, because the board this is
+# most useful on is one where nothing else works yet and the console is the only
+# thing there is.
+
+case "$1" in
+start|"")
+	silt-enumerate > /dev/console 2>&1
+	;;
+stop)
+	;;
+*)
+	echo "usage: $0 {start|stop}"
+	exit 1
+	;;
+esac

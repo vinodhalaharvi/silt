@@ -1,0 +1,150 @@
+#!/bin/sh
+#
+# silt-enumerate — what the device tree describes, and what actually bound.
+#
+# Bringing up a board answers three questions in sequence, and until now each
+# was answered by reading dmesg and guessing:
+#
+#   does the tree describe this hardware?          /sys/firmware/devicetree
+#   is a driver compiled in for it?                did anything claim the node
+#   did it bind?                                   /sys/bus/*/devices/*/of_node
+#
+# The kernel already knows all three. It publishes the tree it was given under
+# /sys/firmware/devicetree/base, and every device that bound has an of_node
+# symlink pointing back at the node it came from. Walking both and joining them
+# gives the table below, which is the whole state of a bring-up on one screen.
+#
+# Nothing here is silt-specific and nothing needs a daemon: it is the kernel's
+# own account of what happened, printed once.
+#
+#   silt-enumerate            the table
+#   silt-enumerate -q         only the nodes that did not bind
+#   silt-enumerate -a         disabled nodes as well
+#
+# It is deliberately POSIX sh with no awk dependencies beyond the basics: this
+# runs on a board whose userspace may be BusyBox and nothing else, at the moment
+# when nothing is known to work.
+set -u
+
+DT=/sys/firmware/devicetree/base
+quiet=0
+all=0
+
+for arg in "$@"; do
+	case "$arg" in
+	-q) quiet=1 ;;
+	-a) all=1 ;;
+	-h|--help) sed -n '3,22p' "$0" | sed 's/^# \?//'; exit 0 ;;
+	*) echo "silt-enumerate: unknown argument $arg" >&2; exit 2 ;;
+	esac
+done
+
+if [ ! -d "$DT" ]; then
+	echo "silt-enumerate: no $DT"
+	echo
+	echo "  This kernel was not given a device tree, or was built without"
+	echo "  CONFIG_OF. On a board that boots from a device tree this is itself"
+	echo "  the finding: the firmware did not pass one, or passed one the"
+	echo "  kernel rejected."
+	exit 1
+fi
+
+# A property file holds NUL-separated strings; turn it into one space-separated
+# line. tr rather than a shell read, because the values contain NULs and a shell
+# variable cannot.
+prop() {
+	[ -f "$1" ] || return 1
+	tr '\0' ' ' < "$1" | sed 's/ *$//'
+}
+
+# Every device that bound, as "of_node_path<TAB>bus/name". The of_node symlink
+# points into /sys/firmware/devicetree/base, so its target is the node's path
+# and joins directly to the walk below.
+bound_list=$(
+	for d in /sys/bus/*/devices/*; do
+		[ -L "$d/of_node" ] || continue
+		node=$(readlink -f "$d/of_node" 2>/dev/null) || continue
+		bus=$(basename "$(dirname "$(dirname "$d")")")
+		printf '%s\t%s/%s\n' "$node" "$bus" "$(basename "$d")"
+	done 2>/dev/null
+)
+
+model=$(prop "$DT/model" 2>/dev/null || echo "unknown board")
+kernel=$(uname -r)
+pagesize=$(getconf PAGESIZE 2>/dev/null || echo "?")
+
+echo "silt-enumerate — $model"
+echo "kernel $kernel, $pagesize-byte pages"
+echo
+
+n_bound=0
+n_nodriver=0
+n_disabled=0
+nodriver_out=""
+disabled_out=""
+bound_out=""
+
+# Walk every node that names a compatible string. find rather than a recursive
+# shell function: the tree is a few hundred nodes and a shell recursion on a
+# board with 512MB of RAM and BusyBox is not worth the elegance.
+for c in $(find "$DT" -name compatible 2>/dev/null | sort); do
+	node=$(dirname "$c")
+	path=${node#"$DT"}
+	[ -n "$path" ] || path=/
+	compat=$(prop "$c")
+
+	status=$(prop "$node/status" 2>/dev/null || echo "okay")
+	case "$status" in
+	okay|ok|"") ;;
+	*)
+		n_disabled=$((n_disabled + 1))
+		disabled_out="$disabled_out$path	$compat
+"
+		continue
+		;;
+	esac
+
+	dev=$(printf '%s' "$bound_list" | grep -F "	" | awk -F'\t' -v n="$node" '$1 == n { print $2; exit }')
+	if [ -n "$dev" ]; then
+		n_bound=$((n_bound + 1))
+		bound_out="$bound_out$path	$compat	$dev
+"
+	else
+		n_nodriver=$((n_nodriver + 1))
+		nodriver_out="$nodriver_out$path	$compat
+"
+	fi
+done
+
+fmt() { printf '%s' "$1" | while IFS='	' read -r p c d; do
+	[ -n "$p" ] || continue
+	printf '  %-40s %-28s %s\n' "$p" "$c" "${d:-}"
+done; }
+
+if [ "$quiet" -eq 0 ]; then
+	echo "BOUND      $n_bound"
+	fmt "$bound_out"
+	echo
+fi
+
+echo "NO DRIVER  $n_nodriver   enabled in the tree, nothing bound"
+fmt "$nodriver_out"
+echo
+echo "  Some of these are expected. A bus, a fixed regulator, a clock or a"
+echo "  pin controller is often handled by the core with no device of its own,"
+echo "  and a node may describe something with no driver by design. The ones"
+echo "  worth looking at are the peripherals - if a CAN controller or a UART"
+echo "  expander is in this list, the tree describes hardware this kernel"
+echo "  cannot drive."
+
+if [ "$all" -eq 1 ]; then
+	echo
+	echo "DISABLED   $n_disabled   present, and the tree says do not bring up"
+	fmt "$disabled_out"
+else
+	echo
+	echo "DISABLED   $n_disabled   (-a to list)"
+fi
+
+echo
+echo "$((n_bound + n_nodriver + n_disabled)) nodes with a compatible string"

@@ -1,0 +1,2 @@
+name: BOARD_DEMO
+desc: Enumerate the device tree at boot and say what bound

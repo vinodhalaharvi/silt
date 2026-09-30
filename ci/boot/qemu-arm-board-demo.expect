@@ -1,0 +1,23 @@
+# The enumeration itself, asserted.
+#
+# A script that prints a table is easy to write and easy to get quietly wrong:
+# an empty table and a table of everything both look plausible at a glance. So
+# these assertions are about the shape of the answer rather than its content.
+
+# It ran, and found the machine.
+silt-enumerate | head -1	silt-enumerate
+
+# Something bound. A virt machine has a UART, a virtio bus and an RTC at
+# minimum, so a zero here means the join between the tree and the bus devices
+# is broken - which was a real bug during development, caused by a symlink
+# depth nobody would notice by reading.
+silt-enumerate | grep '^BOUND'	BOUND
+
+# The console we are reading this on is itself in the table, bound. If the
+# enumeration cannot see the device it is printing through, it is not seeing
+# the tree.
+silt-enumerate | grep pl011	pl011
+
+# And the counts add up to something. A tree with no compatible nodes at all
+# means the script found the directory and failed to walk it.
+silt-enumerate | tail -1	nodes with a compatible string

@@ -1,0 +1,30 @@
+;; Bringing up a board, answered rather than guessed.
+;;
+;; A first boot asks three questions in sequence, and until now each was
+;; answered by reading dmesg and inferring:
+;;
+;;   does the tree describe this hardware?
+;;   is a driver compiled in for it?
+;;   did it bind?
+;;
+;; The kernel knows all three and publishes them. This pack is a script that
+;; reads them and one init script that runs it at boot, so a board says what
+;; happened on its console without anyone logging in - which matters most on
+;; the boards where logging in is exactly what does not work yet.
+;;
+;; It is the runtime half of what silt dt --linux predicts statically. The
+;; prediction says which symbols a tree needs; this says which ones bound. They
+;; should agree, and when they do not, one of them is wrong in a way worth
+;; knowing about.
+
+(pack board-demo
+  (version "0.1.0")
+  (doc "enumerate the device tree at boot: what bound, what did not, what is off")
+
+  (requires
+    (buildroot "2025.02.16"))
+
+  (external "br2-external")
+
+  (provides
+    (feature board-demo)))
