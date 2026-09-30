@@ -39,8 +39,20 @@ building anything.
 An image says:
 
     (ci build)   build it and keep the artifact
-    (ci boot)    build it and boot it
+    (ci boot)    build it, then boot it under QEMU and run its assertions
                  absent → check only
+
+A boot image is run through `ci/boot-test.sh`, which drives the serial console
+and checks each line of `ci/boot/<image>.expect`:
+
+    systemctl is-system-running --wait   running
+    netstat -ltn                         :502
+    curl -s http://localhost:8080/tags   setpoint
+
+Those three would have caught the two most expensive failures of the year: an
+init script ordered so early it blocked every service behind it, and a stale
+file from a cached tree that left two copies of that script in one image. Both
+passed every configuration check in this repository.
 
 and the workflow asks:
 

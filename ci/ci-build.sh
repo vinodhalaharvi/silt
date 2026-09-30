@@ -99,7 +99,12 @@ export SILT_WORK="$CI_ROOT/work"
 export SILT_LOCK="$CI_ROOT/lock"
 
 if [ ${#images[@]} -eq 0 ]; then
-	mapfile -t images < <(./bin/silt images --ci build)
+	# Both lists. An image marked (ci boot) is built and then booted; one
+	# marked (ci build) is built. Building only the first list is what the
+	# language said and not what the workflow did, so an image could carry
+	# (ci boot) and never be built at all - a claim with nothing behind it,
+	# which is worse than no claim.
+	mapfile -t images < <(./bin/silt images --ci build; ./bin/silt images --ci boot)
 fi
 if [ ${#images[@]} -eq 0 ]; then
 	echo "nothing is marked (ci build); nothing to do"
@@ -121,10 +126,36 @@ if [ ! -w "$SILT_CACHE" ]; then
 	exit 1
 fi
 
+# Which of these are to be booted, so the loop below knows without asking again.
+boots=" $(./bin/silt images --ci boot | tr '\n' ' ') "
+
 for image in "${images[@]}"; do
 	echo "::group::$image"
 	./ci/silt-build.sh "$image"
 	echo "::endgroup::"
+
+	case "$boots" in
+	*" $image "*)
+		# (ci boot) meant nothing until now: the list was printed and
+		# ignored. Everything else in CI checks configuration - that a symbol
+		# exists, that kbuild keeps it, that two trees agree - and none of it
+		# can catch a setting that is real, correctly spelled, passes every
+		# check and does nothing. Nor an init script that blocks every service
+		# behind it, which is what an S41 ordering mistake did to a board that
+		# answered ping with every port closed.
+		#
+		# --no-build because silt-build.sh has just built it, into the
+		# directory named after the image.
+		name=$(basename "$image" .sx)
+		echo "::group::boot $name"
+		if ! ./ci/boot-test.sh "$image" --no-build \
+			-o "$HOME/br-$name" --buildroot "$BUILDROOT"; then
+			echo "$0: $name built and did not boot" >&2
+			exit 1
+		fi
+		echo "::endgroup::"
+		;;
+	esac
 done
 
 say "the store"

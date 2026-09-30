@@ -1,0 +1,40 @@
+# The appliance, booted. Evidence rather than claims: every line is a command
+# run on the running image and a string its output must contain.
+#
+# This exists because the failures that cost the most this year were not
+# configuration failures. An init script ordered at S41 blocked every service
+# behind it, and the board answered ping with every port closed. A stale file
+# from a cached tree left two copies of a script in one image. Both passed every
+# check in this repository, and both would have failed the first three lines
+# here.
+
+# It is the architecture it claims to be, and it is this image.
+uname -m	aarch64
+cat /etc/os-release	Buildroot
+
+# Userspace finished. The S41 bug looked exactly like this line failing: init
+# stopped partway through and everything behind it never started.
+systemctl is-system-running --wait	running
+
+# The four protocols, listening. The point of the appliance is that one device
+# answers on all of them, so any one of these missing is the product broken.
+netstat -ltn	:502
+netstat -ltn	:4840
+netstat -ltn	:1883
+netstat -ltn	:8080
+
+# The daemons are actually running rather than merely enabled.
+systemctl is-active silt-sim	active
+systemctl is-active silt-modbus	active
+systemctl is-active silt-opcua	active
+
+# The tag table exists and has the device in it. This is the shared state every
+# protocol reads, so its absence would leave four servers answering with
+# nothing.
+ls /dev/shm	silt
+cat /etc/silt-sim.json	pump-1
+
+# And it answers. A server that listens and returns nothing is a failure the
+# port check cannot see.
+curl -s http://localhost:8080/health	ok
+curl -s http://localhost:8080/tags	setpoint
