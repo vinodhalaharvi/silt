@@ -1,46 +1,43 @@
 #!/usr/bin/env bash
 #
-# boot-diff.sh — what one card's boot partition has that another's does not.
+# boot-diff.sh — what a card that boots has, that one that does not lacks.
 #
 # A Raspberry Pi's boot partition is the whole handoff from firmware to kernel:
 # config.txt says what to load and how, cmdline.txt says what to tell it, the
 # device trees say what the hardware is, and the overlays directory says what
 # may be turned on. When a board boots one card and not another, the difference
-# is often here rather than in either kernel - and it is a difference nobody can
-# see, because the two partitions are inside two image files.
-#
-# This reads both and prints what differs. Nothing is mounted and nothing needs
-# root: the boot partition is FAT, and mtools reads FAT from a file at an offset
-# directly. Buildroot already builds boot partitions with mtools, so any machine
-# that can build an image can run this.
+# is often here rather than in either kernel - and it is invisible, because both
+# partitions are inside image files.
 #
 #   ci/boot-diff.sh THEIRS OURS
 #
-# Each argument may be:
+# Each argument may be an image, an already-mounted boot partition, or a
+# compressed image, and the two need not be the same kind:
 #
-#   a directory     an already-mounted boot partition, /Volumes/bootfs or /mnt/boot
-#   an .img file    the MBR is read and the first FAT partition used
-#   an .img.zst     decompressed to a temporary file first
+#   ci/boot-diff.sh /Volumes/bootfs build/images/sdcard.img
+#   ci/boot-diff.sh raspios.img sdcard.img.zst
 #
-# The names are a convention rather than a requirement: "theirs" is whatever
-# boots, "ours" is whatever does not, and the output is written from that
-# direction - lines and files only in theirs are the candidates for what is
-# missing.
+# What this script contributes is the extraction: pulling a FAT partition out of
+# an image at an MBR offset, mounting nothing and needing no root. The comparison
+# is diff and git diff, because a unified diff is a format every reader already
+# knows and a hand-rolled one is a format nobody does. An earlier version sorted
+# config.txt and compared with comm, which threw the order away - and in
+# config.txt order is information, because a line means what the [pi5] or [cm4]
+# section above it says it means.
 #
-# What it does not do: say anything about either kernel. A kernel image is a
-# compiled binary with no configuration inside it, and the question "is this
-# kernel wrong" cannot be answered by reading a partition. If this comes back
-# with nothing interesting, the difference is in the kernel and the next tool is
-# a serial console.
+# It says nothing about either kernel, deliberately. A kernel image is a compiled
+# binary carrying no configuration, so "is this kernel wrong" cannot be answered
+# by reading a partition. If nothing here explains the failure, the difference is
+# inside one of them and the next tool is a serial console.
 set -euo pipefail
 
 usage() {
-	sed -n '3,30p' "$0" | sed 's/^# \?//'
+	sed -n '3,31p' "$0" | sed 's/^# \?//'
 	exit 2
 }
 
 [[ $# -eq 2 ]] || usage
-command -v mdir >/dev/null || {
+command -v mcopy >/dev/null || {
 	echo "boot-diff: mtools not found (apt install mtools, brew install mtools)" >&2
 	exit 1
 }
@@ -48,14 +45,11 @@ command -v mdir >/dev/null || {
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-# --- reading a boot partition, whatever it arrived as ----------------------
-
-# Where the first FAT partition starts, in bytes. The MBR's four entries live
-# at 0x1BE, sixteen bytes each; byte 4 is the type and bytes 8..11 the starting
-# LBA, little-endian. FAT types: 0x01, 0x04, 0x06, 0x0b, 0x0c, 0x0e.
+# Where the first FAT partition starts, in bytes. The MBR's four entries live at
+# 0x1BE, sixteen bytes each; byte 4 is the type and bytes 8..11 the starting LBA,
+# little-endian. FAT types: 0x01, 0x04, 0x06, 0x0b, 0x0c, 0x0e.
 fat_offset() {
-	local img=$1
-	python3 - "$img" <<'PY'
+	python3 - "$1" <<'PY'
 import sys, struct
 with open(sys.argv[1], 'rb') as f:
     mbr = f.read(512)
@@ -65,15 +59,12 @@ for i in range(4):
         print(struct.unpack('<I', e[8:12])[0] * 512)
         break
 else:
-    sys.exit("no FAT partition in the MBR")
+    sys.exit(1)
 PY
 }
 
-# Copy a boot partition's files into a directory we can walk, whatever the
-# source was. Returns the directory.
+# Put a boot partition's files somewhere walkable, whatever the source was.
 extract() {
-	# Separate lines: bash expands every argument to `local` before assigning
-	# any of them, so "$work/$name" on the same line would use an unset name.
 	local src=$1
 	local name=$2
 	local dst="$work/$name"
@@ -95,10 +86,11 @@ extract() {
 
 	local off
 	if ! off=$(fat_offset "$img"); then
-		echo "boot-diff: $src has no FAT partition in its MBR" >&2
+		echo "boot-diff: no FAT partition in the MBR of $src" >&2
 		exit 1
 	fi
-	# mcopy needs the offset in the drive definition rather than as a flag.
+
+	# mcopy takes the offset in a drive definition rather than as a flag.
 	export MTOOLS_SKIP_CHECK=1
 	printf 'drive z: file="%s" offset=%s\n' "$img" "$off" > "$work/$name.mtoolsrc"
 	MTOOLSRC="$work/$name.mtoolsrc" mcopy -s -n z:/* "$dst"/ 2>/dev/null || true
@@ -108,89 +100,59 @@ extract() {
 theirs=$(extract "$1" theirs)
 ours=$(extract "$2" ours)
 
-echo "theirs  $1"
-echo "ours    $2"
+echo "--- $1"
+echo "+++ $2"
 
-# --- config.txt ------------------------------------------------------------
+# git diff --no-index works outside a repository and brings colour and --stat.
+# Both it and diff exit non-zero when things differ, which here is the expected
+# case rather than a failure.
+have_git=0
+command -v git >/dev/null && have_git=1
 
-# Comments and blank lines are noise; a section header ([pi5], [cm4]) is not,
-# because a line's meaning depends on the section it is in.
-clean_config() {
-	[[ -f $1 ]] || return 0
-	grep -v '^[[:space:]]*#' "$1" | grep -v '^[[:space:]]*$' | sed 's/[[:space:]]*$//'
-}
+# An overview from git diff --stat was here and came out worse than the sections
+# below: with two temporary directories git renders every added or removed file
+# as a {a => b} pair with the temp path spliced through the middle, and fighting
+# that formatting to say what the file list already says is not worth it.
 
 echo
 echo "== config.txt"
-clean_config "$theirs/config.txt" | sort > "$work/tc"
-clean_config "$ours/config.txt" | sort > "$work/oc"
-if only=$(comm -23 "$work/tc" "$work/oc") && [[ -n $only ]]; then
-	echo "  only in theirs:"
-	sed 's/^/    /' <<<"$only"
-fi
-if only=$(comm -13 "$work/tc" "$work/oc") && [[ -n $only ]]; then
-	echo "  only in ours:"
-	sed 's/^/    /' <<<"$only"
-fi
-[[ -s "$work/tc" || -s "$work/oc" ]] || echo "  (neither has one)"
-
-# --- cmdline.txt -----------------------------------------------------------
-#
-# Shown whole and side by side rather than diffed: it is one line, the order of
-# its arguments matters, and a word-level diff of a kernel command line is
-# harder to read than the two lines themselves.
+diff -u "$theirs/config.txt" "$ours/config.txt" 2>/dev/null | tail -n +3 || true
 
 echo
 echo "== cmdline.txt"
-echo "  theirs: $(tr -d '\n' < "$theirs/cmdline.txt" 2>/dev/null || echo '(none)')"
-echo "  ours:   $(tr -d '\n' < "$ours/cmdline.txt" 2>/dev/null || echo '(none)')"
-
-# --- files -----------------------------------------------------------------
-
-echo
-echo "== files"
-( cd "$theirs" && find . -type f | sed 's|^\./||' | sort ) > "$work/tf"
-( cd "$ours" && find . -type f | sed 's|^\./||' | sort ) > "$work/of"
-
-# An overlays directory has dozens of entries and listing every one buries the
-# rest of the output. Collapse any directory that differs wholesale.
-summarise() {
-	awk -F/ '
-		NF > 1 { d[$1]++; next }
-		{ print }
-		END { for (k in d) printf "%s/ (%d entries)\n", k, d[k] }
-	' | sort
-}
-
-if only=$(comm -23 "$work/tf" "$work/of" | summarise) && [[ -n $only ]]; then
-	echo "  only in theirs:"
-	sed 's/^/    /' <<<"$only"
-fi
-if only=$(comm -13 "$work/tf" "$work/of" | summarise) && [[ -n $only ]]; then
-	echo "  only in ours:"
-	sed 's/^/    /' <<<"$only"
+# One long line, so a word diff reads where a line diff does not.
+if [[ $have_git -eq 1 ]]; then
+	git --no-pager diff --no-index --word-diff=plain --unified=0 \
+		"$theirs/cmdline.txt" "$ours/cmdline.txt" 2>/dev/null | tail -n +5 || true
+else
+	echo "  theirs: $(tr -d '\n' < "$theirs/cmdline.txt" 2>/dev/null)"
+	echo "  ours:   $(tr -d '\n' < "$ours/cmdline.txt" 2>/dev/null)"
 fi
 
 echo
-echo "  in both: $(comm -12 "$work/tf" "$work/of" | wc -l | tr -d ' ') file(s)"
+echo "== every other file"
+# -r walks both trees, reports what is present on one side only, and says
+# "Files ... differ" for binaries rather than printing them. -q keeps it to one
+# line each, which is what you want across a directory of device trees.
+#
+# A directory absent on one side is collapsed to one line with a count: an
+# overlays directory has dozens of entries and listing each buries the rest.
+diff -rq "$theirs" "$ours" 2>/dev/null |
+	grep -vE "(^Only in .*: (config|cmdline)\.txt$|/(config|cmdline)\.txt and )" |
+	while IFS= read -r line; do
+		if [[ $line =~ ^Only\ in\ (.*):\ (.*)$ ]]; then
+			d=${BASH_REMATCH[1]}; f=${BASH_REMATCH[2]}
+			if [[ -d "$d/$f" ]]; then
+				n=$(find "$d/$f" -type f | wc -l | tr -d ' ')
+				echo "Only in $d: $f/ ($n entries)"
+				continue
+			fi
+		fi
+		echo "$line"
+	done |
+	sed -e "s|$theirs|theirs|g" -e "s|$ours|ours|g" || true
 
-# Same name, different contents - the case neither list above catches, and the
-# one most likely to matter for a device tree.
 echo
-echo "== same name, different contents"
-found=0
-while read -r f; do
-	if ! cmp -s "$theirs/$f" "$ours/$f"; then
-		printf '    %-32s theirs %s, ours %s\n' "$f" \
-			"$(stat -c %s "$theirs/$f" 2>/dev/null || stat -f %z "$theirs/$f")" \
-			"$(stat -c %s "$ours/$f" 2>/dev/null || stat -f %z "$ours/$f")"
-		found=1
-	fi
-done < <(comm -12 "$work/tf" "$work/of")
-[[ $found -eq 1 ]] || echo "    (none)"
-
-echo
-echo "This compares configuration only. Neither kernel is examined: a kernel"
-echo "image carries no configuration, and if nothing above explains the"
-echo "failure, the difference is inside one of them and the next tool is a"
-echo "serial console."
+echo "Configuration only: neither kernel is examined. A kernel image carries no"
+echo "configuration, so if nothing above explains the failure, the difference is"
+echo "inside one of them and the next tool is a serial console."

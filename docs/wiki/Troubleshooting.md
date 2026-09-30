@@ -47,7 +47,24 @@ what to tell it, what the hardware is, what may be turned on. When a board boots
 one card and not another, the difference is often here rather than in either
 kernel - and it is invisible, because both partitions are inside image files.
 It takes an image, a mounted directory or an .img.zst, mounts nothing and needs
-no root.
+no root. The output is a unified diff, because that is a format every reader
+already knows:
+
+    == config.txt
+    -arm_64bit=1
+    -auto_initramfs=1
+    -dtoverlay=vc4-kms-v3d
+    +kernel=Image
+     disable_overscan=1
+
+    == every other file
+    Only in ours: Image
+    Files theirs/bcm2712-rpi-5-b.dtb and ours/bcm2712-rpi-5-b.dtb differ
+    Only in theirs: overlays/ (58 entries)
+
+The last kind of line is the one worth watching: a device tree with the same
+name and different contents is a plausible cause that neither "only in" list
+would catch.
 
 It says nothing about either kernel, deliberately: a kernel image carries no
 configuration. If the diff comes back with nothing that explains the failure,
