@@ -114,14 +114,12 @@ var Kconfig = plugin.Interp[KconfigCfg, KconfigCfg]{
 			if len(fs) == 0 {
 				return plan.OK()
 			}
-			msgs := make([]string, len(fs))
-			for i, f := range fs {
-				msgs[i] = f.Message
-				if f.Detail != "" {
-					msgs[i] += "\n    " + f.Detail
-				}
-			}
-			return plan.Fail(errors.New(strings.Join(msgs, "\n  ")))
+			// The findings themselves rather than a rendering of them: a
+			// caller printing a report wants the position, the symbol and the
+			// detail as Check produced them, and re-deriving those from a
+			// string is how two commands come to print the same problem two
+			// ways.
+			return plan.Fail(Findings(fs))
 
 		case plan.Settled:
 			id := lang.SymbolID{Tree: k.Tree, Name: k.Name}
@@ -337,18 +335,45 @@ func SameValues(rules []*lang.Rules) plan.Plan[plan.V[plan.Unit]] {
 // answers fold into the same report as the cross-tree rules rather than into a
 // second one that can disagree.
 func CheckImage(res *compose.Result, trees map[string]lang.TreeDecl) plan.Plan[plan.V[plan.Unit]] {
-	var claims []lang.Constraint
+	// Keyed by symbol, because verify indexes what the composition asserts by
+	// name and a symbol stated twice is checked once. Counting it twice would
+	// make "31 buildroot symbols checked" mean something different from what
+	// it has always meant.
+	byID := map[lang.SymbolID]lang.Constraint{}
+	kconfigTree := func(tree string) bool {
+		d, ok := trees[tree]
+		return ok && d.Kind == lang.KindKconfig
+	}
+
 	for sc, cs := range res.Constraints {
-		d, ok := trees[string(sc)]
-		if !ok || d.Kind != lang.KindKconfig {
+		if !kconfigTree(string(sc)) {
 			continue
 		}
 		for _, c := range cs {
-			if c.Soft || unmanaged(c.Sym, res.Unmanaged) {
+			if c.Soft {
 				continue
 			}
-			claims = append(claims, c)
+			byID[c.Sym] = c
 		}
+	}
+	// Opaque and environment symbols are stated too, and verify checks them:
+	// a value silt passes through without modelling still has to name a
+	// symbol that exists, and an environment symbol misspelled is as silently
+	// dropped as any other.
+	for _, cs := range [][]lang.Constraint{res.Opaque, res.Environment} {
+		for _, c := range cs {
+			if kconfigTree(c.Sym.Tree) {
+				byID[c.Sym] = c
+			}
+		}
+	}
+
+	var claims []lang.Constraint
+	for id, c := range byID {
+		if unmanaged(id, res.Unmanaged) {
+			continue
+		}
+		claims = append(claims, c)
 	}
 	// Deterministic, so a plan is diffable and its hash is stable.
 	sort.Slice(claims, func(i, j int) bool {
@@ -411,4 +436,51 @@ func ForImage(res *compose.Result, trees map[string]lang.TreeDecl, src Sources) 
 		reg[name] = o
 	}
 	return reg
+}
+
+// Findings is verify's findings carried as an error, so a plan's failure can
+// be unwrapped back into exactly what Check produced.
+type Findings []verify.Finding
+
+func (f Findings) Error() string {
+	msgs := make([]string, len(f))
+	for i, x := range f {
+		msgs[i] = x.Message
+		if x.Detail != "" {
+			msgs[i] += "\n    " + x.Detail
+		}
+	}
+	return strings.Join(msgs, "\n  ")
+}
+
+// Report runs an image's claims and returns what Check would have returned:
+// the findings, and how many symbols were checked in each tree.
+//
+// The output of silt check is unchanged by the migration - deliberately. A
+// refactor that also changes what the reader sees cannot be verified against
+// the thing it replaces, and the differential test is the only reason this is
+// safe to do at all.
+func Report(res *compose.Result, trees map[string]lang.TreeDecl, reg plugin.Registry) ([]verify.Finding, map[string]int, error) {
+	p := CheckImage(res, trees)
+
+	checked := map[string]int{}
+	for _, k := range p.Asks() {
+		checked[k.Tree]++
+	}
+
+	v, err := plugin.Run(p, reg)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var out []verify.Finding
+	for _, pr := range v.Problems {
+		var fs Findings
+		if errors.As(pr.Err, &fs) {
+			out = append(out, fs...)
+			continue
+		}
+		out = append(out, verify.Finding{Pos: pr.Ask.Pos, Symbol: pr.Ask.Name, Message: pr.Err.Error()})
+	}
+	return out, checked, nil
 }

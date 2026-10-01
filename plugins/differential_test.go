@@ -82,14 +82,21 @@ func TestPlanAgreesWithVerify(t *testing.T) {
 		reg := plugins.ForImage(res, lib.Trees, plugins.Sources{
 			Buildroot: tree, BuildrootVersion: ver,
 		})
-		v, err := plugin.Run(plugins.CheckImage(res, lib.Trees),
-			plugin.Each(reg, plugin.Lazy()))
+		fs, counts, err := plugins.Report(res, lib.Trees, plugin.Each(reg, plugin.Lazy()))
 		if err != nil {
 			t.Fatalf("%s: %v", im.Name, err)
 		}
 		var got []string
-		for _, p := range v.Problems {
-			got = append(got, normalise(p.Ask.Name, firstLine(p.Err.Error())))
+		for _, f := range fs {
+			got = append(got, normalise(f.Symbol, f.Message))
+		}
+
+		// The count the report prints has to match too: "43 buildroot
+		// symbols checked" is a claim a reader relies on, and a migration
+		// that quietly changed it would pass a findings-only comparison.
+		if want, have := wantChecked(res, tree, lib.Trees), counts["buildroot"]; want != have {
+			t.Errorf("%s: verify checked %d buildroot symbols, the plan asked about %d",
+				im.Name, want, have)
 		}
 
 		sort.Strings(want)
@@ -216,4 +223,8 @@ func parseAll(t *testing.T, root string) []*lang.File {
 		out = append(out, f)
 	}
 	return out
+}
+
+func wantChecked(res *compose.Result, tree *kconfig.Tree, trees map[string]lang.TreeDecl) int {
+	return verify.Check(res, tree, trees["buildroot"]).Checked
 }

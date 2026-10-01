@@ -372,11 +372,39 @@ func cmdCheck(args []string) error {
 				im.Name, want, treeVer)
 			bad++
 		}
-		rep := verify.Check(res, tree, lib.Trees[string(lang.Buildroot)])
+		// Every tree's claims as one plan, answered once. The checking is
+		// the same function verify.Check calls - plugins.Report returns its
+		// findings unchanged - but the questions are now asked together, so
+		// one Buildroot tree answers for all of them and the counts come
+		// from the plan rather than from each tree's own walk.
+		imgSources := plugins.Sources{Buildroot: tree, BuildrootVersion: treeVer}
+		for _, sc := range otherScopes(res) {
+			if lib.Trees[string(sc)].CheckOnly() {
+				continue
+			}
+			t2, _, err := treeFor(sc, lib.Trees, lxDir)
+			if err != nil {
+				return err
+			}
+			if sc == lang.Linux {
+				imgSources.Linux = t2
+			}
+		}
+		imgReg := plugin.Each(
+			plugins.ForImage(res, lib.Trees, imgSources),
+			plugin.Lazy(), plugin.Memo())
+
+		planFindings, planChecked, err := plugins.Report(res, lib.Trees, imgReg)
+		if err != nil {
+			return err
+		}
+
+		rep := &verify.Report{Scope: string(lang.Buildroot), Checked: planChecked["buildroot"]}
+		rep.Findings = append(rep.Findings, planFindings...)
 		verify.CheckCapabilities(lib.Declared, tree, rep)
 		verify.CheckTrees(lib.Trees, tree, rep)
 		verify.CheckRules(lib.Rules, tree, lib.Trees[string(lang.Buildroot)], rep)
-		against := []string{fmt.Sprintf("%d buildroot", rep.Checked)}
+		against := []string{fmt.Sprintf("%d buildroot", planChecked["buildroot"])}
 		versions := []string{"buildroot " + treeVer}
 
 		// Every other tree the library declares and the caller supplied. A
@@ -398,10 +426,13 @@ func cmdCheck(args []string) error {
 				fmt.Printf("%s: pinned to %s %s, checking against %s\n", im.Name, sc, want, ver)
 				bad++
 			}
-			r2 := verify.Check(res, t2, lib.Trees[string(sc)])
+			// The claims themselves were answered in the plan above; what
+			// is left here is the rule check, which still walks a whole
+			// composition.
+			r2 := &verify.Report{Scope: string(sc)}
 			verify.CheckRules(lib.Rules, t2, lib.Trees[string(sc)], r2)
 			rep.Findings = append(rep.Findings, r2.Findings...)
-			against = append(against, fmt.Sprintf("%d %s", r2.Checked, sc))
+			against = append(against, fmt.Sprintf("%d %s", planChecked[string(sc)], sc))
 			versions = append(versions, string(sc)+" "+ver)
 		}
 
