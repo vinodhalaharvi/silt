@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"github.com/vinodhalaharvi/silt/dt"
 	"github.com/vinodhalaharvi/silt/esphome"
+	"github.com/vinodhalaharvi/silt/plugin"
+	"github.com/vinodhalaharvi/silt/plugins"
 	"os"
 	"path/filepath"
 	"sort"
@@ -32,6 +34,7 @@ const usage = `silt — composable S-expressions over Kconfig
 
   silt check [PATH...]              parse and validate; report problems
   silt check --buildroot DIR        also verify every claim against that tree
+        [--devicetree FILE.dtb]     and answer same-value rules from a device tree
         [--external DIR]            with a br2-external tree (any command)
         [--pack DIR]                with a pack: fragments and its tree (any command);
                                     default: every pack under ./packs
@@ -209,11 +212,56 @@ func loadAll(paths []string) ([]*lang.File, error) {
 	return out, nil
 }
 
+func countSame(rs []*lang.Rules) int {
+	n := 0
+	for _, r := range rs {
+		n += len(r.Same)
+	}
+	return n
+}
+
+// composedConstraints gathers what the library states, so a same-value rule
+// can be answered from it as a whole.
+//
+// Every fragment, not only the composed images: the two sides of a rule are
+// usually stated by two fragments, and a rule is about the library rather than
+// about any one image - a library with no images at all still has facts that
+// must agree. A name stated twice with different values is a conflict compose
+// already reports at the image; here the last wins, which affects the message
+// and not whether a real mismatch is found.
+func composedConstraints(lib *compose.Library, images []*lang.Image, brDir string) map[lang.Scope][]lang.Constraint {
+	out := map[lang.Scope][]lang.Constraint{}
+	for _, fr := range lib.Fragments {
+		for sc, cs := range fr.Constraints {
+			out[sc] = append(out[sc], cs...)
+		}
+	}
+	// Then the images, which may override what a fragment states.
+	for _, im := range images {
+		res, err := lib.Compose(im)
+		if err != nil {
+			continue
+		}
+		for sc, cs := range res.Constraints {
+			out[sc] = append(out[sc], cs...)
+		}
+	}
+	return out
+}
+
 func cmdCheck(args []string) error {
-	var brDir, lxDir string
+	var brDir, lxDir, dtbPath string
+	var sameBad int
 	var rest []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "--devicetree":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("--devicetree needs a .dtb")
+			}
+			dtbPath = args[i]
+			continue
 		case "--buildroot", "--linux":
 			flag := args[i]
 			i++
@@ -398,8 +446,55 @@ func cmdCheck(args []string) error {
 			fmt.Printf("  %s\n", f)
 		}
 	}
-	if bad > 0 {
+	// same-value rules, which run over the library rather than per image: the
+	// two sides of one are usually stated by two fragments, and a rule holds
+	// or does not hold for the library that contains both.
+	//
+	// This is the first thing to go through the plan: the questions are built
+	// without opening anything, every tree that can answer is asked, and a
+	// tree that was not given answers "cannot say" rather than failing - the
+	// same meaning --linux has always had, now written once.
+	if nSame := countSame(lib.Rules); nSame > 0 {
+		stated := plugins.Index(composedConstraints(lib, images, brDir))
+		src := plugins.Sources{Buildroot: tree, BuildrootVersion: treeVer}
+		if lxDir != "" {
+			if lt, _, err := treeFor(lang.Linux, lib.Trees, lxDir); err == nil {
+				src.Linux = lt
+			}
+		}
+		if dtbPath != "" {
+			if dtb, err := dt.ReadFile(dtbPath); err == nil {
+				src.DeviceTree = dtb
+			} else {
+				return fmt.Errorf("--devicetree %s: %w", dtbPath, err)
+			}
+		}
+		reg := plugins.Registry(lib.Trees, stated, src)
+		p := plugins.SameValues(lib.Rules)
+		v, err := plugin.Run(p, plugin.Each(reg, plugin.Lazy(), plugin.Memo()))
+		if err != nil {
+			return err
+		}
+		switch {
+		case v.Failed():
+			sameBad = len(v.Problems)
+			fmt.Printf("\n%d same-value rule(s) do not hold\n", len(v.Problems))
+			for _, pr := range v.Problems {
+				fmt.Printf("  %s\n", pr.Error())
+			}
+		default:
+			fmt.Printf("ok  %d same-value rule(s) hold\n", nSame)
+		}
+	}
+
+	switch {
+	case bad > 0 && sameBad > 0:
+		return fmt.Errorf("%d image(s) do not match the tree, and %d same-value rule(s) do not hold",
+			bad, sameBad)
+	case bad > 0:
 		return fmt.Errorf("%d image(s) do not match the tree", bad)
+	case sameBad > 0:
+		return fmt.Errorf("%d same-value rule(s) do not hold", sameBad)
 	}
 	fmt.Printf("ok  %d files, %d fragments, %d rule blocks, %d images\n",
 		len(files), nf, nr, len(images))

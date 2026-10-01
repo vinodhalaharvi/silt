@@ -435,9 +435,17 @@ func parseRules(n *sexpr.Node) (*Rules, error) {
 	}
 	r := &Rules{Name: args[0].Text, Pos: n.Pos}
 	for _, item := range args[1:] {
+		if item.Head() == "same-value" {
+			sv, err := parseSameValue(item, "rules:"+r.Name)
+			if err != nil {
+				return nil, err
+			}
+			r.Same = append(r.Same, *sv)
+			continue
+		}
 		if item.Head() != "when" {
-			return nil, errf(item, "a rules block holds only (when ...) forms; "+
-				"an unconditional assertion belongs in a fragment")
+			return nil, errf(item, "a rules block holds only (when ...) and "+
+				"(same-value ...) forms; an unconditional assertion belongs in a fragment")
 		}
 		// Rules cross trees, so no scope is imposed on either side.
 		g, err := parseGuarded(item, "", "rules:"+r.Name)
@@ -447,6 +455,35 @@ func parseRules(n *sexpr.Node) (*Rules, error) {
 		r.Guards = append(r.Guards, g)
 	}
 	return r, nil
+}
+
+// parseSameValue reads (same-value TREE:NAME TREE:NAME "why").
+//
+// The reason is required rather than optional. A rule that fires with no
+// explanation leaves the reader with two addresses and no idea which is wrong,
+// and this is exactly the class of failure where the person reading the
+// message did not write either side.
+func parseSameValue(n *sexpr.Node, from string) (*SameValue, error) {
+	args := n.Args()
+	if len(args) != 3 {
+		return nil, errf(n, `(same-value TREE:NAME TREE:NAME "why these must match") takes three arguments`)
+	}
+	a, err := parseSymbolRef(args[0], "")
+	if err != nil {
+		return nil, err
+	}
+	b, err := parseSymbolRef(args[1], "")
+	if err != nil {
+		return nil, err
+	}
+	if args[2].Kind != sexpr.KindString || args[2].Text == "" {
+		return nil, errf(n, "same-value needs a reason: the reader of the failure "+
+			"usually wrote neither side and cannot tell which is wrong")
+	}
+	if a.Tree == b.Tree && a.Name == b.Name {
+		return nil, errf(n, "%s is compared with itself", a)
+	}
+	return &SameValue{A: a, B: b, Why: args[2].Text, From: from, Pos: n.Pos}, nil
 }
 
 func tristate(s string) Tristate {

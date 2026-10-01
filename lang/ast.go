@@ -167,7 +167,28 @@ type Fragment struct {
 type Rules struct {
 	Name   string
 	Guards []Guarded
+	Same   []SameValue
 	Pos    sexpr.Pos
+}
+
+// SameValue says two names in two trees must settle to the same value.
+//
+// Every rule silt had before this one is an implication between booleans: if
+// this symbol is set, that one must be. The facts that break a heterogeneous
+// system are not booleans. A shared-memory base appears in an RTOS's config
+// and in the device tree Linux is given; an MQTT topic appears in an ESPHome
+// document and in a gateway's tag table; a baud rate appears in a bootloader's
+// config and on a kernel command line. Each is one fact written twice, in two
+// files, by two tools, with nothing comparing the copies - and the symptom is
+// hardware that builds, boots and does not work.
+//
+// Neither tree needs to know the other exists: both sides are asked what the
+// name settles to, and the answers are compared as values.
+type SameValue struct {
+	A, B SymbolID
+	Why  string
+	From string
+	Pos  sexpr.Pos
 }
 
 // Delegation hands a whole Kconfig tree back to its native tooling.

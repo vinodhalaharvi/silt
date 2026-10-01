@@ -258,7 +258,11 @@ func parseSymbolRef(n *sexpr.Node, scope Scope) (SymbolID, error) {
 // declaration is in hand.
 func checkName(n *sexpr.Node, name string) error {
 	for i, r := range name {
-		ok := r == '_' || r == '.' ||
+		// '.' names a path in a structured tree; '@' and '/' name a node in a
+		// device tree, where serial@7d001000 is the node's real name and the
+		// unit address is part of it. Which of these a given tree allows is
+		// decided by its kind, in compose, where the declaration is in hand.
+		ok := r == '_' || r == '.' || r == '@' || r == '/' ||
 			r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' ||
 			(r == '*' && i == len(name)-1)
 		if !ok {
@@ -270,10 +274,10 @@ func checkName(n *sexpr.Node, name string) error {
 }
 
 // KconfigName reports whether a name is spelled the way Kconfig spells one.
-// A dot is the difference: it is how a structured tree names a path, and it is
-// not legal in a Kconfig symbol.
+// A dot, an @ or a slash is the difference: those name a path or a device tree
+// node, and none is legal in a Kconfig symbol.
 func KconfigName(name string) bool {
-	return !strings.Contains(name, ".")
+	return !strings.ContainsAny(name, ".@/")
 }
 
 // CheckPrefix reports a symbol spelled against its tree's convention.
