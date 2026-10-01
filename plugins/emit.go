@@ -3,7 +3,6 @@ package plugins
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/vinodhalaharvi/silt/compose"
 	"github.com/vinodhalaharvi/silt/emit"
@@ -136,51 +135,4 @@ func emitTree(res *compose.Result, tree string, d lang.TreeDecl) (*Emitted, erro
 		return nil, nil
 	}
 	return nil, fmt.Errorf("tree %s has kind %q, which cannot be emitted", tree, d.Kind)
-}
-
-// Affects reports whether changing a setting changes what a build produces.
-//
-// The cache's prefix test turns on this: a stored tree is a safe starting
-// point when the new configuration only adds to it, and a setting read after
-// every package is built cannot have affected a compiled package. The list
-// lives with the kind that knows why each entry is on it, rather than as a
-// regular expression in a shell script that no longer says.
-func Affects(tree string, d lang.TreeDecl, name string) bool {
-	if d.Kind != lang.KindKconfig || tree != string(lang.Buildroot) {
-		// Another kind's settings are not Buildroot's to reason about, and
-		// the safe answer is that they matter: wrongly reusing a tree is
-		// worse than wrongly rebuilding one.
-		return true
-	}
-	for _, p := range readAfterBuilding {
-		if name == p || strings.HasPrefix(name, p) && strings.HasSuffix(p, "_") {
-			return false
-		}
-	}
-	return !strings.HasPrefix(name, "BR2_EXTERNAL_")
-}
-
-// Symbols read after every package is built, by steps that re-run on every
-// make. A changed overlay cannot have affected a compiled package, because
-// nothing reads it until target-finalize.
-var readAfterBuilding = []string{
-	"BR2_ROOTFS_OVERLAY",
-	"BR2_ROOTFS_POST_BUILD_SCRIPT",
-	"BR2_ROOTFS_POST_IMAGE_SCRIPT",
-	"BR2_ROOTFS_POST_SCRIPT_ARGS",
-	"BR2_TARGET_ROOTFS_EXT2_SIZE",
-	"BR2_TARGET_ROOTFS_TAR",
-	"BR2_PACKAGE_RPI_FIRMWARE_CONFIG_FILE",
-	"BR2_PACKAGE_RPI_FIRMWARE_CMDLINE_FILE",
-
-	// Filled in from the invocation rather than from the configuration.
-	// BR2_EXTERNAL_<NAME>_VERSION is git describe of the external tree, so it
-	// changes on every commit - and before it was excluded, every stored tree
-	// was disqualified the moment anything was committed and a one-package
-	// image took twenty-two minutes instead of one.
-	"BR2_DEFCONFIG",
-	"BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES",
-	"BR2_DL_DIR",
-	"BR2_CCACHE_DIR",
-	"BR2_JLEVEL",
 }

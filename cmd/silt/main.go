@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"github.com/vinodhalaharvi/silt/dt"
 	"github.com/vinodhalaharvi/silt/esphome"
-	"github.com/vinodhalaharvi/silt/plugin"
 	"github.com/vinodhalaharvi/silt/plugins"
 	"os"
 	"path/filepath"
@@ -234,11 +233,14 @@ func countSame(rs []*lang.Rules) int {
 // must agree. A name stated twice with different values is a conflict compose
 // already reports at the image; here the last wins, which affects the message
 // and not whether a real mismatch is found.
-func composedConstraints(lib *compose.Library, images []*lang.Image, brDir string) map[lang.Scope][]lang.Constraint {
-	out := map[lang.Scope][]lang.Constraint{}
+func mergedResult(lib *compose.Library, images []*lang.Image) *compose.Result {
+	out := &compose.Result{
+		Constraints: map[lang.Scope][]lang.Constraint{},
+		Trees:       lib.Trees,
+	}
 	for _, fr := range lib.Fragments {
 		for sc, cs := range fr.Constraints {
-			out[sc] = append(out[sc], cs...)
+			out.Constraints[sc] = append(out.Constraints[sc], cs...)
 		}
 	}
 	// Then the images, which may override what a fragment states.
@@ -248,8 +250,10 @@ func composedConstraints(lib *compose.Library, images []*lang.Image, brDir strin
 			continue
 		}
 		for sc, cs := range res.Constraints {
-			out[sc] = append(out[sc], cs...)
+			out.Constraints[sc] = append(out.Constraints[sc], cs...)
 		}
+		out.Opaque = append(out.Opaque, res.Opaque...)
+		out.Environment = append(out.Environment, res.Environment...)
 	}
 	return out
 }
@@ -395,11 +399,8 @@ func cmdCheck(args []string) error {
 				imgSources.Linux = t2
 			}
 		}
-		imgReg := plugin.Each(
-			plugins.ForImage(res, lib.Trees, imgSources),
-			plugin.Lazy(), plugin.Memo())
-
-		planFindings, planChecked, err := plugins.Report(res, lib.Trees, imgReg)
+		runner := plugins.NewRunner(res, lib.Trees, imgSources)
+		planFindings, planChecked, err := plugins.Report(res, lib.Trees, runner)
 		if err != nil {
 			return err
 		}
@@ -490,8 +491,16 @@ func cmdCheck(args []string) error {
 	// without opening anything, every tree that can answer is asked, and a
 	// tree that was not given answers "cannot say" rather than failing - the
 	// same meaning --linux has always had, now written once.
+	// same-value rules, which run over the library rather than per image: the
+	// two sides of one are usually stated by two fragments, and a rule holds
+	// or does not hold for the library that contains both.
+	//
+	// Each side is asked by its own kind's runner, because they are questions
+	// of two different kinds and so two different types. They meet as answers,
+	// which is one type - and that is the whole cross-tree argument: neither
+	// kind knows the other exists.
 	if nSame := countSame(lib.Rules); nSame > 0 {
-		stated := plugins.Index(composedConstraints(lib, images, brDir))
+		merged := mergedResult(lib, images)
 		src := plugins.Sources{Buildroot: tree, BuildrootVersion: treeVer}
 		if lxDir != "" {
 			if lt, _, err := treeFor(lang.Linux, lib.Trees, lxDir); err == nil {
@@ -499,26 +508,25 @@ func cmdCheck(args []string) error {
 			}
 		}
 		if dtbPath != "" {
-			if dtb, err := dt.ReadFile(dtbPath); err == nil {
-				src.DeviceTree = dtb
-			} else {
+			dtb, err := dt.ReadFile(dtbPath)
+			if err != nil {
 				return fmt.Errorf("--devicetree %s: %w", dtbPath, err)
 			}
+			src.DeviceTree = dtb
 		}
-		reg := plugins.Registry(lib.Trees, stated, src)
-		p := plugins.SameValues(lib.Rules)
-		v, err := plugin.Run(p, plugin.Each(reg, plugin.Lazy(), plugin.Memo()))
+		runner := plugins.NewRunner(merged, lib.Trees, src)
+
+		v, err := plugins.CheckSameValues(lib.Rules, runner)
 		if err != nil {
 			return err
 		}
-		switch {
-		case v.Failed():
+		if v.Failed() {
 			sameBad = len(v.Problems)
 			fmt.Printf("\n%d same-value rule(s) do not hold\n", len(v.Problems))
 			for _, pr := range v.Problems {
 				fmt.Printf("  %s\n", pr.Error())
 			}
-		default:
+		} else {
 			fmt.Printf("ok  %d same-value rule(s) hold\n", nSame)
 		}
 	}
@@ -1048,20 +1056,23 @@ func cmdSolutionHash(args []string) error {
 //
 //	silt complete IMAGE.sx --buildroot DIR | silt affects
 func cmdAffects(args []string) error {
-	tree := string(lang.Buildroot)
+	// --tree is accepted and currently immaterial: every Kconfig tree shares
+	// one policy, because the question is about the kind rather than about
+	// which instance of it. It is taken so a caller need not know that.
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--tree" {
 			i++
 			if i >= len(args) {
 				return fmt.Errorf("--tree needs a name")
 			}
-			tree = args[i]
 		}
 	}
 
 	// A config file on stdin is Kconfig by construction - it is what kbuild
-	// wrote - so the kind is not in question here even when the tree is.
-	decl := lang.TreeDecl{Name: tree, Kind: lang.KindKconfig}
+	// wrote - so the kind is not in question here even when the tree is, and
+	// the policy comes from that kind's interpreter rather than from a list
+	// kept beside it.
+	affects := plugins.Kconfig.Affects
 
 	sc := bufio.NewScanner(os.Stdin)
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
@@ -1075,13 +1086,13 @@ func cmdAffects(args []string) error {
 			// A comment or a blank line: kept, because the caller is
 			// filtering a file rather than extracting from one, and a
 			// "# CONFIG_X is not set" line is a statement about X.
-			if n := unsetName(line); n != "" && !plugins.Affects(tree, decl, n) {
+			if n := unsetName(line); n != "" && !affects(n) {
 				continue
 			}
 			fmt.Fprintln(out, line)
 			continue
 		}
-		if !plugins.Affects(tree, decl, name) {
+		if !affects(name) {
 			continue
 		}
 		fmt.Fprintln(out, line)

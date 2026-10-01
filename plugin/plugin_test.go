@@ -10,25 +10,25 @@ import (
 	"github.com/vinodhalaharvi/silt/plan"
 )
 
-// A kind written against its own types, with no assertions anywhere in it -
+// A kind written against its own types, with no assertion anywhere in it -
 // which is what the type parameters are for.
+type fakeClaim struct{ Want string }
+
 type fakeCfg struct {
 	known map[string]string
 	opens *int
 }
 
-type fakeDefs struct {
-	known map[string]string
-}
+type fakeDefs struct{ known map[string]string }
 
-var fake = Interp[fakeCfg, *fakeDefs]{
+var fake = Interp[fakeClaim, fakeCfg, *fakeDefs]{
 	Open: func(c fakeCfg) (*fakeDefs, error) {
 		if c.opens != nil {
 			*c.opens++
 		}
 		return &fakeDefs{known: c.known}, nil
 	},
-	Answer: func(d *fakeDefs, k plan.Ask) plan.Answer {
+	Answer: func(d *fakeDefs, k plan.Ask[fakeClaim]) plan.Answer {
 		v, ok := d.known[k.Name]
 		switch k.Op {
 		case plan.Exists:
@@ -36,6 +36,9 @@ var fake = Interp[fakeCfg, *fakeDefs]{
 		case plan.Holds:
 			if !ok {
 				return plan.Fail(fmt.Errorf("%s is not a symbol", k.Name))
+			}
+			if k.Claim.Want != "" && k.Claim.Want != v {
+				return plan.Fail(fmt.Errorf("%s is %q, not %q", k.Name, v, k.Claim.Want))
 			}
 			return plan.OK()
 		case plan.Settled:
@@ -47,22 +50,23 @@ var fake = Interp[fakeCfg, *fakeDefs]{
 		return plan.NotAnswerable()
 	},
 	// Emit, Settle and Solve stay nil: this kind cannot do them, and that has
-	// to survive erasure.
+	// to stay visible.
 }
 
-func reg(known map[string]string, opens *int) Registry {
-	return Registry{"fake": Erase(fake, fakeCfg{known: known, opens: opens})}
+func bound(known map[string]string, opens *int) *Bound[fakeClaim, fakeCfg, *fakeDefs] {
+	return Bind(fake, fakeCfg{known: known, opens: opens})
+}
+
+func holds(tree, name, want string) plan.Ask[fakeClaim] {
+	return plan.Ask[fakeClaim]{Op: plan.Holds, Tree: tree, Name: name, Claim: fakeClaim{Want: want}}
 }
 
 func TestRunAnswersAndFolds(t *testing.T) {
 	p := plan.Traverse(
-		[]plan.Ask{
-			{Op: plan.Holds, Tree: "fake", Name: "A"},
-			{Op: plan.Holds, Tree: "fake", Name: "MISSING"},
-		},
-		plan.Claim)
+		[]plan.Ask[fakeClaim]{holds("fake", "A", ""), holds("fake", "MISSING", "")},
+		plan.Claim[fakeClaim])
 
-	got, err := Run(p, reg(map[string]string{"A": "y"}, nil))
+	got, err := Run(p, bound(map[string]string{"A": "y"}, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,16 +79,28 @@ func TestRunAnswersAndFolds(t *testing.T) {
 	}
 }
 
-// The first thing the up-front ask list buys: one open for a whole run, not
-// one per ask and not one per command.
+// The claim travels typed: a plugin reads k.Claim.Want with no assertion, and
+// a plan carrying another kind's claim would not compile against this one.
+func TestClaimIsTyped(t *testing.T) {
+	p := plan.Claim(holds("fake", "A", "n"))
+	got, err := Run(p, bound(map[string]string{"A": "y"}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Failed() || !strings.Contains(got.Err().Error(), `is "y", not "n"`) {
+		t.Errorf("the claim did not reach the interpreter: %v", got.Err())
+	}
+}
+
+// The first thing the up-front ask list buys: one open for a whole run.
 func TestTreeOpenedOncePerRun(t *testing.T) {
 	opens := 0
 	names := []string{"A", "B", "C", "D", "E"}
-	p := plan.Traverse(names, func(n string) plan.Plan[plan.V[plan.Unit]] {
-		return plan.Claim(plan.Ask{Op: plan.Holds, Tree: "fake", Name: n})
+	p := plan.Traverse(names, func(n string) plan.Plan[fakeClaim, plan.V[plan.Unit]] {
+		return plan.Claim(holds("fake", n, ""))
 	})
-
-	if _, err := Run(p, reg(map[string]string{"A": "y", "B": "y", "C": "y", "D": "y", "E": "y"}, &opens)); err != nil {
+	known := map[string]string{"A": "y", "B": "y", "C": "y", "D": "y", "E": "y"}
+	if _, err := Run(p, bound(known, &opens)); err != nil {
 		t.Fatal(err)
 	}
 	if opens != 1 {
@@ -92,71 +108,78 @@ func TestTreeOpenedOncePerRun(t *testing.T) {
 	}
 }
 
-// A tree nobody asks about is never opened. An image with no CONFIG_ claim
-// should not pay for reading a kernel.
-func TestLazyDoesNotOpenUnaskedTrees(t *testing.T) {
-	opens := 0
-	r := Registry{
-		"fake":   Erase(fake, fakeCfg{known: map[string]string{"A": "y"}}),
-		"unused": Wrapped(Erase(fake, fakeCfg{known: nil, opens: &opens}), Lazy()),
-	}
-	p := plan.Claim(plan.Ask{Op: plan.Holds, Tree: "fake", Name: "A"})
-	if _, err := Run(p, r); err != nil {
-		t.Fatal(err)
-	}
-	if opens != 0 {
-		t.Errorf("opened an unasked tree %d times", opens)
-	}
-}
-
-// A tree with no interpreter answers Unknown rather than failing: that is what
-// `silt check` without --linux means, and it now holds for every kind.
-func TestMissingInterpreterIsUnknown(t *testing.T) {
-	p := plan.Claim(plan.Ask{Op: plan.Holds, Tree: "nosuchtree", Name: "X"})
-	got, err := Run(p, Registry{})
+// No interpreter for a kind: every question is unanswerable rather than
+// failed, which is what a missing --linux has always meant.
+func TestNilBoundIsUnanswerable(t *testing.T) {
+	got, err := Run(plan.Claim(holds("fake", "A", "")), (*Bound[fakeClaim, fakeCfg, *fakeDefs])(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.Failed() {
-		t.Error("a tree with no interpreter was reported as a failure")
+		t.Error("a kind with no interpreter was reported as a failure")
 	}
 }
 
-// Nil must survive erasure. A kind that cannot emit has to stay
-// distinguishable from one that emits an empty file.
-func TestNilCapabilitiesSurviveErasure(t *testing.T) {
-	o := Erase(fake, fakeCfg{})
-	if o.CanEmit() || o.CanSettle() || o.CanSolve() {
-		t.Error("a kind with nil Emit/Settle/Solve claims it can")
+// A kind that cannot emit must stay distinguishable from one that emits an
+// empty file.
+func TestNilCapabilitiesAreVisible(t *testing.T) {
+	b := bound(nil, nil)
+	if b.CanEmit() || b.CanSettle() || b.CanSolve() || b.CanRead() {
+		t.Error("a kind with nil Emit/Settle/Solve/Read claims it can")
 	}
 
-	with := Interp[fakeCfg, *fakeDefs]{
-		Open:   fake.Open,
-		Answer: fake.Answer,
-		Emit:   func(*fakeDefs, any) (File, error) { return File{Name: "x"}, nil },
-	}
-	if o := Erase(with, fakeCfg{}); !o.CanEmit() || o.CanSettle() {
+	with := fake
+	with.Emit = func(*fakeDefs, []fakeClaim) (File, error) { return File{Name: "x"}, nil }
+	if b := Bind(with, fakeCfg{}); !b.CanEmit() || b.CanSettle() {
 		t.Error("Emit lost or Settle invented")
+	}
+}
+
+func TestLazyOpensOnlyWhenAsked(t *testing.T) {
+	opens := 0
+	i := Wrapped(fake, Lazy[fakeClaim, fakeCfg, *fakeDefs]())
+	b := Bind(i, fakeCfg{known: map[string]string{"A": "y"}, opens: &opens})
+
+	// A plan with no asks never opens.
+	if _, err := Run(plan.Pure[fakeClaim](plan.Good(plan.Unit{})), b); err != nil {
+		t.Fatal(err)
+	}
+	if opens != 0 {
+		t.Errorf("opened %d times for an empty plan", opens)
+	}
+
+	// Two runs share one open.
+	for n := 0; n < 2; n++ {
+		if _, err := Run(plan.Claim(holds("fake", "A", "")), b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if opens != 1 {
+		t.Errorf("opened %d times across two runs, want 1", opens)
 	}
 }
 
 func TestMemoAsksOnce(t *testing.T) {
 	calls := 0
-	counted := func(o Opaque) Opaque {
-		next := o.answer
-		o.answer = func(d any, k plan.Ask) plan.Answer { calls++; return next(d, k) }
-		return o
+	counting := func(i Interp[fakeClaim, fakeCfg, *fakeDefs]) Interp[fakeClaim, fakeCfg, *fakeDefs] {
+		next := i.Answer
+		i.Answer = func(d *fakeDefs, k plan.Ask[fakeClaim]) plan.Answer {
+			calls++
+			return next(d, k)
+		}
+		return i
 	}
-	r := Registry{"fake": Wrapped(Erase(fake, fakeCfg{known: map[string]string{"A": "y"}}),
-		Memo(), counted)}
+	b := Bind(Wrapped(fake, Memo[fakeClaim, fakeCfg, *fakeDefs](), counting),
+		fakeCfg{known: map[string]string{"A": "y"}})
 
-	// The same question five times, from five different positions, which is
-	// what fifty-six images asking about one symbol looks like.
-	asks := make([]plan.Ask, 5)
+	// The same question five times from five positions, which is what
+	// fifty-six images asking about one symbol looks like.
+	asks := make([]plan.Ask[fakeClaim], 5)
 	for i := range asks {
-		asks[i] = plan.Ask{Op: plan.Exists, Tree: "fake", Name: "A", Pos: fmt.Sprintf("f%d.sx:1", i)}
+		asks[i] = plan.Ask[fakeClaim]{Op: plan.Exists, Tree: "fake", Name: "A",
+			Pos: fmt.Sprintf("f%d.sx:1", i)}
 	}
-	if _, err := Run(plan.Traverse(asks, plan.Claim), r); err != nil {
+	if _, err := Run(plan.Traverse(asks, plan.Claim[fakeClaim]), b); err != nil {
 		t.Fatal(err)
 	}
 	if calls != 1 {
@@ -164,55 +187,54 @@ func TestMemoAsksOnce(t *testing.T) {
 	}
 }
 
-func TestTrace(t *testing.T) {
-	var buf bytes.Buffer
-	r := Registry{"fake": Wrapped(Erase(fake, fakeCfg{known: map[string]string{"A": "y"}}),
-		Trace(&buf))}
-	p := plan.Traverse([]plan.Ask{
-		{Op: plan.Holds, Tree: "fake", Name: "A"},
-		{Op: plan.Holds, Tree: "fake", Name: "B"},
-	}, plan.Claim)
-	if _, err := Run(p, r); err != nil {
-		t.Fatal(err)
+// A Holds carries a claim, and two claims about one symbol can differ - so
+// memoising it would answer the second from the first.
+func TestMemoDoesNotCacheClaims(t *testing.T) {
+	calls := 0
+	counting := func(i Interp[fakeClaim, fakeCfg, *fakeDefs]) Interp[fakeClaim, fakeCfg, *fakeDefs] {
+		next := i.Answer
+		i.Answer = func(d *fakeDefs, k plan.Ask[fakeClaim]) plan.Answer {
+			calls++
+			return next(d, k)
+		}
+		return i
 	}
-	out := buf.String()
-	if !strings.Contains(out, "A") || !strings.Contains(out, "ok") {
-		t.Errorf("trace missing the answered question:\n%s", out)
-	}
-	if !strings.Contains(out, "not a symbol") {
-		t.Errorf("trace missing the failure:\n%s", out)
-	}
-}
+	b := Bind(Wrapped(fake, Memo[fakeClaim, fakeCfg, *fakeDefs](), counting),
+		fakeCfg{known: map[string]string{"A": "y"}})
 
-// Or: ask the first, fall back when it does not know. A board's overlays over
-// an SoC's base tree.
-func TestOrFallsBack(t *testing.T) {
-	base := Erase(fake, fakeCfg{known: map[string]string{"SOC": "yes"}})
-	over := Erase(fake, fakeCfg{known: map[string]string{"BOARD": "yes"}})
-	r := Registry{"fake": Or(over, base)}
-
-	p := plan.Traverse([]plan.Ask{
-		{Op: plan.Settled, Tree: "fake", Name: "BOARD"},
-		{Op: plan.Settled, Tree: "fake", Name: "SOC"},
-	}, func(k plan.Ask) plan.Plan[string] {
-		return plan.Lift(k, func(a plan.Answer) string { return a.Value })
-	})
-
-	got, err := Run(p, r)
+	p := plan.Traverse([]plan.Ask[fakeClaim]{holds("fake", "A", "y"), holds("fake", "A", "n")},
+		plan.Claim[fakeClaim])
+	got, err := Run(p, b)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0] != "yes" || got[1] != "yes" {
-		t.Errorf("got %v; the fallback did not answer", got)
+	if calls != 2 {
+		t.Errorf("%d calls; a cached Holds would answer the second from the first", calls)
+	}
+	if !plan.All(got).Failed() {
+		t.Error("the second claim should have failed")
+	}
+}
+
+func TestTrace(t *testing.T) {
+	var buf bytes.Buffer
+	b := Bind(Wrapped(fake, Trace[fakeClaim, fakeCfg, *fakeDefs](&buf)),
+		fakeCfg{known: map[string]string{"A": "y"}})
+	p := plan.Traverse([]plan.Ask[fakeClaim]{holds("fake", "A", ""), holds("fake", "B", "")},
+		plan.Claim[fakeClaim])
+	if _, err := Run(p, b); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "ok") || !strings.Contains(out, "not a symbol") {
+		t.Errorf("trace:\n%s", out)
 	}
 }
 
 func TestPinnedRefusesAWrongVersion(t *testing.T) {
-	o := Erase(fake, fakeCfg{known: map[string]string{"A": "y"}})
-	o.Version = "2025.02.16"
-	r := Registry{"fake": Wrapped(o, Pinned("2024.11.1"))}
-
-	got, err := Run(plan.Claim(plan.Ask{Op: plan.Holds, Tree: "fake", Name: "A"}), r)
+	b := Bind(Wrapped(fake, Pinned[fakeClaim, fakeCfg, *fakeDefs]("2024.11.1", "2025.02.16")),
+		fakeCfg{known: map[string]string{"A": "y"}})
+	got, err := Run(plan.Claim(holds("fake", "A", "")), b)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,31 +250,22 @@ func TestPinnedRefusesAWrongVersion(t *testing.T) {
 // all of them affect it: wrongly reusing a cached tree is worse than wrongly
 // rebuilding one.
 func TestAffectsDefaultsToEverything(t *testing.T) {
-	if !Erase(fake, fakeCfg{}).Affects("ANYTHING") {
+	if !bound(nil, nil).Affects("ANYTHING") {
 		t.Error("a kind with no Affects claimed a setting does not matter")
 	}
-
-	with := Interp[fakeCfg, *fakeDefs]{
-		Open: fake.Open, Answer: fake.Answer,
-		Affects: func(n string) bool { return n != "BR2_JLEVEL" },
-	}
-	o := Erase(with, fakeCfg{})
-	if o.Affects("BR2_JLEVEL") {
+	with := fake
+	with.Affects = func(n string) bool { return n != "BR2_JLEVEL" }
+	b := Bind(with, fakeCfg{})
+	if b.Affects("BR2_JLEVEL") || !b.Affects("BR2_PACKAGE_X") {
 		t.Error("Affects not consulted")
-	}
-	if !o.Affects("BR2_PACKAGE_X") {
-		t.Error("Affects said a package does not matter")
 	}
 }
 
-func TestOpenFailureNamesTheTree(t *testing.T) {
-	broken := Interp[fakeCfg, *fakeDefs]{
-		Open:   func(fakeCfg) (*fakeDefs, error) { return nil, errors.New("no such directory") },
-		Answer: fake.Answer,
-	}
-	_, err := Run(plan.Claim(plan.Ask{Op: plan.Holds, Tree: "fake", Name: "A"}),
-		Registry{"fake": Erase(broken, fakeCfg{})})
-	if err == nil || !strings.Contains(err.Error(), "fake:") {
-		t.Errorf("error does not name the tree: %v", err)
+func TestOpenFailurePropagates(t *testing.T) {
+	broken := fake
+	broken.Open = func(fakeCfg) (*fakeDefs, error) { return nil, errors.New("no such directory") }
+	_, err := Run(plan.Claim(holds("fake", "A", "")), Bind(broken, fakeCfg{}))
+	if err == nil || !strings.Contains(err.Error(), "no such directory") {
+		t.Errorf("open failure swallowed: %v", err)
 	}
 }

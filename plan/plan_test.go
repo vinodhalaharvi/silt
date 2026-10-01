@@ -6,7 +6,14 @@ import (
 	"testing"
 )
 
-func ask(tree, name string) Ask { return Ask{Op: Holds, Tree: tree, Name: name} }
+// A claim type of the tests' own: the point of the parameter is that a plan
+// built for one kind cannot be run against another's interpreter, and a test
+// that used a bare string would not exercise that.
+type testClaim struct{ Want string }
+
+func ask(tree, name string) Ask[testClaim] {
+	return Ask[testClaim]{Op: Holds, Tree: tree, Name: name}
+}
 
 // The property the whole design rests on: the questions are knowable before
 // any of them is answered.
@@ -32,7 +39,7 @@ func TestAsksAreKnownBeforeRunning(t *testing.T) {
 // instead of once per command.
 func TestTreesDeduplicates(t *testing.T) {
 	claims := []string{"BR2_A", "BR2_B", "BR2_C"}
-	p := Traverse(claims, func(n string) Plan[V[Unit]] { return Claim(ask("buildroot", n)) })
+	p := Traverse(claims, func(n string) Plan[testClaim, V[Unit]] { return Claim(ask("buildroot", n)) })
 
 	if got := len(p.Asks()); got != 3 {
 		t.Errorf("%d asks, want 3", got)
@@ -45,7 +52,7 @@ func TestTreesDeduplicates(t *testing.T) {
 // Every failure, not the first. The reason this type exists rather than error.
 func TestFailuresAccumulate(t *testing.T) {
 	k1, k2, k3 := ask("buildroot", "A"), ask("buildroot", "B"), ask("linux", "C")
-	p := Traverse([]Ask{k1, k2, k3}, Claim)
+	p := Traverse([]Ask[testClaim]{k1, k2, k3}, Claim[testClaim])
 
 	got := All(p.Fold([]Answer{
 		Fail(errors.New("A is not a symbol")),
@@ -67,8 +74,8 @@ func TestFailuresAccumulate(t *testing.T) {
 // A left-hand failure must not hide the right-hand side's problems, which is
 // exactly what a monadic bind would do.
 func TestLeftFailureDoesNotHideRight(t *testing.T) {
-	a := Bad[Unit](ask("buildroot", "A"), errors.New("left"))
-	b := Bad[Unit](ask("linux", "B"), errors.New("right"))
+	a := Bad[testClaim, Unit](ask("buildroot", "A"), errors.New("left"))
+	b := Bad[testClaim, Unit](ask("linux", "B"), errors.New("right"))
 	got := Both(a, b, func(Unit, Unit) Unit { return Unit{} })
 	if len(got.Problems) != 2 {
 		t.Errorf("%d problems, want both", len(got.Problems))
@@ -84,7 +91,7 @@ func TestUnknownIsNotFailure(t *testing.T) {
 	if v.Failed() {
 		t.Error("an unanswerable question was reported as a failure")
 	}
-	counts := Unchecked([]Ask{k}, []Answer{NotAnswerable()})
+	counts := Unchecked([]Ask[testClaim]{k}, []Answer{NotAnswerable()})
 	if counts["linux"] != 1 {
 		t.Errorf("Unchecked = %v", counts)
 	}
@@ -94,10 +101,10 @@ func TestUnknownIsNotFailure(t *testing.T) {
 // what lets a cache key cover a rule whose untaken branch changed, and `silt
 // why` report a rule that was considered and did not fire.
 func TestBranchKeepsBothArms(t *testing.T) {
-	cond := Lift(Ask{Op: Exists, Tree: "buildroot", Name: "BR2_INIT_SYSTEMD"},
+	cond := Lift(Ask[testClaim]{Op: Exists, Tree: "buildroot", Name: "BR2_INIT_SYSTEMD"},
 		func(a Answer) bool { return a.Bool })
 	then := Claim(ask("linux", "CONFIG_CGROUPS"))
-	els := Pure(Good(Unit{}))
+	els := Pure[testClaim](Good(Unit{}))
 
 	p := Branch(cond, then, els)
 	if got := len(p.Asks()); got != 2 {
@@ -119,39 +126,30 @@ func TestBranchKeepsBothArms(t *testing.T) {
 	}
 }
 
-// The cross-tree comparison that needs neither tree to know the other exists.
-func TestSameValue(t *testing.T) {
-	a := Ask{Tree: "zephyr", Name: "CONFIG_OPENAMP_SHM_BASE"}
-	b := Ask{Tree: "devicetree", Name: "rpmsg@88000000.reg"}
-	p := SameValue(a, b, "both ends must agree where the ring is")
+// The cross-tree comparison, which is two kinds' answers meeting. It is not
+// one plan on purpose: the two sides are questions of different kinds, so they
+// have different types, and the place for kinds to meet is their results.
+func TestCompare(t *testing.T) {
+	const why = "both ends must agree where the ring is"
 
-	if got := len(p.Asks()); got != 2 {
-		t.Fatalf("%d asks, want 2", got)
-	}
-	for _, k := range p.Asks() {
-		if k.Op != Settled {
-			t.Errorf("ask %v is not a Settled question", k)
-		}
-	}
-
-	if v := p.Fold([]Answer{Val("0x88000000"), Val("0x88000000")}); v.Failed() {
+	if v := Compare(Val("0x88000000"), Val("0x88000000"), "shm base", why); v.Failed() {
 		t.Error("equal values reported as a mismatch")
 	}
 
-	v := p.Fold([]Answer{Val("0x88000000"), Val("0x88100000")})
+	v := Compare(Val("0x88000000"), Val("0x88100000"), "shm base", why)
 	if !v.Failed() {
 		t.Fatal("mismatch not reported")
 	}
 	msg := v.Err().Error()
-	for _, want := range []string{"0x88000000", "0x88100000", "both ends must agree"} {
+	for _, want := range []string{"0x88000000", "0x88100000", why} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message lacks %q:\n%s", want, msg)
 		}
 	}
 
-	// One side unanswerable: not a mismatch. A device tree that was not given
-	// cannot contradict anything.
-	if v := p.Fold([]Answer{Val("0x88000000"), NotAnswerable()}); v.Failed() {
+	// One side unanswerable: not a mismatch. A tree that was not given cannot
+	// contradict anything.
+	if v := Compare(Val("0x88000000"), NotAnswerable(), "shm base", why); v.Failed() {
 		t.Error("an unanswered side was treated as a mismatch")
 	}
 }
@@ -159,7 +157,10 @@ func TestSameValue(t *testing.T) {
 // Rewrite changes the questions without changing the plan's shape.
 func TestRewrite(t *testing.T) {
 	p := Claim(ask("buildroot", "BR2_X"))
-	q := Rewrite(p, func(k Ask) Ask { k.Hint = "because the target says so"; return k })
+	q := Rewrite(p, func(k Ask[testClaim]) Ask[testClaim] {
+		k.Hint = "because the target says so"
+		return k
+	})
 	if len(q.Asks()) != 1 || q.Asks()[0].Hint == "" {
 		t.Error("hint not applied")
 	}
@@ -170,7 +171,7 @@ func TestRewrite(t *testing.T) {
 
 // Describe is the dry run: what will be asked, without asking it.
 func TestDescribe(t *testing.T) {
-	p := Traverse([]Ask{ask("buildroot", "BR2_A"), ask("linux", "CONFIG_B")}, Claim)
+	p := Traverse([]Ask[testClaim]{ask("buildroot", "BR2_A"), ask("linux", "CONFIG_B")}, Claim[testClaim])
 	out := Describe(p)
 	if !strings.Contains(out, "buildroot:BR2_A") || !strings.Contains(out, "linux:CONFIG_B") {
 		t.Errorf("Describe:\n%s", out)

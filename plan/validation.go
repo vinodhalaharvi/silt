@@ -23,28 +23,45 @@ type V[A any] struct {
 }
 
 // Problem is one failure, with enough to point at the thing that caused it.
+//
+// The ask is flattened to the parts a reader needs - which tree, which name,
+// where it was written - rather than carrying the claim's type. That is what
+// lets several kinds' validations be combined: a Kconfig failure and an
+// ESPHome failure are the same type of problem even though they came from
+// different types of question, and the place for kinds to meet is their
+// results rather than their questions.
 type Problem struct {
-	Ask Ask
-	Err error
+	Tree string
+	Name string
+	Pos  string
+	Hint string
+	Err  error
 }
 
 func (p Problem) Error() string {
 	s := p.Err.Error()
-	if p.Ask.Pos != "" {
-		s = p.Ask.Pos + ": " + s
+	if p.Pos != "" {
+		s = p.Pos + ": " + s
 	}
-	if p.Ask.Hint != "" {
-		s += "\n  " + p.Ask.Hint
+	if p.Hint != "" {
+		s += "\n  " + p.Hint
 	}
 	return s
+}
+
+// From flattens an ask into the parts a problem needs.
+func From[C any](k Ask[C]) Problem {
+	return Problem{Tree: k.Tree, Name: k.Name, Pos: k.Pos, Hint: k.Hint}
 }
 
 // Good is a V with no problems.
 func Good[A any](a A) V[A] { return V[A]{Value: a} }
 
 // Bad is a V carrying one problem.
-func Bad[A any](k Ask, err error) V[A] {
-	return V[A]{Problems: []Problem{{Ask: k, Err: err}}}
+func Bad[C, A any](k Ask[C], err error) V[A] {
+	p := From(k)
+	p.Err = err
+	return V[A]{Problems: []Problem{p}}
 }
 
 // Failed reports whether anything went wrong.
@@ -91,7 +108,7 @@ func All[A any](vs []V[A]) V[[]A] {
 
 // Checking is the standard fold for a claim: an answer becomes a problem or
 // nothing, attributed to the ask that produced it.
-func Checking(k Ask) func(Answer) V[Unit] {
+func Checking[C any](k Ask[C]) func(Answer) V[Unit] {
 	return func(a Answer) V[Unit] {
 		switch {
 		case a.Unknown:
@@ -101,7 +118,7 @@ func Checking(k Ask) func(Answer) V[Unit] {
 			// from - uniformly, for every tree, rather than per command.
 			return Good(Unit{})
 		case a.Failed():
-			return Bad[Unit](k, a.Err)
+			return Bad[C, Unit](k, a.Err)
 		default:
 			return Good(Unit{})
 		}
@@ -111,7 +128,7 @@ func Checking(k Ask) func(Answer) V[Unit] {
 // Unchecked counts the asks a run could not answer, per tree, so a command can
 // say "43 symbols not checked: no linux tree given" without each command
 // working it out again.
-func Unchecked(asks []Ask, answers []Answer) map[string]int {
+func Unchecked[C any](asks []Ask[C], answers []Answer) map[string]int {
 	out := map[string]int{}
 	for i, a := range answers {
 		if i < len(asks) && a.Unknown {
@@ -122,28 +139,26 @@ func Unchecked(asks []Ask, answers []Answer) map[string]int {
 }
 
 // Claim is the usual Lift for a claim: ask whether it holds, accumulate.
-func Claim(k Ask) Plan[V[Unit]] { return Lift(k, Checking(k)) }
+func Claim[C any](k Ask[C]) Plan[C, V[Unit]] { return Lift(k, Checking(k)) }
 
-// SameValue is the cross-tree check that needs no tree to know about the
-// other: settle a name in each, compare the results as strings.
+// Compare is the cross-tree check, and the one thing that cannot be a single
+// plan: its two sides are questions of two different kinds, so they have two
+// different types and Go has no list that holds both.
 //
-// This is the whole heterogeneous-system argument in one function. The shared
-// memory base an M7's Zephyr config states and the address a device tree gives
-// remoteproc are one fact written twice today, in two files, checked by a
-// logic analyser when it is wrong.
-func SameValue(a, b Ask, why string) Plan[V[Unit]] {
-	a.Op, b.Op = Settled, Settled
-	return Map2(
-		Lift(a, func(x Answer) Answer { return x }),
-		Lift(b, func(y Answer) Answer { return y }),
-		func(x, y Answer) V[Unit] {
-			if x.Unknown || y.Unknown {
-				return Good(Unit{})
-			}
-			if x.Value == y.Value {
-				return Good(Unit{})
-			}
-			return Bad[Unit](a, fmt.Errorf("%s:%s is %q and %s:%s is %q; %s",
-				a.Tree, a.Name, x.Value, b.Tree, b.Name, y.Value, why))
-		})
+// That is not a limitation to work around - it is the design. Each side is
+// asked by its own kind's runner, and the two meet here as answers, which is
+// one type. A shared-memory base an RTOS states and the address a device tree
+// gives remoteproc are one fact written twice; this compares them without
+// either kind knowing the other exists.
+func Compare(a, b Answer, what, why string) V[Unit] {
+	if a.Unknown || b.Unknown {
+		// A tree that was not given cannot contradict anything.
+		return Good(Unit{})
+	}
+	if a.Value == b.Value {
+		return Good(Unit{})
+	}
+	return V[Unit]{Problems: []Problem{{
+		Err: fmt.Errorf("%s: %q and %q; %s", what, a.Value, b.Value, why),
+	}}}
 }

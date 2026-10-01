@@ -11,7 +11,6 @@ import (
 	"github.com/vinodhalaharvi/silt/kconfig"
 	"github.com/vinodhalaharvi/silt/lang"
 	"github.com/vinodhalaharvi/silt/plan"
-	"github.com/vinodhalaharvi/silt/plugin"
 	"github.com/vinodhalaharvi/silt/plugins"
 	"github.com/vinodhalaharvi/silt/verify"
 )
@@ -79,10 +78,10 @@ func TestPlanAgreesWithVerify(t *testing.T) {
 
 		// The new path: the same claims as a plan, answered by the plugin,
 		// folded into a validation.
-		reg := plugins.ForImage(res, lib.Trees, plugins.Sources{
+		runner := plugins.NewRunner(res, lib.Trees, plugins.Sources{
 			Buildroot: tree, BuildrootVersion: ver,
 		})
-		fs, counts, err := plugins.Report(res, lib.Trees, plugin.Each(reg, plugin.Lazy()))
+		fs, counts, err := plugins.Report(res, lib.Trees, runner)
 		if err != nil {
 			t.Fatalf("%s: %v", im.Name, err)
 		}
@@ -123,15 +122,14 @@ func TestPlanIsKnowableBeforeOpening(t *testing.T) {
 		t.Skip("no images")
 	}
 
-	var whole plan.Plan[plan.V[plan.Unit]]
-	whole = plan.Pure(plan.Good(plan.Unit{}))
+	whole := plan.Pure[plugins.KconfigClaim](plan.Good(plan.Unit{}))
 	n := 0
 	for _, im := range images {
 		res, err := lib.Compose(im)
 		if err != nil {
 			continue
 		}
-		whole = plan.Map2(whole, plugins.CheckImage(res, lib.Trees),
+		whole = plan.Map2(whole, plugins.KconfigClaims(res, "buildroot", lib.Trees),
 			func(a, b plan.V[plan.Unit]) plan.V[plan.Unit] {
 				return plan.V[plan.Unit]{Problems: append(a.Problems, b.Problems...)}
 			})

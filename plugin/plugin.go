@@ -1,28 +1,33 @@
-// Package plugin is how a tree answers the questions in a plan.
+// Package plugin is how one kind of tree answers the questions in a plan.
 //
-// A kind of tree - Kconfig, a device tree, an ESPHome schema, a FreeRTOS
-// header - supplies a value rather than implements an interface:
+// A kind supplies a value rather than implements an interface:
 //
-//	Open     config → whatever that tree needs loaded
+//	Open     config → whatever that kind needs loaded
 //	Answer   loaded, ask → answer
 //	Emit     loaded, claims → a file its builder consumes      nil: configures nothing
 //	Settle   loaded, claims → what each name ends up as        nil: cannot predict
 //	Solve    loaded, claims → can this exist at all            nil: no solver
-//	Affects  name → does changing this change a build          nil: everything does
 //	Read     a file → claims                                   nil: cannot import
 //
-// A value rather than an interface for three reasons. Nil says "this kind
-// cannot do that" with no second interface to assert against: a device tree
-// has no Emit because the kernel builds it, and an ESPHome schema has no
-// Settle because it has no defaults to propagate. Functions can be shared
-// outright, which is why Zephyr costs an Open and an Emit and reuses Kconfig's
-// Answer and Settle unchanged. And a struct of funcs can be wrapped, which is
-// what Memo, Lazy, Trace and Pinned below are - written once, applying to
-// every kind including ones added later.
+// Nil says "this kind cannot do that" with no second interface to assert
+// against: a device tree has no Emit because the kernel builds it, and an
+// ESPHome schema has no Settle because it has no defaults to propagate.
+// Functions can be shared outright, which is why a second Kconfig-shaped
+// system costs an Open and an Emit and reuses Answer and Settle unchanged.
+// And a struct of funcs can be wrapped, which is what the middleware below is.
 //
-// The type parameters are the kind's own config and loaded state, so a plugin
-// is written against its own types with no assertions. Erase takes one
-// assertion, in one function, at the registry boundary.
+// # No erasure
+//
+// Interp carries its claim type and its loaded type as parameters, and so does
+// everything that runs or wraps it. There is no `any` and no type assertion
+// anywhere in this package. Go has no existential, so a heterogeneous list of
+// interpreters is not expressible - and the answer is not to erase, it is to
+// keep each kind's run separate and let the results meet. Results are V[Unit],
+// which is one type.
+//
+// The set of kinds is closed and small. A runner over all of them is a struct
+// with one field per kind, so a kind added without being handled is a compile
+// error rather than a tree whose questions nobody answers.
 package plugin
 
 import (
@@ -33,184 +38,159 @@ import (
 	"github.com/vinodhalaharvi/silt/plan"
 )
 
-// Interp is a kind of tree: C is its configuration, D is what Open loads.
-type Interp[C any, D any] struct {
-	Open    func(C) (D, error)
-	Answer  func(D, plan.Ask) plan.Answer
-	Emit    func(D, any) (File, error)
-	Settle  func(D, any) (map[string]string, error)
-	Solve   func(D, any) error
+// Interp is a kind of tree. C is its claim type, Cfg its configuration, D what
+// Open loads.
+type Interp[C any, Cfg any, D any] struct {
+	Open    func(Cfg) (D, error)
+	Answer  func(D, plan.Ask[C]) plan.Answer
+	Emit    func(D, []C) (File, error)
+	Settle  func(D, []C) (map[string]string, error)
+	Solve   func(D, []C) error
+	Read    func([]byte) ([]C, error)
 	Affects func(string) bool
-	Read    func([]byte) (any, error)
 }
 
 // File is an emitted configuration: a name its builder expects and the bytes.
 type File struct {
 	Name string
 	Body []byte
+	// ConsumedBy is the Buildroot symbol that hands this file to the build,
+	// empty for a tree Buildroot does not consume - which is a fact about the
+	// kind rather than an omission.
+	ConsumedBy string
 }
 
-// Opaque is an Interp with its types erased, which is what a registry can hold
-// and what the middleware below wraps. One type assertion, written once.
-type Opaque struct {
-	open    func() (any, error)
-	answer  func(any, plan.Ask) plan.Answer
-	emit    func(any, any) (File, error)
-	settle  func(any, any) (map[string]string, error)
-	solve   func(any, any) error
-	affects func(string) bool
-	read    func([]byte) (any, error)
+// Bound is an interpreter with its configuration, ready to answer. Still fully
+// typed: binding a config is not erasing one.
+type Bound[C any, Cfg any, D any] struct {
+	Interp Interp[C, Cfg, D]
+	Config Cfg
 
 	// Version is what this tree reports itself as, for checking an image's
 	// (verified-against ...) against what actually answered.
 	Version string
 }
 
-// Erase binds a kind to a configuration and forgets both types.
-func Erase[C, D any](i Interp[C, D], c C) Opaque {
-	o := Opaque{
-		open: func() (any, error) { return i.Open(c) },
-		answer: func(d any, k plan.Ask) plan.Answer {
-			return i.Answer(d.(D), k)
-		},
-		affects: i.Affects,
-		read:    i.Read,
-	}
-	// nil stays nil through erasure: a kind that cannot emit must not look
-	// like one that emits nothing, because the first is a fact about the kind
-	// and the second would be a silently empty file.
-	if i.Emit != nil {
-		o.emit = func(d any, cs any) (File, error) { return i.Emit(d.(D), cs) }
-	}
-	if i.Settle != nil {
-		o.settle = func(d any, cs any) (map[string]string, error) { return i.Settle(d.(D), cs) }
-	}
-	if i.Solve != nil {
-		o.solve = func(d any, cs any) error { return i.Solve(d.(D), cs) }
-	}
-	return o
+// Bind pairs an interpreter with a configuration.
+func Bind[C, Cfg, D any](i Interp[C, Cfg, D], cfg Cfg) *Bound[C, Cfg, D] {
+	return &Bound[C, Cfg, D]{Interp: i, Config: cfg}
 }
-
-// CanEmit, CanSettle and CanSolve let a caller ask what a tree is capable of
-// before asking it to do the thing.
-func (o Opaque) CanEmit() bool   { return o.emit != nil }
-func (o Opaque) CanSettle() bool { return o.settle != nil }
-func (o Opaque) CanSolve() bool  { return o.solve != nil }
-
-// Affects reports whether changing a setting changes what gets built. A kind
-// that does not say assumes everything does, which is the safe answer: a
-// cache that wrongly reuses a tree is worse than one that wrongly rebuilds.
-func (o Opaque) Affects(name string) bool {
-	if o.affects == nil {
-		return true
-	}
-	return o.affects(name)
-}
-
-// Registry maps a tree's name to whatever answers for it.
-type Registry map[string]Opaque
 
 // Run answers a plan's asks and folds them.
 //
-// Each tree is opened once for the whole plan rather than once per ask or once
-// per command, which is the first thing the plan's up-front ask list buys.
-func Run[A any](p plan.Plan[A], reg Registry) (A, error) {
-	asks := p.Asks()
-
-	loaded := map[string]any{}
-	for _, tree := range plan.Trees(p) {
-		o, ok := reg[tree]
-		if !ok {
-			continue // no interpreter: every ask about it answers Unknown
+// The tree is opened once for the whole plan rather than once per ask, which
+// is the first thing the plan's up-front ask list buys.
+func Run[C, Cfg, D, A any](p plan.Plan[C, A], b *Bound[C, Cfg, D]) (A, error) {
+	var zero A
+	if len(p.Asks()) == 0 {
+		// Nothing to ask, so nothing to open. An image that states no CONFIG_
+		// should not pay for reading a kernel's Kconfig, and that is a
+		// property of the plan being data rather than of any wrapper.
+		return p.Fold(nil), nil
+	}
+	if b == nil {
+		// No interpreter for this kind: every question is unanswerable, which
+		// reads as "not checked" rather than as a failure - the same meaning
+		// a missing --linux has always had.
+		answers := make([]plan.Answer, len(p.Asks()))
+		for i := range answers {
+			answers[i] = plan.NotAnswerable()
 		}
-		d, err := o.open()
-		if err != nil {
-			var zero A
-			return zero, fmt.Errorf("%s: %w", tree, err)
-		}
-		loaded[tree] = d
+		return p.Fold(answers), nil
 	}
 
-	answers := make([]plan.Answer, len(asks))
-	for i, k := range asks {
-		o, ok := reg[k.Tree]
-		if !ok {
-			answers[i] = plan.NotAnswerable()
-			continue
-		}
-		answers[i] = o.answer(loaded[k.Tree], k)
+	d, err := b.Interp.Open(b.Config)
+	if err != nil {
+		return zero, err
+	}
+	answers := make([]plan.Answer, len(p.Asks()))
+	for i, k := range p.Asks() {
+		answers[i] = b.Interp.Answer(d, k)
 	}
 	return p.Fold(answers), nil
 }
 
-// Wrap is middleware over a kind. Opaque in, Opaque out - so caching,
-// laziness, tracing and version pinning are each written once and apply to
-// every kind, including ones written afterwards.
-type Wrap func(Opaque) Opaque
-
-// Wrapped applies wraps outermost-first, so Wrapped(o, Lazy(), Memo()) reads
-// as "lazy, then memoised".
-func Wrapped(o Opaque, ws ...Wrap) Opaque {
-	for i := len(ws) - 1; i >= 0; i-- {
-		o = ws[i](o)
+// Affects reports whether changing a setting changes what gets built. A kind
+// that does not say assumes everything does, which is the safe answer:
+// wrongly reusing a cached tree is worse than wrongly rebuilding one.
+func (b *Bound[C, Cfg, D]) Affects(name string) bool {
+	if b == nil || b.Interp.Affects == nil {
+		return true
 	}
-	return o
+	return b.Interp.Affects(name)
 }
 
-// Each applies the same wraps to every kind in a registry.
-func Each(r Registry, ws ...Wrap) Registry {
-	out := make(Registry, len(r))
-	for name, o := range r {
-		out[name] = Wrapped(o, ws...)
+func (b *Bound[C, Cfg, D]) CanEmit() bool   { return b != nil && b.Interp.Emit != nil }
+func (b *Bound[C, Cfg, D]) CanSettle() bool { return b != nil && b.Interp.Settle != nil }
+func (b *Bound[C, Cfg, D]) CanSolve() bool  { return b != nil && b.Interp.Solve != nil }
+func (b *Bound[C, Cfg, D]) CanRead() bool   { return b != nil && b.Interp.Read != nil }
+
+// --- middleware --------------------------------------------------------
+//
+// Generic in the kind, so each is written once and applies to every kind
+// including ones added later - without any of them being erased to do it.
+
+// Wrap transforms an interpreter of one kind.
+type Wrap[C, Cfg, D any] func(Interp[C, Cfg, D]) Interp[C, Cfg, D]
+
+// Wrapped applies wraps outermost-first.
+func Wrapped[C, Cfg, D any](i Interp[C, Cfg, D], ws ...Wrap[C, Cfg, D]) Interp[C, Cfg, D] {
+	for n := len(ws) - 1; n >= 0; n-- {
+		i = ws[n](i)
 	}
-	return out
+	return i
 }
 
-// Lazy opens a tree at most once, and only if something asks about it. An
-// image that states no CONFIG_ never pays for reading a kernel's Kconfig.
-func Lazy() Wrap {
-	return func(o Opaque) Opaque {
-		next := o.open
+// Lazy opens at most once, and only when something asks.
+func Lazy[C, Cfg, D any]() Wrap[C, Cfg, D] {
+	return func(i Interp[C, Cfg, D]) Interp[C, Cfg, D] {
+		next := i.Open
 		var once sync.Once
-		var d any
+		var d D
 		var err error
-		o.open = func() (any, error) {
-			once.Do(func() { d, err = next() })
+		i.Open = func(cfg Cfg) (D, error) {
+			once.Do(func() { d, err = next(cfg) })
 			return d, err
 		}
-		return o
+		return i
 	}
 }
 
-// Memo answers each distinct question once. Fifty-six images asking whether
-// BR2_PACKAGE_BUSYBOX exists is one question.
-func Memo() Wrap {
-	return func(o Opaque) Opaque {
-		next := o.answer
-		seen := map[plan.Ask]plan.Answer{}
-		o.answer = func(d any, k plan.Ask) plan.Answer {
-			// Position and hint are about where a claim was written, not what
-			// is being asked, so they must not split the cache.
-			key := plan.Ask{Op: k.Op, Tree: k.Tree, Name: k.Name}
-			if a, ok := seen[key]; ok && k.Claim == nil {
+// Memo answers each distinct question once. Position and hint are about where
+// a claim was written rather than what is being asked, so they must not split
+// the cache: fifty-six images asking about one symbol is one question.
+func Memo[C, Cfg, D any]() Wrap[C, Cfg, D] {
+	type key struct {
+		op         plan.Op
+		tree, name string
+	}
+	return func(i Interp[C, Cfg, D]) Interp[C, Cfg, D] {
+		next := i.Answer
+		seen := map[key]plan.Answer{}
+		i.Answer = func(d D, k plan.Ask[C]) plan.Answer {
+			// Only questions that do not depend on the claim are cacheable;
+			// a Holds carries one and two claims about a symbol can differ.
+			if k.Op != plan.Exists && k.Op != plan.Settled {
+				return next(d, k)
+			}
+			id := key{k.Op, k.Tree, k.Name}
+			if a, ok := seen[id]; ok {
 				return a
 			}
 			a := next(d, k)
-			if k.Claim == nil {
-				seen[key] = a
-			}
+			seen[id] = a
 			return a
 		}
-		return o
+		return i
 	}
 }
 
-// Trace writes every question and answer, which is a debugger for the model
-// itself rather than for the configuration.
-func Trace(w io.Writer) Wrap {
-	return func(o Opaque) Opaque {
-		next := o.answer
-		o.answer = func(d any, k plan.Ask) plan.Answer {
+// Trace writes every question and answer: a debugger for the model rather than
+// for the configuration.
+func Trace[C, Cfg, D any](w io.Writer) Wrap[C, Cfg, D] {
+	return func(i Interp[C, Cfg, D]) Interp[C, Cfg, D] {
+		next := i.Answer
+		i.Answer = func(d D, k plan.Ask[C]) plan.Answer {
 			a := next(d, k)
 			switch {
 			case a.Unknown:
@@ -222,50 +202,30 @@ func Trace(w io.Writer) Wrap {
 			}
 			return a
 		}
-		return o
+		return i
 	}
 }
 
 // Pinned refuses answers from a source that is not the version an image
-// declared. (verified-against (buildroot "2025.02.16")) is checked on every
-// question rather than once, so a tree swapped underneath a long run is
-// caught where it matters.
-func Pinned(want string) Wrap {
-	return func(o Opaque) Opaque {
-		next := o.answer
-		o.answer = func(d any, k plan.Ask) plan.Answer {
-			if want != "" && o.Version != "" && o.Version != want {
+// declared, on every question rather than once at startup.
+func Pinned[C, Cfg, D any](want, have string) Wrap[C, Cfg, D] {
+	return func(i Interp[C, Cfg, D]) Interp[C, Cfg, D] {
+		next := i.Answer
+		i.Answer = func(d D, k plan.Ask[C]) plan.Answer {
+			if want != "" && have != "" && want != have {
 				return plan.Fail(fmt.Errorf(
-					"%s answered by %s, and the image declares %s",
-					k.Name, o.Version, want))
+					"%s answered by %s, and the image declares %s", k.Name, have, want))
 			}
 			return next(d, k)
 		}
-		return o
+		return i
 	}
 }
 
-// Or asks the first interpreter and falls back to the second when it does not
-// know. A board's overlays over an SoC's base tree are this.
-func Or(a, b Opaque) Opaque {
-	return Opaque{
-		open: func() (any, error) {
-			da, err := a.open()
-			if err != nil {
-				return nil, err
-			}
-			db, err := b.open()
-			if err != nil {
-				return nil, err
-			}
-			return [2]any{da, db}, nil
-		},
-		answer: func(d any, k plan.Ask) plan.Answer {
-			pair := d.([2]any)
-			if r := a.answer(pair[0], k); !r.Unknown {
-				return r
-			}
-			return b.answer(pair[1], k)
-		},
-	}
-}
+// There was an Or here - ask one interpreter, fall back to another when it
+// does not know, for a board's overlays over an SoC's base tree. It was
+// removed rather than fixed: two interpreters of one kind have two
+// configurations and so two loaded states, and a combinator that shares one
+// between them answers the second from the first's data. The version that
+// works takes two bound interpreters and loads a pair, which is worth writing
+// when something needs it and not before.
