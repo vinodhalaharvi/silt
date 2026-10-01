@@ -1081,3 +1081,85 @@ make savedefconfig BR2_DEFCONFIG=$PWD/baseline_defconfig
 ```
 
 Then Rung 1: `go test ./sexpr/...`
+
+## Kinds of tree
+
+Silt models several configurations at once, and the thing that makes that
+tractable is that core knows nothing about any of them.
+
+A *kind* is a sort of configuration system: Kconfig, an ESPHome document, a
+WebAssembly component's interfaces. A *tree* is one instance of a kind -
+buildroot and linux are both Kconfig trees, and differ in where they are read
+from and how their output is consumed, not in what a symbol means.
+
+Core composes, detects conflicts, resolves overrides, checks capabilities and
+solves. It asks questions; it does not answer them:
+
+    Exists    is this a name the tree knows
+    Holds     does this claim hold in it
+    Settled   what does this name end up as
+    Emit      what file does this tree produce, and how does its builder
+              receive it
+
+A kind answers those. What it cannot do is as important as what it can: a
+device tree emits nothing, because the kernel builds it; an ESPHome tree is
+handed to no Buildroot symbol, because esphome builds it on another processor;
+a wasm tree configures nothing at all. Each of those was a special case in a
+shared package before the kinds were separated, and one of them was an error
+demanding a route that could not exist.
+
+### The plan
+
+A question is data before it is asked. `plan.Plan[A]` is a list of asks and a
+fold from their answers, so a whole run's questions are knowable before any
+tree is opened:
+
+    56 images, 2482 asks, trees [buildroot linux], nothing opened
+
+which is what lets one Buildroot tree answer for every image rather than one
+per command, and what makes the ask list a cache key rather than something
+computed beside one.
+
+Checking accumulates rather than short-circuits: a failure on one side must not
+hide the other side's problems, which is what a monadic bind would do. And a
+tree that was not given answers "cannot say" rather than "no" - which is what a
+missing `--linux` has always meant, now in one fold instead of in each command.
+
+Rules are the case that does not fit an applicative: a consequent applies only
+if a condition holds. `Branch` keeps both arms in the ask list and folds one,
+so a rule that was considered and did not fire can still be reported, and a
+cache key covers a rule whose untaken branch changed.
+
+Completion is the case that needs more than that. Kconfig's defaults and
+selects iterate to a fixpoint, and round two's questions depend on round one's
+answers, so it is not a plan. It runs afterwards, on settled input, and loses
+nothing by being opaque.
+
+### Cross-tree rules
+
+    (same-value
+      zephyr:CONFIG_OPENAMP_SHM_BASE
+      devicetree:rpmsg@88000000.reg
+      "the M7 and Linux must agree where the ring is")
+
+Both sides are asked what the name settles to; the answers are compared as
+values. Neither kind knows the other exists, and nothing about the rule is
+specific to either - which is why a kind added later inherits the ability to be
+checked against every kind already there.
+
+Every other rule silt has is an implication between booleans. The facts that
+break a heterogeneous system are not booleans: an address, a topic, a baud
+rate, a ring size. Each is one fact written twice, in two files, by two tools,
+and the symptom of a mismatch is hardware that builds, boots and does not work.
+
+### Adding a kind
+
+Write Open and Answer; write Emit if the kind produces a file; leave Settle and
+Solve out if it has no defaults to propagate and nothing to solve. Add one
+entry to the registry and one rule to `kindClauses`, which is a table rather
+than a switch precisely so that a kind added without a rule is an error rather
+than a tree whose clauses nobody checks.
+
+Nothing in core changes, nothing in another kind changes, and the new kind
+inherits laziness, memoisation, tracing, version pinning, error accumulation,
+the store and the cross-tree rules.

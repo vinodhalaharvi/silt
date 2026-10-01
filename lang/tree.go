@@ -188,7 +188,7 @@ func parseTreeDecl(n *sexpr.Node) (*TreeDecl, error) {
 		}
 	}
 	if d.Kind == "" {
-		return nil, errf(n, "tree %s needs (kind kconfig) or (kind wasm-component)", d.Name)
+		return nil, errf(n, "tree %s needs (kind kconfig), (kind wasm-component) or (kind esphome)", d.Name)
 	}
 	if err := checkKindClauses(n, d); err != nil {
 		return nil, err
@@ -202,7 +202,28 @@ func parseTreeDecl(n *sexpr.Node) (*TreeDecl, error) {
 // a consumed-by reads as though its policy reaches Buildroot, and a Kconfig
 // tree with a component reads as though that binary were checked.
 func checkKindClauses(n *sexpr.Node, d *TreeDecl) error {
-	if d.Kind == KindWasmComponent {
+	check, ok := kindClauses[d.Kind]
+	if !ok {
+		return errf(n, "tree %s has kind %q, which nothing knows how to check", d.Name, d.Kind)
+	}
+	return check(n, d)
+}
+
+// kindClauses is one entry per kind rather than a switch, so a kind that is
+// added without a rule is an error rather than a tree whose clauses nobody
+// looks at. The esphome kind went in without one, and a (consumed-by ...) on
+// it would have been accepted and then quietly ignored - which is the exact
+// shape of failure this function exists to prevent.
+var kindClauses = map[string]func(*sexpr.Node, *TreeDecl) error{
+	KindKconfig: func(n *sexpr.Node, d *TreeDecl) error {
+		if len(d.Components) > 0 || len(d.Wit) > 0 {
+			return errf(n, "tree %s is a kconfig tree; (component ...) and (wit ...) "+
+				"belong to wasm-component trees", d.Name)
+		}
+		return nil
+	},
+
+	KindWasmComponent: func(n *sexpr.Node, d *TreeDecl) error {
 		switch {
 		case d.ConsumedBy != "":
 			return errf(n, "tree %s is a wasm-component tree, which configures nothing; "+
@@ -218,12 +239,23 @@ func checkKindClauses(n *sexpr.Node, d *TreeDecl) error {
 				"pack defines, a misspelled policy symbol would pass forever", d.Name)
 		}
 		return nil
-	}
-	if len(d.Components) > 0 || len(d.Wit) > 0 {
-		return errf(n, "tree %s is a kconfig tree; (component ...) and (wit ...) "+
-			"belong to wasm-component trees", d.Name)
-	}
-	return nil
+	},
+
+	KindESPHome: func(n *sexpr.Node, d *TreeDecl) error {
+		switch {
+		case d.ConsumedBy != "":
+			return errf(n, "tree %s is an esphome tree; esphome builds its configuration "+
+				"on another processor and Buildroot has no symbol to hand it to, so "+
+				"(consumed-by ...) would name a route that does not exist", d.Name)
+		case d.Prefix != "":
+			return errf(n, "tree %s is an esphome tree; its settings are paths such as "+
+				"mqtt.topic_prefix and share no prefix to check", d.Name)
+		case len(d.Components) > 0 || len(d.Wit) > 0:
+			return errf(n, "tree %s is an esphome tree; (component ...) and (wit ...) "+
+				"belong to wasm-component trees", d.Name)
+		}
+		return nil
+	},
 }
 
 // parseSymbolRef reads a symbol written either bare, taking the enclosing

@@ -7,6 +7,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/vinodhalaharvi/silt/dt"
 	"github.com/vinodhalaharvi/silt/esphome"
@@ -47,6 +48,8 @@ const usage = `silt — composable S-expressions over Kconfig
   silt dt FILE.dtb [--linux DIR]    what hardware a device tree describes, and
                                     which drivers it needs
   silt esphome IMAGE.sx [-o FILE]   the ESPHome YAML this image's other half needs
+  silt affects [--tree NAME]        filter a config on stdin to the settings that
+                                    change what a build produces
   silt hash [PATH...]               content address of each file
   silt hash --solution IMAGE.sx --buildroot DIR [--linux DIR]
                                     content address of a composed image: its
@@ -137,6 +140,8 @@ func main() {
 		err = cmdDT(args)
 	case "esphome":
 		err = cmdESPHome(args)
+	case "affects":
+		err = cmdAffects(args)
 	case "why":
 		err = cmdWhy(args)
 	case "solve":
@@ -1026,6 +1031,80 @@ func cmdSolutionHash(args []string) error {
 		}
 	}
 	return nil
+}
+
+// cmdAffects filters a configuration on stdin down to the settings that
+// change what a build produces.
+//
+// The store's prefix test turns on this: a stored tree is a safe starting
+// point when the new configuration only adds to it, and a setting that is read
+// after every package is built cannot have affected a compiled package. The
+// test itself lives in the build script, where the trees are; the judgement
+// about which settings matter lives with the kind that knows why, and this is
+// how the script asks.
+//
+// Before this the script carried its own regular expression, which is two
+// copies of one policy and no way to notice when they stop agreeing.
+//
+//	silt complete IMAGE.sx --buildroot DIR | silt affects
+func cmdAffects(args []string) error {
+	tree := string(lang.Buildroot)
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--tree" {
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("--tree needs a name")
+			}
+			tree = args[i]
+		}
+	}
+
+	// A config file on stdin is Kconfig by construction - it is what kbuild
+	// wrote - so the kind is not in question here even when the tree is.
+	decl := lang.TreeDecl{Name: tree, Kind: lang.KindKconfig}
+
+	sc := bufio.NewScanner(os.Stdin)
+	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	out := bufio.NewWriter(os.Stdout)
+	defer out.Flush()
+
+	for sc.Scan() {
+		line := sc.Text()
+		name := settingName(line)
+		if name == "" {
+			// A comment or a blank line: kept, because the caller is
+			// filtering a file rather than extracting from one, and a
+			// "# CONFIG_X is not set" line is a statement about X.
+			if n := unsetName(line); n != "" && !plugins.Affects(tree, decl, n) {
+				continue
+			}
+			fmt.Fprintln(out, line)
+			continue
+		}
+		if !plugins.Affects(tree, decl, name) {
+			continue
+		}
+		fmt.Fprintln(out, line)
+	}
+	return sc.Err()
+}
+
+// settingName is the symbol in a NAME=value line, or "".
+func settingName(line string) string {
+	i := strings.IndexByte(line, '=')
+	if i <= 0 || strings.HasPrefix(line, "#") {
+		return ""
+	}
+	return line[:i]
+}
+
+// unsetName is the symbol in a "# NAME is not set" line, or "".
+func unsetName(line string) string {
+	const pre, suf = "# ", " is not set"
+	if !strings.HasPrefix(line, pre) || !strings.HasSuffix(line, suf) {
+		return ""
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(line, pre), suf)
 }
 
 // cmdESPHome writes the ESPHome YAML an image's microcontroller half needs.

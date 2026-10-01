@@ -147,8 +147,14 @@ mkdir -p "$BR2_DL_DIR"
 # stored tree the moment anything was committed, and turned what should have
 # been a one-package delta into a twenty-two minute rebuild. It names a
 # string nothing is compiled against.
+#
+# The list itself is `silt affects`, not a regular expression here. Which
+# settings change what a build produces is a judgement about a kind of tree,
+# and it lived in two places - a shell pattern and the tool - with no way to
+# notice when they stopped agreeing. Each entry carries its reason where it
+# is decided.
 not_build_affecting() {
-	grep -vE '^(BR2_ROOTFS_OVERLAY|BR2_ROOTFS_POST_BUILD_SCRIPT|BR2_ROOTFS_POST_IMAGE_SCRIPT|BR2_ROOTFS_POST_SCRIPT_ARGS|BR2_TARGET_ROOTFS_EXT2_SIZE|BR2_TARGET_ROOTFS_TAR|BR2_PACKAGE_RPI_FIRMWARE_CONFIG_FILE|BR2_PACKAGE_RPI_FIRMWARE_CMDLINE_FILE|BR2_DEFCONFIG|BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES|BR2_DL_DIR|BR2_CCACHE_DIR|BR2_JLEVEL|BR2_EXTERNAL[A-Z_0-9]*)='
+	"$SILT" affects
 }
 
 # What counts as the built thing, which is not the same on every board.
