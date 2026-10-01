@@ -14,15 +14,19 @@
 package plugins
 
 import (
+	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/vinodhalaharvi/silt/compose"
 	"github.com/vinodhalaharvi/silt/dt"
 	"github.com/vinodhalaharvi/silt/kconfig"
 	"github.com/vinodhalaharvi/silt/lang"
 	"github.com/vinodhalaharvi/silt/plan"
 	"github.com/vinodhalaharvi/silt/plugin"
+	"github.com/vinodhalaharvi/silt/verify"
 )
 
 // Stated is what an image says, indexed for lookup. Every kind needs it,
@@ -68,6 +72,19 @@ type KconfigCfg struct {
 	// it cannot be answered.
 	Tree    *kconfig.Tree
 	Version string
+
+	// Decl is the tree's declaration, which carries the prefix convention: a
+	// kernel symbol is declared EXT4_FS and written CONFIG_EXT4_FS, and
+	// looking a stated name up verbatim reports every CONFIG_ symbol in the
+	// library as missing.
+	Decl lang.TreeDecl
+	// ByName is what the composition asserts in this tree, keyed by bare
+	// name, which is the shape dependency evaluation needs: a dependency is
+	// refuted only when the composition contradicts it, never because a
+	// symbol is unmentioned.
+	ByName map[string]lang.Constraint
+	// Unmanaged are the symbols this image makes no claim about.
+	Unmanaged []lang.SymbolID
 }
 
 var Kconfig = plugin.Interp[KconfigCfg, KconfigCfg]{
@@ -78,7 +95,33 @@ var Kconfig = plugin.Interp[KconfigCfg, KconfigCfg]{
 			if c.Tree == nil {
 				return plan.NotAnswerable()
 			}
-			return plan.Yes(c.Tree.Get(k.Name) != nil)
+			return plan.Yes(c.Tree.Symbols[verify.TreeName(c.Tree, c.Decl)(k.Name)] != nil)
+
+		case plan.Holds:
+			if c.Tree == nil {
+				return plan.NotAnswerable()
+			}
+			cons, ok := k.Claim.(lang.Constraint)
+			if !ok {
+				return plan.NotAnswerable()
+			}
+			// The same function Check walks a composition with. Two code
+			// paths deciding what counts as a problem would disagree within a
+			// week, and the one a reader sees would depend on which command
+			// they ran.
+			fs := verify.CheckConstraint(cons, c.Tree, verify.TreeName(c.Tree, c.Decl),
+				c.ByName, k.Tree)
+			if len(fs) == 0 {
+				return plan.OK()
+			}
+			msgs := make([]string, len(fs))
+			for i, f := range fs {
+				msgs[i] = f.Message
+				if f.Detail != "" {
+					msgs[i] += "\n    " + f.Detail
+				}
+			}
+			return plan.Fail(errors.New(strings.Join(msgs, "\n  ")))
 
 		case plan.Settled:
 			id := lang.SymbolID{Tree: k.Tree, Name: k.Name}
@@ -282,4 +325,90 @@ func SameValues(rules []*lang.Rules) plan.Plan[plan.V[plan.Unit]] {
 			all := plan.All(vs)
 			return plan.V[plan.Unit]{Problems: all.Problems}
 		})
+}
+
+// CheckImage is a composition's claims as a plan.
+//
+// The same questions verify.Check asks when it walks a result, asked one at a
+// time so they can be folded with everything else a run wants to know. What
+// this buys over calling Check directly is not the checking - that is the same
+// function either way - but that the questions are knowable before any tree is
+// opened, so one Buildroot tree answers for every image in a run, and that the
+// answers fold into the same report as the cross-tree rules rather than into a
+// second one that can disagree.
+func CheckImage(res *compose.Result, trees map[string]lang.TreeDecl) plan.Plan[plan.V[plan.Unit]] {
+	var claims []lang.Constraint
+	for sc, cs := range res.Constraints {
+		d, ok := trees[string(sc)]
+		if !ok || d.Kind != lang.KindKconfig {
+			continue
+		}
+		for _, c := range cs {
+			if c.Soft || unmanaged(c.Sym, res.Unmanaged) {
+				continue
+			}
+			claims = append(claims, c)
+		}
+	}
+	// Deterministic, so a plan is diffable and its hash is stable.
+	sort.Slice(claims, func(i, j int) bool {
+		if claims[i].Sym.Tree != claims[j].Sym.Tree {
+			return claims[i].Sym.Tree < claims[j].Sym.Tree
+		}
+		return claims[i].Sym.Name < claims[j].Sym.Name
+	})
+
+	return plan.Map(
+		plan.Traverse(claims, func(c lang.Constraint) plan.Plan[plan.V[plan.Unit]] {
+			return plan.Claim(plan.Ask{
+				Op: plan.Holds, Tree: c.Sym.Tree, Name: c.Sym.Name,
+				Claim: c, Pos: c.Pos.Short(), Hint: "stated by " + c.From,
+			})
+		}),
+		func(vs []plan.V[plan.Unit]) plan.V[plan.Unit] {
+			return plan.V[plan.Unit]{Problems: plan.All(vs).Problems}
+		})
+}
+
+func unmanaged(id lang.SymbolID, ids []lang.SymbolID) bool {
+	for _, u := range ids {
+		if u.Tree != id.Tree {
+			continue
+		}
+		if u.Name == id.Name {
+			return true
+		}
+		if strings.HasSuffix(u.Name, "*") && strings.HasPrefix(id.Name, strings.TrimSuffix(u.Name, "*")) {
+			return true
+		}
+	}
+	return false
+}
+
+// ForImage builds a registry that can answer about one composition: the same
+// trees, with that image's stated symbols indexed the way dependency
+// evaluation needs them.
+func ForImage(res *compose.Result, trees map[string]lang.TreeDecl, src Sources) plugin.Registry {
+	reg := Registry(trees, Index(res.Constraints), src)
+	for name, d := range trees {
+		if d.Kind != lang.KindKconfig {
+			continue
+		}
+		cfg := KconfigCfg{
+			Stated:    Index(res.Constraints),
+			Decl:      d,
+			ByName:    verify.StatedIn(res, lang.Scope(name)),
+			Unmanaged: res.Unmanaged,
+		}
+		switch name {
+		case "buildroot":
+			cfg.Tree, cfg.Version = src.Buildroot, src.BuildrootVersion
+		case "linux":
+			cfg.Tree = src.Linux
+		}
+		o := plugin.Erase(Kconfig, cfg)
+		o.Version = cfg.Version
+		reg[name] = o
+	}
+	return reg
 }

@@ -98,54 +98,80 @@ func Check(res *compose.Result, tree *kconfig.Tree, decl lang.TreeDecl) *Report 
 			continue
 		}
 		rep.Checked++
-
-		sym, ok := tree.Symbols[inTree(name)]
-		if !ok {
-			rep.add(Finding{
-				Pos: c.Pos.Short(), Symbol: name,
-				Message: fmt.Sprintf("%s does not exist in this %s tree", name, sc),
-				Detail:  "stated by " + c.From,
-			})
-			continue
-		}
-
-		// Type agreement. Setting a string symbol to y, or a bool to a string,
-		// is silently dropped by kbuild rather than rejected.
-		switch {
-		case c.IsValue && sym.Type.Solvable():
-			rep.add(Finding{
-				Pos: c.Pos.Short(), Symbol: name,
-				Message: fmt.Sprintf("%s is %s, but is given a string value", name, sym.Type),
-				Detail:  fmt.Sprintf("declared at %s:%d", sym.File, sym.Line),
-			})
-		case !c.IsValue && !sym.Type.Solvable():
-			rep.add(Finding{
-				Pos: c.Pos.Short(), Symbol: name,
-				Message: fmt.Sprintf("%s is %s, but is set as a boolean", name, sym.Type),
-				Detail:  fmt.Sprintf("declared at %s:%d", sym.File, sym.Line),
-			})
-		}
-
-		// Dependencies. Only report when the composition definitely
-		// contradicts a dependency: an unstated symbol is unknown, not false,
-		// and kbuild may well satisfy it from defaults.
-		if c.IsValue || c.Want == lang.N || sym.Depends == nil {
-			continue
-		}
-		if why := refutes(sym.Depends, stated); why != nil {
-			// Name the refuted term, not the whole conjunction: a
-			// twelve-clause depends expression buries the one thing that
-			// is wrong.
-			rep.add(Finding{
-				Pos: c.Pos.Short(), Symbol: name,
-				Message: fmt.Sprintf("%s requires %s (%s:%d)",
-					name, requirement(sym.Depends, why.Sym.Name), sym.File, sym.Line),
-				Detail: fmt.Sprintf("but %s is stated %s by %s at %s",
-					why.Sym, describe(*why), why.From, why.Pos.Short()),
-			})
+		for _, f := range CheckConstraint(c, tree, inTree, stated, string(sc)) {
+			rep.add(f)
 		}
 	}
 	return rep
+}
+
+// CheckConstraint is one claim against one tree: does the symbol exist, does
+// its type admit the value, and does the composition contradict a dependency.
+//
+// Extracted from the loop above so the same code answers a claim asked one at
+// a time. Check walks a whole composition and reports it; a plan asks about
+// one claim and folds the answer with everything else - and the two must not
+// be able to disagree about what a problem is, which they would within a week
+// of being written twice.
+//
+// stated is what the composition asserts in this tree, keyed by bare name,
+// because dependency evaluation has to consult it: a dependency is refuted
+// only when the composition definitely contradicts it, never merely because a
+// symbol is unmentioned.
+func CheckConstraint(
+	c lang.Constraint,
+	tree *kconfig.Tree,
+	inTree func(string) string,
+	stated map[string]lang.Constraint,
+	scope string,
+) []Finding {
+	name := c.Sym.Name
+	sym, ok := tree.Symbols[inTree(name)]
+	if !ok {
+		return []Finding{{
+			Pos: c.Pos.Short(), Symbol: name,
+			Message: fmt.Sprintf("%s does not exist in this %s tree", name, scope),
+			Detail:  "stated by " + c.From,
+		}}
+	}
+
+	var out []Finding
+
+	// Type agreement. Setting a string symbol to y, or a bool to a string,
+	// is silently dropped by kbuild rather than rejected.
+	switch {
+	case c.IsValue && sym.Type.Solvable():
+		out = append(out, Finding{
+			Pos: c.Pos.Short(), Symbol: name,
+			Message: fmt.Sprintf("%s is %s, but is given a string value", name, sym.Type),
+			Detail:  fmt.Sprintf("declared at %s:%d", sym.File, sym.Line),
+		})
+	case !c.IsValue && !sym.Type.Solvable():
+		out = append(out, Finding{
+			Pos: c.Pos.Short(), Symbol: name,
+			Message: fmt.Sprintf("%s is %s, but is set as a boolean", name, sym.Type),
+			Detail:  fmt.Sprintf("declared at %s:%d", sym.File, sym.Line),
+		})
+	}
+
+	// Dependencies. Only report when the composition definitely contradicts
+	// one: an unstated symbol is unknown, not false, and kbuild may well
+	// satisfy it from defaults.
+	if c.IsValue || c.Want == lang.N || sym.Depends == nil {
+		return out
+	}
+	if why := refutes(sym.Depends, stated); why != nil {
+		// Name the refuted term, not the whole conjunction: a twelve-clause
+		// depends expression buries the one thing that is wrong.
+		out = append(out, Finding{
+			Pos: c.Pos.Short(), Symbol: name,
+			Message: fmt.Sprintf("%s requires %s (%s:%d)",
+				name, requirement(sym.Depends, why.Sym.Name), sym.File, sym.Line),
+			Detail: fmt.Sprintf("but %s is stated %s by %s at %s",
+				why.Sym, describe(*why), why.From, why.Pos.Short()),
+		})
+	}
+	return out
 }
 
 // CheckCapabilities verifies that every capability bound to a symbol names one
@@ -378,6 +404,33 @@ func CheckRules(rules []*lang.Rules, tree *kconfig.Tree, decl lang.TreeDecl, rep
 }
 
 // treeName maps a symbol as written to the name the tree declares it under.
+// TreeName exposes the prefix convention: a Buildroot symbol is declared
+// BR2_X and written BR2_X, a kernel symbol is declared EXT4_FS and written
+// CONFIG_EXT4_FS because conf adds the prefix on the way out. A plugin
+// answering about a tree needs the same mapping Check uses.
+func TreeName(tree *kconfig.Tree, decl lang.TreeDecl) func(string) string {
+	return treeName(tree, decl)
+}
+
+// StatedIn indexes what a composition asserts in one tree, keyed by bare name,
+// which is the shape dependency evaluation needs.
+func StatedIn(res *compose.Result, sc lang.Scope) map[string]lang.Constraint {
+	stated := map[string]lang.Constraint{}
+	for _, c := range res.Constraints[sc] {
+		if !c.Soft {
+			stated[c.Sym.Name] = c
+		}
+	}
+	for _, cs := range [][]lang.Constraint{res.Opaque, res.Environment} {
+		for _, c := range cs {
+			if lang.Scope(c.Sym.Tree) == sc {
+				stated[c.Sym.Name] = c
+			}
+		}
+	}
+	return stated
+}
+
 func treeName(tree *kconfig.Tree, decl lang.TreeDecl) func(string) string {
 	if decl.Prefix == "" || strings.HasPrefix(firstSymbol(tree), decl.Prefix) {
 		return func(name string) string { return name }
