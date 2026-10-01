@@ -1,0 +1,186 @@
+package plugins
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/vinodhalaharvi/silt/compose"
+	"github.com/vinodhalaharvi/silt/emit"
+	"github.com/vinodhalaharvi/silt/esphome"
+	"github.com/vinodhalaharvi/silt/lang"
+)
+
+// Writing a composition out, per kind.
+//
+// emit knows one thing it should not: that a tree's configuration is handed to
+// Buildroot through a symbol, which is true of a Kconfig fragment and of
+// nothing else. An ESPHome document is built by esphome on another processor;
+// a device tree is built by the kernel. Both were special cases in a package
+// that is supposed to be about writing files.
+//
+// So the question "what file does this tree produce, and how does its builder
+// receive it" belongs to the kind. What is left in emit is rendering a Kconfig
+// file, which is the part every Kconfig tree shares.
+
+// Emitted is one tree's configuration and where its builder expects it.
+type Emitted struct {
+	Tree string
+	Name string
+	Body []byte
+	// ConsumedBy is the Buildroot symbol that hands this file to the build,
+	// empty for a tree Buildroot does not consume. It is the kind's answer
+	// rather than core's assumption: a tree with no answer is not an error,
+	// it is a tree built by something else.
+	ConsumedBy string
+}
+
+// EmitAll writes every tree a composition states, each through its own kind.
+//
+// The Buildroot defconfig is written last, because it names the files the
+// other trees produced and cannot be rendered before they exist.
+func EmitAll(res *compose.Result, trees map[string]lang.TreeDecl) ([]Emitted, error) {
+	var out []Emitted
+	paths := map[string]string{}
+
+	// Every tree the composition states, not only the ones Buildroot
+	// consumes. emit.Trees answers the narrower question - which trees are
+	// handed to Buildroot as fragments - and that is the assumption this is
+	// here to remove.
+	for _, tree := range statedTrees(res, trees) {
+		d, ok := trees[tree]
+		if !ok {
+			return nil, fmt.Errorf("tree %s is stated and not declared", tree)
+		}
+		e, err := emitTree(res, tree, d)
+		if err != nil {
+			return nil, err
+		}
+		if e == nil {
+			continue // this kind writes nothing, which is a fact and not a fault
+		}
+		out = append(out, *e)
+		paths[tree] = e.Name
+	}
+
+	def, err := emit.BuildrootDefconfig(res, paths)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, Emitted{
+		Tree: string(lang.Buildroot),
+		Name: emit.FileName(string(lang.Buildroot)),
+		Body: []byte(def),
+	})
+	return out, nil
+}
+
+// statedTrees is every tree other than Buildroot that the composition makes a
+// hard claim in, in a stable order.
+func statedTrees(res *compose.Result, trees map[string]lang.TreeDecl) []string {
+	var out []string
+	for sc, cs := range res.Constraints {
+		if sc == lang.Buildroot {
+			continue
+		}
+		hard := false
+		for _, c := range cs {
+			if !c.Soft {
+				hard = true
+				break
+			}
+		}
+		if hard {
+			out = append(out, string(sc))
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// emitTree is the per-kind answer. nil means this kind produces no file.
+func emitTree(res *compose.Result, tree string, d lang.TreeDecl) (*Emitted, error) {
+	switch d.Kind {
+	case lang.KindKconfig:
+		if d.ConsumedBy == "" {
+			return nil, fmt.Errorf("tree %s has constraints but no (consumed-by BR2_...) "+
+				"symbol to hand its config to Buildroot", tree)
+		}
+		return &Emitted{
+			Tree:       tree,
+			Name:       emit.FileName(tree),
+			Body:       []byte(emit.Defconfig(res, lang.Scope(tree))),
+			ConsumedBy: d.ConsumedBy,
+		}, nil
+
+	case lang.KindESPHome:
+		doc := esphome.New()
+		for _, c := range res.Constraints[lang.Scope(tree)] {
+			if !c.IsValue {
+				return nil, fmt.Errorf("%s: %s is a tristate, and an esphome setting takes a value",
+					c.Pos.Short(), c.Sym)
+			}
+			doc.Set(c.Sym.Name, c.Value)
+		}
+		if doc.Len() == 0 {
+			return nil, nil
+		}
+		// No ConsumedBy: esphome builds this, on a different processor, and
+		// Buildroot has no symbol to hand it to. Before the kinds were
+		// separated this was an error demanding a symbol that could not
+		// exist.
+		return &Emitted{Tree: tree, Name: tree + ".yaml", Body: []byte(doc.Render())}, nil
+
+	case lang.KindWasmComponent:
+		// Constrains what an image may contain and configures nothing.
+		return nil, nil
+	}
+	return nil, fmt.Errorf("tree %s has kind %q, which cannot be emitted", tree, d.Kind)
+}
+
+// Affects reports whether changing a setting changes what a build produces.
+//
+// The cache's prefix test turns on this: a stored tree is a safe starting
+// point when the new configuration only adds to it, and a setting read after
+// every package is built cannot have affected a compiled package. The list
+// lives with the kind that knows why each entry is on it, rather than as a
+// regular expression in a shell script that no longer says.
+func Affects(tree string, d lang.TreeDecl, name string) bool {
+	if d.Kind != lang.KindKconfig || tree != string(lang.Buildroot) {
+		// Another kind's settings are not Buildroot's to reason about, and
+		// the safe answer is that they matter: wrongly reusing a tree is
+		// worse than wrongly rebuilding one.
+		return true
+	}
+	for _, p := range readAfterBuilding {
+		if name == p || strings.HasPrefix(name, p) && strings.HasSuffix(p, "_") {
+			return false
+		}
+	}
+	return !strings.HasPrefix(name, "BR2_EXTERNAL_")
+}
+
+// Symbols read after every package is built, by steps that re-run on every
+// make. A changed overlay cannot have affected a compiled package, because
+// nothing reads it until target-finalize.
+var readAfterBuilding = []string{
+	"BR2_ROOTFS_OVERLAY",
+	"BR2_ROOTFS_POST_BUILD_SCRIPT",
+	"BR2_ROOTFS_POST_IMAGE_SCRIPT",
+	"BR2_ROOTFS_POST_SCRIPT_ARGS",
+	"BR2_TARGET_ROOTFS_EXT2_SIZE",
+	"BR2_TARGET_ROOTFS_TAR",
+	"BR2_PACKAGE_RPI_FIRMWARE_CONFIG_FILE",
+	"BR2_PACKAGE_RPI_FIRMWARE_CMDLINE_FILE",
+
+	// Filled in from the invocation rather than from the configuration.
+	// BR2_EXTERNAL_<NAME>_VERSION is git describe of the external tree, so it
+	// changes on every commit - and before it was excluded, every stored tree
+	// was disqualified the moment anything was committed and a one-package
+	// image took twenty-two minutes instead of one.
+	"BR2_DEFCONFIG",
+	"BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES",
+	"BR2_DL_DIR",
+	"BR2_CCACHE_DIR",
+	"BR2_JLEVEL",
+}

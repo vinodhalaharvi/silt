@@ -753,18 +753,33 @@ func cmdEmit(args []string) error {
 	}
 	// One file per tree the image configures, each wired into the defconfig
 	// through its tree's consumed-by symbol.
+	// Each tree through its own kind: a Kconfig tree writes a fragment and
+	// names the Buildroot symbol that receives it, an ESPHome tree writes a
+	// YAML document that esphome builds on another processor, and a kind that
+	// configures nothing writes nothing. Which of those a tree is was an
+	// assumption here and is now the kind's answer.
+	emitted, err := plugins.EmitAll(r, lib.Trees)
+	if err != nil {
+		return err
+	}
+
 	paths := map[string]string{}
 	var written []string
-	for _, tree := range emit.Trees(r) {
-		path := filepath.Join(outDir, emit.FileName(tree))
+	for _, e := range emitted {
+		if e.Tree == string(lang.Buildroot) {
+			continue // written below, with the solution hash
+		}
+		path := filepath.Join(outDir, e.Name)
 		abs, err := filepath.Abs(path)
 		if err != nil {
 			abs = path
 		}
-		if err := os.WriteFile(path, []byte(emit.Defconfig(r, lang.Scope(tree))), 0o644); err != nil {
+		if err := os.WriteFile(path, e.Body, 0o644); err != nil {
 			return err
 		}
-		paths[tree] = abs
+		if e.ConsumedBy != "" {
+			paths[e.Tree] = abs
+		}
 		written = append(written, path)
 	}
 	br := filepath.Join(outDir, emit.FileName("buildroot"))
