@@ -26,17 +26,32 @@ import (
 // It skips without a Buildroot tree, which is how every other test here that
 // needs one behaves.
 func TestPlanAgreesWithVerify(t *testing.T) {
-	br := os.Getenv("BUILDROOT")
-	if br == "" {
-		for _, c := range []string{"/home/claude/br", filepath.Join(os.Getenv("HOME"), "buildroot")} {
-			if _, err := os.Stat(filepath.Join(c, "Config.in")); err == nil {
-				br = c
-				break
-			}
+	// A candidate counts only if it really is a Buildroot tree. BUILDROOT
+	// being set is not the same as it pointing at one - a Makefile target
+	// passes it through whether the directory exists or not - and a
+	// differential test with nothing to compare against must skip rather than
+	// fail, or it turns `make ci` red on every machine that has no tree.
+	isBuildroot := func(dir string) bool {
+		if dir == "" {
+			return false
+		}
+		_, err := os.Stat(filepath.Join(dir, "Config.in"))
+		return err == nil
+	}
+
+	var br string
+	for _, c := range []string{
+		os.Getenv("BUILDROOT"),
+		"/home/claude/br",
+		filepath.Join(os.Getenv("HOME"), "buildroot"),
+	} {
+		if isBuildroot(c) {
+			br = c
+			break
 		}
 	}
 	if br == "" {
-		t.Skip("no Buildroot tree; set BUILDROOT")
+		t.Skip("no Buildroot tree to compare against; set BUILDROOT to one")
 	}
 
 	root := repoRoot(t)
