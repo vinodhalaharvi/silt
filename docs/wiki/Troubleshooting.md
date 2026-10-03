@@ -79,6 +79,25 @@ Then the second test: build Buildroot's own defconfig for that board, with no
 silt involved. If *that* fails too, the fault is upstream. This is how the Pi 5
 kernel problem was established rather than guessed.
 
+**An SError in pinctrl, on a Pi 5.**
+
+    SError Interrupt on CPU1, code 0x00000000be000011
+    pc : brcmstb_pull_config_set+0x64/0xf0
+    Kernel panic - not syncing: Asynchronous SError Interrupt
+
+The page size. Buildroot's raspberrypi5_defconfig applies
+`linux-4k-page-size.fragment`, whose whole content is
+`CONFIG_ARM64_4K_PAGES=y`, and a Pi 5 Rev 1.1 with a 4k-page kernel takes a bus
+fault on the first pinctrl pad write. `bcm2712_defconfig` selects 16k on its
+own, so the fix is to delete the fragment rather than state a replacement.
+
+Four hours of this looked like a driver problem, because the first thing to
+write a pad register was the 8250 BCM7271 UART and blacklisting its initcall
+moved the panic rather than removing it. What settled it was reading the
+config of a kernel that works - Raspberry Pi OS keeps it at
+`/boot/config-$(uname -r)` - and finding `CONFIG_ARM64_16K_PAGES=y` where ours
+had 4k. `getconf PAGESIZE` on a running board says the same thing in one line.
+
 **A stale file from a cached tree.** A build that restores an output tree
 inherits its `target/` directory, and nothing removes a file an overlay stopped
 providing. Renaming an init script left both versions in the image, and the old

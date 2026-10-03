@@ -66,7 +66,33 @@
     ;; is the tip of rpi-6.12.y and the smaller jump.
     (value BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION "$(call github,raspberrypi,linux,1e807154dbf9733995f5337e74602d3f82544c6e)/linux-1e807154dbf9733995f5337e74602d3f82544c6e.tar.gz") ; :12 defined under linux/ (kernel)
     (value BR2_LINUX_KERNEL_DEFCONFIG "bcm2712")               ; :13 defined under linux/ (kernel)
-    (path-append BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES "board/raspberrypi/linux-4k-page-size.fragment") ; :14 defined under linux/ (kernel)
+    ;; Buildroot's raspberrypi5_defconfig applies
+    ;; board/raspberrypi/linux-4k-page-size.fragment here, whose entire
+    ;; content is CONFIG_ARM64_4K_PAGES=y. It is removed, and that is the
+    ;; difference between this board booting and not.
+    ;;
+    ;; A Pi 5 Model B Rev 1.1 with a 4k-page kernel takes an asynchronous
+    ;; SError on the first pinctrl pad write and panics at 0.44 seconds:
+    ;;
+    ;;   SError Interrupt on CPU1, code 0x00000000be000011
+    ;;   pc : brcmstb_pull_config_set+0x64/0xf0
+    ;;   Kernel panic - not syncing: Asynchronous SError Interrupt
+    ;;
+    ;; The same fault on 6.12 and on 6.18, with our device tree and with
+    ;; Raspberry Pi OS's, so it is neither the kernel series nor the tree.
+    ;; Raspberry Pi OS runs 6.18.50 on this exact board and does not fault;
+    ;; its config says CONFIG_ARM64_16K_PAGES=y and getconf PAGESIZE says
+    ;; 16384. bcm2712_defconfig selects 16k on its own, so deleting the
+    ;; fragment is the whole fix rather than stating a replacement.
+    ;;
+    ;; Why it faults: the peripheral and RP1 windows on a 2712 are mapped
+    ;; with the alignment a 16k-page kernel assumes, and at 4k a pad
+    ;; register write lands outside a valid mapping. It appears at the first
+    ;; pinctrl write and nowhere earlier, which is why the board gets as far
+    ;; as bringing up four CPUs and the RP1 before dying.
+    ;;
+    ;; This is also why Buildroot's own raspberrypi5_defconfig has never
+    ;; booted this board. The bug is upstream and the fragment is the cause.
     (y BR2_LINUX_KERNEL_DTS_SUPPORT)                           ; :15 defined under linux/ (kernel)
     (value BR2_LINUX_KERNEL_INTREE_DTS_NAME "broadcom/bcm2712-rpi-5-b broadcom/bcm2712d0-rpi-5-b") ; :16 defined under linux/ (kernel)
     (y BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL)                    ; :17 defined under linux/ (kernel)
