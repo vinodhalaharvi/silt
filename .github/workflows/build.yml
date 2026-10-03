@@ -161,7 +161,12 @@ jobs:
             --command "set -e
               rm -rf ~/ci-artifacts && mkdir -p ~/ci-artifacts
               cd '$SILT_STORE/slots'
-              for s in */; do
+              # Oldest first, so that when two slots hold the same image - an
+              # earlier build of it and today's - the newest is written last
+              # and wins. The store is keyed by solution hash, so one image
+              # built twice is two slots, and collecting them in glob order
+              # would publish whichever hash sorted first.
+              for s in \$(ls -dtr */); do
                 [ -s \"\$s/artifacts\" ] || continue
                 name=\$(sed -n 's/^image  *//p' \"\$s/manifest\" | head -1)
                 mkdir -p ~/ci-artifacts/\"\$name\"
@@ -171,7 +176,11 @@ jobs:
                 # down, which matters more than the storage for a 2GB media
                 # image. -T0 uses every core; the builder has plenty.
                 while read -r a; do
-                  [ -n \"\$a\" ] && zstd -q -3 -T0 \"\$s/\$a\" \
+                  # -f because an older slot for the same image may have
+                  # written this file already; without it zstd refuses and the
+                  # whole step fails after a successful build, which is how a
+                  # 22-minute kernel build came to be thrown away twice.
+                  [ -n \"\$a\" ] && zstd -q -f -3 -T0 \"\$s/\$a\" \
                     -o ~/ci-artifacts/\"\$name\"/\"\$a\".zst
                 done < \"\$s/artifacts\"
                 # The three small text files stay as they are: they are read

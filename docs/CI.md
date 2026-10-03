@@ -254,6 +254,11 @@ manifest beside it. Nothing expires, and a download page can be built over it -
 the predicted config and the solution hash mean such a page can say what each
 image *is*, not just what it is called.
 
+One image can be in the store twice, because the store is keyed by solution
+hash and a rebuild after any change is a new slot. The collect step walks the
+slots oldest first so the newest wins, and compresses with `-f` so an older
+slot's output does not make the step fail after a successful build.
+
 Images are stored zstd-compressed. A rootfs is a mostly empty filesystem, so
 the saving is large, and every image is kept forever: the storage compounds
 where a single build's does not. It also shortens the copy down from the
