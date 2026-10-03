@@ -67,7 +67,6 @@
     (value BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION "$(call github,raspberrypi,linux,1e807154dbf9733995f5337e74602d3f82544c6e)/linux-1e807154dbf9733995f5337e74602d3f82544c6e.tar.gz") ; :12 defined under linux/ (kernel)
     (value BR2_LINUX_KERNEL_DEFCONFIG "bcm2712")               ; :13 defined under linux/ (kernel)
     ;; Buildroot's raspberrypi5_defconfig applies
-    ;; board/raspberrypi/linux-4k-page-size.fragment here, whose entire
     ;; content is CONFIG_ARM64_4K_PAGES=y. It is removed, and that is the
     ;; difference between this board booting and not.
     ;;
